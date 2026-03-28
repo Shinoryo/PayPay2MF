@@ -95,13 +95,21 @@ mf_account: "PayPay残高"
 
 詳細は「ログ出力」の章を参照してください。
 
-### エラーCSVファイル
+### 解析エラーCSVファイル
+
+| 項目 | 内容 |
+| ---- | ---- |
+| ファイル名 | `parse_error_yyyyMMdd_HHmmss.csv` |
+| 配置場所 | `log_settings.logs_dir`（デフォルト: `<tool_folder>\logs`） |
+| 内容概要 | CSV の解析に失敗した行の一覧 |
+
+### 登録失敗CSVファイル
 
 | 項目 | 内容 |
 | ---- | ---- |
 | ファイル名 | `error_yyyyMMdd_HHmmss.csv` |
 | 配置場所 | `log_settings.logs_dir`（デフォルト: `<tool_folder>\logs`） |
-| 内容概要 | 処理中に失敗した行の一覧 |
+| 内容概要 | MF 登録中に失敗した行の一覧 |
 
 ### スクリーンショット
 
@@ -163,11 +171,11 @@ paypay2mf.exe
 1. `config.yml` を読み込み、必須項目のバリデーションを行う。
 2. Chrome プロセス稼働チェック（`dry_run: false` の場合のみ）。
 3. `input_csv` を文字コード自動判定で読み込む。
-4. 各行をパースし、除外ルール・重複検知を適用してフィルタリングする。
+4. 各行をパースし、不正行は `parse_error_*.csv` に記録したうえで、正常行だけに除外ルール・重複検知を適用する。
 5. `dry_run: true` の場合は変換結果を出力して終了する（ブラウザ不使用）。
   重複履歴の JSON / Firestore は更新しない。
 6. `dry_run: false` の場合は Playwright で Chrome を起動し、MF の手入力フォームに1件ずつ登録する。
-7. 実行結果（成功件数・除外件数・重複スキップ件数・失敗件数）をログおよびエラーCSVに出力する。
+7. 実行結果（成功件数・除外件数・重複スキップ件数・失敗件数・解析失敗件数）をログと各種 CSV に出力する。
 
 ```mermaid
 flowchart TD

@@ -55,6 +55,18 @@ class Transaction:
 
 
 @dataclass
+class ParseFailure:
+    """CSV 解析失敗の記録。"""
+
+    row_index: int
+    transaction_id: str | None
+    merchant: str | None
+    error_type: str
+    error_message: str
+    raw_row: dict[str, str]
+
+
+@dataclass
 class DuplicateDetectionConfig:
     """重複検知の設定。
 

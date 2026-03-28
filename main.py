@@ -13,7 +13,7 @@ from src.config_loader import load_config
 from src.csv_parser import parse_csv
 from src.duplicate_detector import create_detector
 from src.filter import apply_exclude, apply_mapping
-from src.log_manager import setup_logger, write_error_csv
+from src.log_manager import setup_logger, write_error_csv, write_parse_error_csv
 from src.mf_registrar import MFRegistrar
 
 
@@ -56,12 +56,21 @@ def main() -> None:
     logger.info("input_csv: %s", config.input_csv)
 
     try:
-        transactions = parse_csv(config.input_csv, config)
+        transactions, parse_failures = parse_csv(config.input_csv, config)
     except Exception as e:
         logger.error("CSV 読み込みに失敗しました: %s", e)
         sys.exit(1)
 
-    logger.info("CSV 読み込み完了: %d件", len(transactions))
+    if parse_failures:
+        parse_error_csv_path = write_parse_error_csv(parse_failures, config)
+        logger.warning("CSV 解析失敗: %d件", len(parse_failures))
+        logger.info("解析エラーCSV: %s", parse_error_csv_path)
+
+    logger.info(
+        "CSV 読み込み完了: 正常 %d件 / 解析失敗 %d件",
+        len(transactions),
+        len(parse_failures),
+    )
 
     passed, excluded = apply_exclude(transactions, config.exclude_prefixes)
     excluded_ids = ", ".join(
@@ -98,6 +107,11 @@ def main() -> None:
                 tx.category,
             )
         logger.info("ドライラン完了")
+        logger.info("アプリケーションを終了します")
+        return
+
+    if not to_process:
+        logger.info("登録対象がないためブラウザを起動しません。")
         logger.info("アプリケーションを終了します")
         return
 

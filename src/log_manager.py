@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import logging
 import os
 from datetime import datetime
@@ -14,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.models import AppConfig, Transaction
+    from src.models import AppConfig, ParseFailure, Transaction
 
 # ロガー設定
 _LOGGER_NAME = "paypay2mf"
@@ -49,6 +50,15 @@ _ERROR_CSV_FIELDNAMES = (
     "merchant",
     "transaction_id",
     "category",
+)
+_PARSE_ERROR_CSV_PREFIX = "parse_error_"
+_PARSE_ERROR_CSV_FIELDNAMES = (
+    "row_index",
+    "transaction_id",
+    "merchant",
+    "error_type",
+    "error_message",
+    "raw_row",
 )
 
 
@@ -122,6 +132,34 @@ def write_error_csv(
                     "merchant": tx.merchant,
                     "transaction_id": tx.transaction_id or "",
                     "category": tx.category,
+                },
+            )
+
+    return out_path
+
+
+def write_parse_error_csv(
+    records: list[ParseFailure], config: AppConfig,
+) -> Path:
+    """CSV 解析に失敗した行を CSV ファイルに書き出す。"""
+    logs_dir = _resolve_logs_dir(config)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime(_TIMESTAMP_FORMAT)  # noqa: DTZ005
+    out_path = logs_dir / f"{_PARSE_ERROR_CSV_PREFIX}{timestamp}{_ERROR_CSV_SUFFIX}"
+
+    with out_path.open("w", newline="", encoding=_ERROR_CSV_ENCODING) as f:
+        writer = csv.DictWriter(f, fieldnames=_PARSE_ERROR_CSV_FIELDNAMES)
+        writer.writeheader()
+        for record in records:
+            writer.writerow(
+                {
+                    "row_index": record.row_index,
+                    "transaction_id": record.transaction_id or "",
+                    "merchant": record.merchant or "",
+                    "error_type": record.error_type,
+                    "error_message": record.error_message,
+                    "raw_row": json.dumps(record.raw_row, ensure_ascii=False),
                 },
             )
 
