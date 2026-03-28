@@ -16,6 +16,8 @@ if TYPE_CHECKING:
     import logging
     from types import TracebackType
 
+    from playwright.sync_api import Locator
+
     from src.models import AppConfig, Transaction
 
 # NOTE: Playwright はオプション依存のため実行時にのみ import する
@@ -25,7 +27,8 @@ if TYPE_CHECKING:
 _MIDDLE_TO_LARGE: dict[str, str] = {
     # 収入
     "給与": "収入", "一時所得": "収入", "事業・副業": "収入", "年金": "収入",
-    "配当所得": "収入", "不動産所得": "収入", "不明な入金": "収入", "その他入金": "収入",
+    "配当所得": "収入", "不動産所得": "収入", "不明な入金": "収入",
+    "その他入金": "収入",
     # 食費
     "食費": "食費", "食料品": "食費", "外食": "食費", "朝ご飯": "食費",
     "昼ご飯": "食費", "夜ご飯": "食費", "カフェ": "食費", "その他食費": "食費",
@@ -44,8 +47,10 @@ _MIDDLE_TO_LARGE: dict[str, str] = {
     "交通費": "交通費", "電車": "交通費", "バス": "交通費",
     "タクシー": "交通費", "飛行機": "交通費", "その他交通費": "交通費",
     # 衣服・美容
-    "衣服": "衣服・美容", "クリーニング": "衣服・美容", "美容院・理髪": "衣服・美容",
-    "化粧品": "衣服・美容", "アクセサリー": "衣服・美容", "その他衣服・美容": "衣服・美容",
+    "衣服": "衣服・美容", "クリーニング": "衣服・美容",
+    "美容院・理髪": "衣服・美容",
+    "化粧品": "衣服・美容", "アクセサリー": "衣服・美容",
+    "その他衣服・美容": "衣服・美容",
     # 健康・医療
     "フィットネス": "健康・医療", "ボディケア": "健康・医療", "医療費": "健康・医療",
     "薬": "健康・医療", "その他健康・医療": "健康・医療",
@@ -214,7 +219,7 @@ class MFRegistrar:
             timeout=30_000,
         )
 
-    def _select_account(self, modal) -> None:
+    def _select_account(self, modal: Locator) -> None:
         """MF 手入力フォームの口座を設定する。
 
         config.mf_account と前方一致するオプションを選択する。
@@ -249,7 +254,7 @@ class MFRegistrar:
             value=option_value,
         )
 
-    def _select_category(self, modal, category: str) -> None:
+    def _select_category(self, modal: Locator, category: str) -> None:
         """MF 手入力フォームのカテゴリ（大項目・中項目）を設定する。
 
         大項目ドロップダウンを開き、大項目をホバーしてサブメニューを表示させ
