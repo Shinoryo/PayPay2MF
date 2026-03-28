@@ -15,23 +15,23 @@ mf_account: "PayPay残高"
 
 mapping_rules:
   - keyword: "セブン"
-    category: "コンビニ"
+    category: "食料品"
     match_mode: "contains"
     priority: 100
   - keyword: "ファミリーマート"
-    category: "コンビニ"
+    category: "食料品"
     match_mode: "contains"
     priority: 100
   - keyword: "イオンシネマ"
-    category: "娯楽／映画"
+    category: "映画・音楽・ゲーム"
     match_mode: "contains"
     priority: 100
   - keyword: "Yahoo!ショッピング"
-    category: "ショッピング（EC）"
+    category: "その他日用品"
     match_mode: "contains"
     priority: 100
   - keyword: "Google - GOOGLE PLAY"
-    category: "サブスクリプション／アプリ課金"
+    category: "情報サービス"
     match_mode: "contains"
     priority: 100
   - keyword: "モス"
@@ -39,11 +39,11 @@ mapping_rules:
     match_mode: "contains"
     priority: 100
   - keyword: "キャンドゥ"
-    category: "雑貨／日用品"
+    category: "日用品"
     match_mode: "contains"
     priority: 100
   - keyword: "つきじ海賓"
-    category: "外食／飲食"
+    category: "外食"
     match_mode: "contains"
     priority: 100
   - keyword: "MYB"
@@ -51,7 +51,7 @@ mapping_rules:
     match_mode: "contains"
     priority: 100
   - keyword: "giftee"
-    category: "ポイント・ギフト"
+    category: "その他入金"
     match_mode: "contains"
     priority: 100
 
