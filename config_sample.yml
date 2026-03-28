@@ -75,7 +75,7 @@ log_settings:
   max_total_log_size_mb: null  # null = 無制限
 
 advanced:
-  screenshot_on_error: true
+  screenshot_on_error: false    # true にした場合のみエラー時 PNG を保存
 
 # gcloud_credentials_path: "C:\\Users\\yourname\\gcloud-service-account.json"
 # ↑ duplicate_detection.backend: "gcloud" 使用時のみ設定する

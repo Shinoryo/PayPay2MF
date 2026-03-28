@@ -68,7 +68,7 @@ _DEFAULT_BACKEND = "local"
 _DEFAULT_TOLERANCE_SECONDS = 60
 _DEFAULT_ENCODING_PRIORITY: list[str] = ["utf-8", "shift_jis"]
 _DEFAULT_DATE_FORMATS: list[str] = ["%Y/%m/%d %H:%M:%S"]
-_DEFAULT_SCREENSHOT_ON_ERROR = True
+_DEFAULT_SCREENSHOT_ON_ERROR = False
 _DEFAULT_EXCLUDE_PREFIXES: list[str] = ["PPCD_A_"]
 
 # エラーメッセージ

@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import csv
-import json
 import logging
 import os
 from datetime import datetime
@@ -15,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.models import AppConfig, ParseFailure, Transaction
+    from src.models import AppConfig, ParseFailure
 
 # ロガー設定
 _LOGGER_NAME = "paypay2mf"
@@ -41,24 +40,15 @@ _DEFAULT_LOGS_DIR_NAME = "logs"
 _BYTES_PER_MB = 1024 * 1024
 
 # エラー CSV
-_CSV_DATE_FORMAT = "%Y/%m/%d %H:%M:%S"
 _ERROR_CSV_FIELDNAMES = (
-    "date",
-    "amount",
-    "direction",
-    "memo",
-    "merchant",
-    "transaction_id",
-    "category",
+    "failure_index",
+    "error_message",
 )
 _PARSE_ERROR_CSV_PREFIX = "parse_error_"
 _PARSE_ERROR_CSV_FIELDNAMES = (
     "row_index",
-    "transaction_id",
-    "merchant",
     "error_type",
     "error_message",
-    "raw_row",
 )
 
 
@@ -102,12 +92,12 @@ def setup_logger(config: AppConfig) -> logging.Logger:
 
 
 def write_error_csv(
-    records: list[Transaction], config: AppConfig,
+    records: list[str], config: AppConfig,
 ) -> Path:
-    """エラーが発生した Transaction を CSV ファイルに書き出す。
+    """登録失敗メッセージを最小限の CSV として書き出す。
 
     Args:
-        records: エラーとなった Transaction のリスト。
+        records: 登録失敗メッセージのリスト。
         config: アプリケーション設定。
 
     Returns:
@@ -122,16 +112,11 @@ def write_error_csv(
     with out_path.open("w", newline="", encoding=_ERROR_CSV_ENCODING) as f:
         writer = csv.DictWriter(f, fieldnames=_ERROR_CSV_FIELDNAMES)
         writer.writeheader()
-        for tx in records:
+        for failure_index, error_message in enumerate(records, start=1):
             writer.writerow(
                 {
-                    "date": tx.date.strftime(_CSV_DATE_FORMAT),
-                    "amount": tx.amount,
-                    "direction": tx.direction,
-                    "memo": tx.memo,
-                    "merchant": tx.merchant,
-                    "transaction_id": tx.transaction_id or "",
-                    "category": tx.category,
+                    "failure_index": failure_index,
+                    "error_message": error_message,
                 },
             )
 
@@ -141,7 +126,7 @@ def write_error_csv(
 def write_parse_error_csv(
     records: list[ParseFailure], config: AppConfig,
 ) -> Path:
-    """CSV 解析に失敗した行を CSV ファイルに書き出す。"""
+    """CSV 解析失敗を最小限の情報で CSV に書き出す。"""
     logs_dir = _resolve_logs_dir(config)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -155,11 +140,8 @@ def write_parse_error_csv(
             writer.writerow(
                 {
                     "row_index": record.row_index,
-                    "transaction_id": record.transaction_id or "",
-                    "merchant": record.merchant or "",
                     "error_type": record.error_type,
                     "error_message": record.error_message,
-                    "raw_row": json.dumps(record.raw_row, ensure_ascii=False),
                 },
             )
 

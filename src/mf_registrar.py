@@ -205,9 +205,12 @@ class MFRegistrar:
 
         except Exception:
             if self._config.advanced.screenshot_on_error:
-                shot_path = self._take_screenshot(tx.merchant)
-                self._logger.info(
+                shot_path = self._take_screenshot()
+                self._logger.warning(
                     "スクリーンショットを保存しました: %s", shot_path.name,
+                )
+                self._logger.warning(
+                    "スクリーンショットは機微情報を含む可能性があります。共有しないでください。",
                 )
             raise
 
@@ -282,13 +285,10 @@ class MFRegistrar:
         # 中項目をクリック
         self._page.locator(f"a.m_c_name:text-is('{category}')").first.click()
 
-    def _take_screenshot(self, label: str) -> Path:
+    def _take_screenshot(self) -> Path:
         """スクリーンショットを保存する。
 
         screenshot_on_error が True の場合のみ保存する。
-
-        Args:
-            label: スクリーンショットファイルの基名（拡張子なし）。
 
         Returns:
             保存したスクリーンショットファイルの Path。
@@ -298,10 +298,7 @@ class MFRegistrar:
             self._config.log_settings.logs_dir or Path(__file__).parent.parent / "logs"
         )
         logs_dir.mkdir(parents=True, exist_ok=True)
-        safe_label = "".join(
-            c if c.isalnum() or c in "-_" else "_" for c in label
-        )[:20]
-        out_path = logs_dir / f"screenshot_{timestamp}_{safe_label}.png"
+        out_path = logs_dir / f"screenshot_{timestamp}.png"
         if self._page is not None:
             self._page.screenshot(path=str(out_path))
         return out_path

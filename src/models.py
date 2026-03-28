@@ -118,10 +118,10 @@ class AdvancedConfig:
     """高度な動作設定。
 
     Attributes:
-        screenshot_on_error: True の場合、エラー発生時にスクリーンショットを保存する。
+        screenshot_on_error: True の場合のみ、エラー発生時にスクリーンショットを保存する。
     """
 
-    screenshot_on_error: bool = True
+    screenshot_on_error: bool = False
 
 
 @dataclass

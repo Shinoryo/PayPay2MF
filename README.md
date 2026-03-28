@@ -101,7 +101,7 @@ mf_account: "PayPay残高"
 | ---- | ---- |
 | ファイル名 | `parse_error_yyyyMMdd_HHmmss.csv` |
 | 配置場所 | `log_settings.logs_dir`（デフォルト: `<tool_folder>\logs`） |
-| 内容概要 | CSV の解析に失敗した行の一覧 |
+| 内容概要 | `row_index` / `error_type` / `error_message` の最小列で構成される解析失敗一覧 |
 
 ### 登録失敗CSVファイル
 
@@ -109,7 +109,7 @@ mf_account: "PayPay残高"
 | ---- | ---- |
 | ファイル名 | `error_yyyyMMdd_HHmmss.csv` |
 | 配置場所 | `log_settings.logs_dir`（デフォルト: `<tool_folder>\logs`） |
-| 内容概要 | MF 登録中に失敗した行の一覧 |
+| 内容概要 | `failure_index` / `error_message` の最小列で構成される登録失敗一覧 |
 
 ### スクリーンショット
 
@@ -117,7 +117,9 @@ mf_account: "PayPay残高"
 | ---- | ---- |
 | ファイル名 | `screenshot_yyyyMMdd_HHmmss.png` |
 | 配置場所 | `log_settings.logs_dir` |
-| 出力条件 | `advanced.screenshot_on_error: true` かつエラー発生時 |
+| 出力条件 | `advanced.screenshot_on_error: true` を明示した場合のみ、エラー発生時 |
+
+> 注意: logs 配下のログ、CSV、PNG は機微情報を含む可能性があります。共有フォルダやクラウド同期先に置かず、不要になったら削除してください。
 
 ## 実行方法
 
@@ -134,7 +136,7 @@ mf_account: "PayPay残高"
 python main.py
 ```
 
-ブラウザは起動しません。CSV の解析結果と変換結果（処理件数、除外件数、重複スキップ件数、変換後データ）を標準出力およびログに出力します。
+ブラウザは起動しません。CSV の処理件数、除外件数、重複スキップ件数、登録対象件数などのサマリーを標準出力およびログに出力します。
 ドライランでは重複履歴も更新しないため、同じ CSV を後から本番実行しても dry_run の結果だけで重複スキップされることはありません。
 また、Chrome を起動しないため `chrome_user_data_dir` と
 `chrome_profile` の存在チェックもスキップします。Chrome のない CI や
@@ -175,7 +177,7 @@ paypay2mf.exe
   `chrome_user_data_dir` / `chrome_profile` の存在検証も本番実行時のみ行う。
 3. `input_csv` を文字コード自動判定で読み込む。
 4. 各行をパースし、不正行は `parse_error_*.csv` に記録したうえで、正常行だけに除外ルール・重複検知を適用する。
-5. `dry_run: true` の場合は変換結果を出力して終了する（ブラウザ不使用）。
+5. `dry_run: true` の場合は件数サマリーを出力して終了する（ブラウザ不使用）。
   重複履歴の JSON / Firestore は更新しない。
 6. `dry_run: false` の場合は Playwright で Chrome を起動し、MF の手入力フォームに1件ずつ登録する。
 7. 実行結果（成功件数・除外件数・重複スキップ件数・失敗件数・解析失敗件数）をログと各種 CSV に出力する。
@@ -191,7 +193,7 @@ flowchart TD
     F --> G[除外ルール適用]
     G --> H[重複検知]
     H --> I{dry_run?}
-    I -->|true| J[変換結果を標準出力・ログ出力して終了]
+    I -->|true| J[件数サマリーを標準出力・ログ出力して終了]
     I -->|false| K[Chrome 起動 / MF ページへ遷移]
     K --> L[取引1件を手入力フォームに入力・登録]
     L --> M{エラー発生?}
@@ -213,42 +215,39 @@ flowchart TD
 | ログレベル | INFO / ERROR |
 | フォーマット | `yyyy-MM-dd HH:mm:ss [LEVEL] message` |
 
+取引日、金額、加盟店、transaction_id などの個別取引明細は app ログへ出力しません。ログは件数サマリーとエラー状態の把握を主目的とします。
+
 ### ログ出力例（ドライラン）
 
 ```text
+2026-03-28 10:00:00 [WARNING] logs_dir 配下のログ、CSV、PNG は機微情報を含む可能性があります。ローカル保管とし、共有やクラウド同期を避けてください。
 2026-03-28 10:00:00 [INFO] DRY RUN: ブラウザを起動しません。CSV診断のみ実行します。
 2026-03-28 10:00:00 [INFO] config.yml を読み込みました
-2026-03-28 10:00:00 [INFO] input_csv: C:\Users\yourname\Downloads\paypay_history.csv
-2026-03-28 10:00:00 [INFO] CSV 読み込み完了: 5件
-2026-03-28 10:00:00 [INFO] 除外: 1件 (PPCD_A_2025021122321300218846)
+2026-03-28 10:00:00 [INFO] CSV 読み込み完了: 正常 5件 / 解析失敗 0件
+2026-03-28 10:00:00 [INFO] 除外: 1件
 2026-03-28 10:00:00 [INFO] 重複スキップ: 0件
 2026-03-28 10:00:00 [INFO] 処理対象: 4件
-2026-03-28 10:00:00 [INFO] [診断] 2025-02-11 | 920円 | モスのネット注文 | カテゴリ: 外食
-2026-03-28 10:00:00 [INFO] [診断] 2025-02-10 | 330円 | キャンドゥ | カテゴリ: 雑貨／日用品
-2026-03-28 10:00:00 [INFO] [診断] 2025-02-11 | 140円 | ファミリーマート | カテゴリ: コンビニ
-2026-03-28 10:00:00 [INFO] [診断] 2025-02-08 | +120円（入金） | giftee | カテゴリ: ポイント・ギフト
-2026-03-28 10:00:00 [INFO] ドライラン完了
+2026-03-28 10:00:00 [INFO] ドライラン完了: 登録対象 4件
 ```
 
 ### ログ出力例（本番実行）
 
 ```text
+2026-03-28 10:05:00 [WARNING] logs_dir 配下のログ、CSV、PNG は機微情報を含む可能性があります。ローカル保管とし、共有やクラウド同期を避けてください。
 2026-03-28 10:05:00 [INFO] config.yml を読み込みました
 2026-03-28 10:05:00 [INFO] Chrome 稼働チェック: 停止済み
-2026-03-28 10:05:01 [INFO] input_csv: C:\Users\yourname\Downloads\paypay_history.csv
-2026-03-28 10:05:01 [INFO] CSV 読み込み完了: 5件
-2026-03-28 10:05:01 [INFO] 除外: 1件 (PPCD_A_2025021122321300218846)
+2026-03-28 10:05:01 [INFO] CSV 読み込み完了: 正常 5件 / 解析失敗 0件
+2026-03-28 10:05:01 [INFO] 除外: 1件
 2026-03-28 10:05:01 [INFO] 重複スキップ: 0件
 2026-03-28 10:05:01 [INFO] 処理対象: 4件
 2026-03-28 10:05:02 [INFO] Chrome を起動しました
 2026-03-28 10:05:05 [INFO] MF ページへ遷移しました
-2026-03-28 10:05:06 [INFO] 登録完了: 2025-02-11 | 920円 | モスのネット注文
-2026-03-28 10:05:10 [ERROR] 登録失敗: 2025-02-10 | 330円 | キャンドゥ | セレクタが見つかりません
-2026-03-28 10:05:10 [INFO] スクリーンショットを保存しました: screenshot_20260328_100510.png
-2026-03-28 10:05:14 [INFO] 登録完了: 2025-02-11 | 140円 | ファミリーマート
-2026-03-28 10:05:18 [INFO] 登録完了: 2025-02-08 | +120円（入金） | giftee
+2026-03-28 10:05:10 [ERROR] 登録失敗 (2/4): セレクタが見つかりません
+2026-03-28 10:05:10 [WARNING] スクリーンショットを保存しました: screenshot_20260328_100510.png
+2026-03-28 10:05:10 [WARNING] スクリーンショットは機微情報を含む可能性があります。共有しないでください。
 2026-03-28 10:05:18 [INFO] 実行完了: 成功 3件 / 除外 1件 / 重複スキップ 0件 / 失敗 1件
-2026-03-28 10:05:18 [INFO] エラーCSV: logs\error_20260328_100518.csv
+2026-03-28 10:05:18 [WARNING] 登録失敗CSVを出力しました: error_20260328_100518.csv
+2026-03-28 10:05:18 [WARNING] 登録失敗CSVは機微情報を含む可能性があります。共有しないでください。
 2026-03-28 10:05:18 [INFO] アプリケーションを終了します
 ```
 
@@ -256,22 +255,22 @@ flowchart TD
 
 | No. | レベル | テンプレート |
 | ---- | ---- | ---- |
-| 1 | INFO | `DRY RUN: ブラウザを起動しません。CSV診断のみ実行します。` |
-| 2 | INFO | `config.yml を読み込みました` |
-| 3 | INFO | `input_csv: {input_csv}` |
-| 4 | INFO | `CSV 読み込み完了: {total}件` |
-| 5 | INFO | `除外: {excluded}件 ({transaction_ids})` |
+| 1 | WARNING | `logs_dir 配下のログ、CSV、PNG は機微情報を含む可能性があります。ローカル保管とし、共有やクラウド同期を避けてください。` |
+| 2 | INFO | `DRY RUN: ブラウザを起動しません。CSV診断のみ実行します。` |
+| 3 | INFO | `config.yml を読み込みました` |
+| 4 | INFO | `CSV 読み込み完了: 正常 {success}件 / 解析失敗 {parse_failed}件` |
+| 5 | INFO | `除外: {excluded}件` |
 | 6 | INFO | `重複スキップ: {skipped}件` |
 | 7 | INFO | `処理対象: {count}件` |
-| 8 | INFO | `[診断] {date} \| {amount} \| {merchant} \| カテゴリ: {category}` |
+| 8 | INFO | `ドライラン完了: 登録対象 {count}件` |
 | 9 | INFO | `Chrome 稼働チェック: {status}` |
 | 10 | INFO | `Chrome を起動しました` |
 | 11 | INFO | `MF ページへ遷移しました` |
-| 12 | INFO | `登録完了: {date} \| {amount} \| {merchant}` |
-| 13 | ERROR | `登録失敗: {date} \| {amount} \| {merchant} \| {error_message}` |
-| 14 | INFO | `スクリーンショットを保存しました: {filename}` |
-| 15 | INFO | `実行完了: 成功 {success}件 / 除外 {excluded}件 / 重複スキップ {skipped}件 / 失敗 {failed}件` |
-| 16 | INFO | `エラーCSV: {filepath}` |
+| 12 | ERROR | `登録失敗 ({index}/{total}): {error_message}` |
+| 13 | WARNING | `解析エラーCSVを出力しました: {filename}` |
+| 14 | WARNING | `登録失敗CSVを出力しました: {filename}` |
+| 15 | WARNING | `スクリーンショットを保存しました: {filename}` |
+| 16 | INFO | `実行完了: 成功 {success}件 / 除外 {excluded}件 / 重複スキップ {skipped}件 / 失敗 {failed}件` |
 | 17 | INFO | `アプリケーションを終了します` |
 
 ## Google Cloud Firestore バックエンドの設定（任意）

@@ -137,7 +137,7 @@ def test_defaults_applied(tmp_path: Path) -> None:
     assert config.log_settings.logs_dir is None
     assert config.duplicate_detection.backend == "local"
     assert config.parser.encoding_priority == ["utf-8", "shift_jis"]
-    assert config.advanced.screenshot_on_error is True
+    assert config.advanced.screenshot_on_error is False
 
 
 # TC-01-09: 存在しない chrome_user_data_dir（本番実行）

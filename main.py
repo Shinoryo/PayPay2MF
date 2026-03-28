@@ -39,6 +39,9 @@ def main() -> None:
         sys.exit(1)
 
     logger = setup_logger(config)
+    logger.warning(
+        "logs_dir 配下のログ、CSV、PNG は機微情報を含む可能性があります。ローカル保管とし、共有やクラウド同期を避けてください。",
+    )
 
     if config.dry_run:
         logger.info("DRY RUN: ブラウザを起動しません。CSV診断のみ実行します。")
@@ -53,8 +56,6 @@ def main() -> None:
             sys.exit(1)
         logger.info("Chrome 稼働チェック: 停止済み")
 
-    logger.info("input_csv: %s", config.input_csv)
-
     try:
         transactions, parse_failures = parse_csv(config.input_csv, config)
     except Exception as e:
@@ -64,7 +65,10 @@ def main() -> None:
     if parse_failures:
         parse_error_csv_path = write_parse_error_csv(parse_failures, config)
         logger.warning("CSV 解析失敗: %d件", len(parse_failures))
-        logger.info("解析エラーCSV: %s", parse_error_csv_path)
+        logger.warning("解析エラーCSVを出力しました: %s", parse_error_csv_path.name)
+        logger.warning(
+            "解析エラーCSVは機微情報を含む可能性があります。共有しないでください。",
+        )
 
     logger.info(
         "CSV 読み込み完了: 正常 %d件 / 解析失敗 %d件",
@@ -73,10 +77,7 @@ def main() -> None:
     )
 
     passed, excluded = apply_exclude(transactions, config.exclude_prefixes)
-    excluded_ids = ", ".join(
-        tx.transaction_id or "（不明）" for tx in excluded
-    )
-    logger.info("除外: %d件 (%s)", len(excluded), excluded_ids)
+    logger.info("除外: %d件", len(excluded))
 
     mapped = apply_mapping(passed, config.mapping_rules)
 
@@ -93,20 +94,7 @@ def main() -> None:
     logger.info("処理対象: %d件", len(to_process))
 
     if config.dry_run:
-        for tx in to_process:
-            amount_str = (
-                f"+{tx.amount}円（入金）"
-                if tx.direction == "in"
-                else f"{tx.amount}円"
-            )
-            logger.info(
-                "[診断] %s | %s | %s | カテゴリ: %s",
-                tx.date.strftime("%Y-%m-%d"),
-                amount_str,
-                tx.merchant,
-                tx.category,
-            )
-        logger.info("ドライラン完了")
+        logger.info("ドライラン完了: 登録対象 %d件", len(to_process))
         logger.info("アプリケーションを終了します")
         return
 
@@ -115,29 +103,22 @@ def main() -> None:
         logger.info("アプリケーションを終了します")
         return
 
-    failed_records = []
+    failed_records: list[str] = []
     success_count = 0
 
     try:
         with MFRegistrar(config, logger) as registrar:
-            for tx in to_process:
+            for index, tx in enumerate(to_process, start=1):
                 try:
                     registrar.register(tx)
                     detector.mark_processed(tx)
                     success_count += 1
-                    logger.info(
-                        "登録完了: %s | %d円 | %s",
-                        tx.date.strftime("%Y-%m-%d"),
-                        tx.amount,
-                        tx.merchant,
-                    )
                 except Exception as e:
-                    failed_records.append(tx)
+                    failed_records.append(str(e))
                     logger.error(
-                        "登録失敗: %s | %d円 | %s | %s",
-                        tx.date.strftime("%Y-%m-%d"),
-                        tx.amount,
-                        tx.merchant,
+                        "登録失敗 (%d/%d): %s",
+                        index,
+                        len(to_process),
                         e,
                     )
     except Exception as e:
@@ -154,7 +135,10 @@ def main() -> None:
 
     if failed_records:
         error_csv_path = write_error_csv(failed_records, config)
-        logger.info("エラーCSV: %s", error_csv_path)
+        logger.warning("登録失敗CSVを出力しました: %s", error_csv_path.name)
+        logger.warning(
+            "登録失敗CSVは機微情報を含む可能性があります。共有しないでください。",
+        )
 
     logger.info("アプリケーションを終了します")
 
