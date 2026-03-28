@@ -5,7 +5,8 @@
 ### 背景・目的
 
 - **背景**：PayPayの利用明細を目視で確認し、Money Forward ME に手動入力しているため工数が大きい。
-- **目的**：PayPay CSV を `config.yml` に設定するだけで Money Forward ME への登録を自動化し、入力ミスと作業時間を削減する。
+- **目的**：PayPay CSV を `config.yml` に設定するだけで Money Forward ME への
+  登録を自動化し、入力ミスと作業時間を削減する。
 
 ### 機能一覧
 
@@ -37,7 +38,7 @@
 
 スキーマの詳細は「設定ファイル YAMLスキーマ仕様書.md」を参照。
 
-**必須項目（5項目。未記載で起動エラー）**
+#### 必須項目（5項目。未記載で起動エラー）
 
 | キー名 | データ型 | 説明 | 例 |
 | ---- | ---- | ---- | ---- |
@@ -134,7 +135,8 @@ python main.py
 python main.py
 ```
 
-Chrome を指定の `chrome_user_data_dir` / `chrome_profile` で起動し、MF の手入力フォームに1件ずつ自動登録する。
+Chrome を指定の `chrome_user_data_dir` / `chrome_profile` で起動し、
+MF の手入力フォームに1件ずつ自動登録する。
 
 ### EXE 配布版
 
@@ -142,7 +144,8 @@ Chrome を指定の `chrome_user_data_dir` / `chrome_profile` で起動し、MF 
 paypay2mf.exe
 ```
 
-初回起動時に Playwright 用ブラウザを自動ダウンロードする（`advanced.playwright_browser_download: true` の場合）。
+初回起動時に Playwright 用ブラウザを自動ダウンロードする
+（`advanced.playwright_browser_download: true` の場合）。
 
 ## 想定実行環境
 
@@ -273,7 +276,7 @@ flowchart TD
 
 ### 本プログラムのライセンス
 
-* このプログラムは MIT ライセンスに基づいて提供されます。
+- このプログラムは MIT ライセンスに基づいて提供されます。
 
 ### 使用ライブラリーのライセンス
 
@@ -288,8 +291,8 @@ flowchart TD
 
 ### 開発環境
 
-* VSCode 最新版
-* Python 3.9 以上
+- VSCode 最新版
+- Python 3.9 以上
 
 ### 検証環境
 
