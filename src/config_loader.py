@@ -146,7 +146,7 @@ def load_config(path: Path) -> AppConfig:
         raw: dict = yaml.safe_load(f) or {}
 
     _validate_required(raw)
-    _validate_paths(raw)
+    _validate_paths(raw, skip_chrome_validation=raw[_KEY_DRY_RUN])
     _validate_mapping_rules(raw.get("mapping_rules") or [])
     _validate_gcloud(raw)
     return _build_config(raw)
@@ -172,11 +172,13 @@ def _validate_required(raw: dict) -> None:
         raise ValueError("\n".join(errors))
 
 
-def _validate_paths(raw: dict) -> None:
+def _validate_paths(raw: dict, *, skip_chrome_validation: bool) -> None:
     """パス関連の項目を検証する。
 
     Args:
         raw: YAML から読み込んだ辞書。
+        skip_chrome_validation: True の場合、Chrome 関連のパス検証を
+            スキップする。
 
     Raises:
         ValueError: chrome_user_data_dir が存在しない場合、または
@@ -184,14 +186,15 @@ def _validate_paths(raw: dict) -> None:
     """
     errors: list[str] = []
 
-    user_data_dir = Path(str(raw[_KEY_CHROME_USER_DATA_DIR]))
+    if not skip_chrome_validation:
+        user_data_dir = Path(str(raw[_KEY_CHROME_USER_DATA_DIR]))
 
-    if user_data_dir.exists():
-        profile_dir = user_data_dir / str(raw[_KEY_CHROME_PROFILE])
-        if not profile_dir.exists():
-            errors.append(_MSG_CHROME_PROFILE_NOT_EXIST.format(path=profile_dir))
-    else:
-        errors.append(_MSG_CHROME_USER_DATA_DIR_NOT_EXIST.format(path=user_data_dir))
+        if user_data_dir.exists():
+            profile_dir = user_data_dir / str(raw[_KEY_CHROME_PROFILE])
+            if not profile_dir.exists():
+                errors.append(_MSG_CHROME_PROFILE_NOT_EXIST.format(path=profile_dir))
+        else:
+            errors.append(_MSG_CHROME_USER_DATA_DIR_NOT_EXIST.format(path=user_data_dir))
 
     input_csv = Path(str(raw[_KEY_INPUT_CSV]))
     if not input_csv.exists():

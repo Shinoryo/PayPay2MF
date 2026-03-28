@@ -140,14 +140,50 @@ def test_defaults_applied(tmp_path: Path) -> None:
     assert config.advanced.screenshot_on_error is True
 
 
-# TC-01-09: 存在しない chrome_user_data_dir
-def test_nonexistent_chrome_user_data_dir(tmp_path: Path) -> None:
-    """TC-01-09: 存在しない chrome_user_data_dir を指定した場合に ValueError が送出されることを確認する。"""
+# TC-01-09: 存在しない chrome_user_data_dir（本番実行）
+def test_nonexistent_chrome_user_data_dir_when_not_dry_run(tmp_path: Path) -> None:
+    """TC-01-09: dry_run=False で存在しない chrome_user_data_dir を指定した場合に ValueError が送出されることを確認する。"""
     data = _base_data(tmp_path)
+    data["dry_run"] = False
     data["chrome_user_data_dir"] = str(tmp_path / "nonexistent")
     cfg_path = _write_config(tmp_path, data)
     with pytest.raises(ValueError, match="chrome_user_data_dir のパスが存在しません"):
         load_config(cfg_path)
+
+
+def test_nonexistent_chrome_user_data_dir_is_allowed_in_dry_run(tmp_path: Path) -> None:
+    """dry_run=True では存在しない chrome_user_data_dir を指定しても設定読み込みが成功することを確認する。"""
+    data = _base_data(tmp_path)
+    data["chrome_user_data_dir"] = str(tmp_path / "nonexistent")
+    cfg_path = _write_config(tmp_path, data)
+
+    config = load_config(cfg_path)
+
+    assert config.dry_run is True
+    assert config.chrome_user_data_dir == str(tmp_path / "nonexistent")
+
+
+def test_nonexistent_chrome_profile_when_not_dry_run(tmp_path: Path) -> None:
+    """dry_run=False で存在しない chrome_profile を指定した場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["dry_run"] = False
+    data["chrome_profile"] = "MissingProfile"
+    cfg_path = _write_config(tmp_path, data)
+
+    with pytest.raises(ValueError, match="chrome_profile のディレクトリが存在しません"):
+        load_config(cfg_path)
+
+
+def test_nonexistent_chrome_profile_is_allowed_in_dry_run(tmp_path: Path) -> None:
+    """dry_run=True では存在しない chrome_profile を指定しても設定読み込みが成功することを確認する。"""
+    data = _base_data(tmp_path)
+    data["chrome_profile"] = "MissingProfile"
+    cfg_path = _write_config(tmp_path, data)
+
+    config = load_config(cfg_path)
+
+    assert config.dry_run is True
+    assert config.chrome_profile == "MissingProfile"
 
 
 # dry_run の型不正
