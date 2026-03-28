@@ -4,25 +4,25 @@
 
 ### 背景・目的
 
-- **背景**：PayPayの利用明細を目視で確認し、Money Forward ME に手動入力しているため工数が大きい。
-- **目的**：PayPay CSV を `config.yml` に設定するだけで Money Forward ME への
+- **背景**：PayPay の利用明細を目視で確認し、Money Forward ME に手動入力しているため、工数が大きい。
+- **目的**：`config.yml` に PayPay CSV のパスを設定するだけで、Money Forward ME への
   登録を自動化し、入力ミスと作業時間を削減する。
 
 ### 機能一覧
 
 | No | 機能名 | 概要 |
 | ---- | -------- | ------ |
-| F01 | CSV取り込み | Shift_JIS / UTF-8 の文字コード自動判定、カンマ・ダブルクォート処理対応 |
-| F02 | CSVパーシング | 全13カラムの抽出・金額数値化・複合支払合算・入出金判定・海外取引メモ追記 |
-| F03 | 除外ルール | `exclude_prefixes` に合致する取引番号の行を処理対象外にする |
-| F04 | 重複検知 | 取引番号優先（欠損時は日時＋金額＋取引先）でローカルまたは Google Cloud と比較 |
+| F01 | CSV取り込み | Shift_JIS / UTF-8 の文字コードを自動判定し、カンマやダブルクォートを含む項目にも対応 |
+| F02 | CSVパーシング | 全13列の抽出、金額の数値化、複合支払いの合算、入出金判定、海外取引時のメモ追記 |
+| F03 | 除外ルール | `exclude_prefixes` に合致する取引番号の行を処理対象から除外する |
+| F04 | 重複検知 | 取引番号を優先し、欠損時は日時＋金額＋取引先でローカルまたは Google Cloud Firestore と照合 |
 | F05 | MFへの自動登録 | Playwright で Chrome を制御し、MF の手入力フォームに1件ずつ登録する |
 | F06 | マッピング設定 | キーワードベースのカテゴリマッピングを `config.yml` で定義・編集可能 |
-| F07 | 実行前チェック | Chrome が稼働中なら処理を中断してユーザーに終了を促す |
-| F08 | ドライランモード | ブラウザ不使用。CSV解析・変換結果の診断出力のみ行う |
-| F09 | ログ出力 | 実行ログ・エラーCSV・スクリーンショットを `log_settings` に従い出力 |
+| F07 | 実行前チェック | Chrome が起動中の場合は処理を中断し、ユーザーに終了を促す |
+| F08 | ドライランモード | ブラウザを使用せず、CSV の解析結果と変換結果の診断出力のみを行う |
+| F09 | ログ出力 | 実行ログ、エラー CSV、スクリーンショットを `log_settings` の設定に従って出力 |
 | F10 | 設定ファイル | ツールフォルダ直下の `config.yml` で動作設定を一元管理する |
-| F11 | エラーハンドリング | 操作失敗時はスクリーンショット・ログを保存しユーザーに再実行手順を提示 |
+| F11 | エラーハンドリング | 操作失敗時はスクリーンショットとログを保存し、ユーザーに再実行のための情報を提示 |
 
 ## 入力
 
@@ -34,18 +34,18 @@
 | 配置場所 | ツールフォルダ直下 |
 | 形式 | YAML 1.2 |
 | エンコーディング | UTF-8（BOM なし） |
-| 内容概要 | ツールの全動作設定 |
+| 内容概要 | ツール全体の動作設定 |
 
 スキーマの詳細は「設定ファイル YAMLスキーマ仕様書.md」を参照。
 
-#### 必須項目（5項目。未記載で起動エラー）
+#### 必須項目（5項目。未記載の場合は起動エラー）
 
 | キー名 | データ型 | 説明 | 例 |
 | ---- | ---- | ---- | ---- |
 | chrome_user_data_dir | string | Chrome の User Data ディレクトリの絶対パス | `C:\Users\yourname\AppData\Local\Google\Chrome\User Data` |
 | chrome_profile | string | 使用する Chrome プロファイルのフォルダ名 | `Default` |
 | dry_run | boolean | `true`: CSV診断のみ（ブラウザ不使用）/ `false`: MF 本番登録 | `true` |
-| input_csv | string | 処理対象の PayPay CSV ファイルパス | `C:\Users\yourname\Downloads\paypay_history.csv` |
+| input_csv | string | 処理対象の PayPay CSV ファイルのパス | `C:\Users\yourname\Downloads\paypay_history.csv` |
 | mf_account | string | MF の手入力フォームで選択する口座名 | `PayPay残高` |
 
 ```yaml
@@ -69,7 +69,7 @@ mf_account: "PayPay残高"
 | 列名 | データ型 | 説明 |
 | ---- | ---- | ---- |
 | 取引日 | datetime | 例: `2025/02/11 22:32:13` |
-| 出金金額（円） | string | 数値またはハイフン（`-`）。カンマ区切あり（例: `"1,280"`） |
+| 出金金額（円） | string | 数値またはハイフン（`-`）。カンマ区切りあり（例: `"1,280"`） |
 | 入金金額（円） | string | 数値またはハイフン（`-`） |
 | 海外出金金額 | string | 海外取引時の現地通貨金額。国内取引は `-` |
 | 通貨 | string | 例: `JPY` / `USD`。国内取引は `-` |
@@ -80,7 +80,7 @@ mf_account: "PayPay残高"
 | 取引方法 | string | 例: `PayPayカード VISA 4575` |
 | 支払い区分 | string | 例: `一回払い` |
 | 利用者 | string | 例: `本人` |
-| 取引番号 | string | 重複検知の主キー。複合支払は同一番号で複数行 |
+| 取引番号 | string | 重複検知の主キー。複合支払いは同一番号で複数行 |
 
 ```csv
 取引日,出金金額（円）,入金金額（円）,海外出金金額,通貨,変換レート（円）,利用国,取引内容,取引先,取引方法,支払い区分,利用者,取引番号
@@ -93,7 +93,7 @@ mf_account: "PayPay残高"
 
 ### ログファイル
 
-「ログ出力」の章に記載する。
+詳細は「ログ出力」の章を参照してください。
 
 ### エラーCSVファイル
 
@@ -126,7 +126,7 @@ mf_account: "PayPay残高"
 python main.py
 ```
 
-ブラウザは起動しない。CSV の解析・変換結果（処理件数・除外件数・重複スキップ件数・変換後データ）を標準出力およびログに出力する。
+ブラウザは起動しません。CSV の解析結果と変換結果（処理件数、除外件数、重複スキップ件数、変換後データ）を標準出力およびログに出力します。
 
 ### 本番実行
 
@@ -136,7 +136,7 @@ python main.py
 ```
 
 Chrome を指定の `chrome_user_data_dir` / `chrome_profile` で起動し、
-MF の手入力フォームに1件ずつ自動登録する。
+MF の手入力フォームに1件ずつ自動登録します。
 
 ### EXE 配布版
 
@@ -144,7 +144,7 @@ MF の手入力フォームに1件ずつ自動登録する。
 paypay2mf.exe
 ```
 
-初回起動時に Playwright 用ブラウザを自動ダウンロードする
+初回起動時に Playwright 用ブラウザを自動ダウンロードします
 （`advanced.playwright_browser_download: true` の場合）。
 
 ## 想定実行環境
@@ -154,8 +154,8 @@ paypay2mf.exe
 | OS | Windows 11 |
 | Python | 3.9 以上 |
 | ブラウザ | Google Chrome（最新版） |
-| Playwright ブラウザ | `playwright install chromium` 実行済み（EXE版は自動DL） |
-| Pythonライブラリー | playwright / pandas / PyYAML / google-cloud-firestore（任意） |
+| Playwright ブラウザ | `playwright install chromium` 実行済み（EXE 版は自動ダウンロード） |
+| Python ライブラリ | playwright / pandas / PyYAML / google-cloud-firestore（任意） |
 
 ## 処理詳細
 
@@ -174,7 +174,7 @@ flowchart TD
     C -->|稼働中| D[中断: Chrome を終了するよう通知]
     C -->|停止済み| E[input_csv を読み込み]
     B -->|true| E
-    E --> F[CSVパース・金額数値化・複合支払合算]
+    E --> F[CSV 解析・金額の数値化・複合支払いの合算]
     F --> G[除外ルール適用]
     G --> H[重複検知]
     H --> I{dry_run?}
@@ -261,16 +261,63 @@ flowchart TD
 | 16 | INFO | `エラーCSV: {filepath}` |
 | 17 | INFO | `アプリケーションを終了します` |
 
-## 実装者向けTODO
+## Google Cloud Firestore バックエンドの設定（任意）
 
-以下の項目は実機確認または設計決定が未完了であり、実装前に確認・補完する必要がある。
+`duplicate_detection.backend: "gcloud"` を使用する場合は、以下の手順で GCP 環境を準備してください。
 
-| No. | 項目 | 内容 |
+### 0. 事前に必要なパッケージのインストール
+
+```bash
+pip install "paypay2mf[gcloud]"
+# または
+pip install google-cloud-firestore
+```
+
+### 1. GCP プロジェクトの作成
+
+1. [Google Cloud Console](https://console.cloud.google.com/) を開く
+2. 左上のプロジェクト選択メニュー → 「新しいプロジェクト」
+3. プロジェクト名を入力（例: `paypay2mf`）して「作成」
+
+### 2. Firestore の有効化
+
+1. Google Cloud Console の検索バーで「Firestore」と入力 → 「Firestore」を選択
+2. 「データベースの作成」をクリック
+3. **「Native mode」（ネイティブモード）** を選択して「続行」
+4. リージョンは `asia-northeast1`（東京）を選択して「データベースを作成」
+
+### 3. サービスアカウントの作成
+
+1. Google Cloud Console → 「IAM と管理」 → 「サービスアカウント」
+2. 「サービスアカウントを作成」をクリック
+3. サービスアカウント名を入力（例: `paypay2mf-sa`） → 「作成して続行」
+4. ロールに **「Cloud Datastore ユーザー」**（`roles/datastore.user`）を付与 → 「続行」 → 「完了」
+
+### 4. JSON キーのダウンロード
+
+1. 作成したサービスアカウントをクリック → 「キー」タブ
+2. 「キーを追加」 → 「新しいキーを作成」 → 「JSON」 → 「作成」
+3. ダウンロードされた JSON ファイルを安全な場所に保存
+   （例: `C:\Users\yourname\paypay2mf-credentials.json`）
+
+### 5. config.yml の設定
+
+```yaml
+duplicate_detection:
+  backend: "gcloud"
+  tolerance_seconds: 60
+
+gcloud_credentials_path: "C:\\Users\\yourname\\paypay2mf-credentials.json"
+```
+
+### 6. Firestore 複合インデックスの作成（フォールバック検索用）
+
+取引番号が欠損している場合のフォールバック検索では、`amount + merchant` の複合クエリを使用します。  
+初回実行時にインデックスエラーが発生した場合は、Firestore コンソールで以下の複合インデックスを作成してください。
+
+| コレクション | フィールド 1 | フィールド 2 |
 | ---- | ---- | ---- |
-| T01 | MF手入力フォームのセレクター | 実機ブラウザで Money Forward ME の「手動で追加」フォームを確認し、日付・金額・内容・カテゴリ・口座・入出金切替の各セレクターを特定する |
-| T02 | MFカテゴリ名の完全一致確認 | `mapping_rules` の `category` 値が MF の選択肢と完全一致するかを実機で確認する |
-| T03 | Google Cloud 認証方式の確定 | `duplicate_detection.backend: "gcloud"` 使用時のサービスアカウント作成手順・IAM権限（Firestore 読み書き）を確定する |
-| T04 | Google Cloud サービス選定 | Firestore / Realtime Database 等、採用するサービスと料金プランを確定する（無料枠内の見込み） |
+| `paypay_transactions` | `amount` (昇順) | `merchant` (昇順) |
 
 ## ライセンス
 
@@ -278,7 +325,7 @@ flowchart TD
 
 - このプログラムは MIT ライセンスに基づいて提供されます。
 
-### 使用ライブラリーのライセンス
+### 使用ライブラリのライセンス
 
 | ライブラリ名 | バージョン | ライセンス |
 | ---- | ---- | ---- |
@@ -291,7 +338,7 @@ flowchart TD
 
 ### 開発環境
 
-- VSCode 最新版
+- VS Code 最新版
 - Python 3.9 以上
 
 ### 検証環境
@@ -306,4 +353,4 @@ flowchart TD
 
 | バージョン | 日付 | 内容 |
 | ----- | ---------- | -------------- |
-| 0.1 | 2026-03-28 | 初版作成（テンプレートから PayPay→MF ツール仕様に書き替え） |
+| 0.1 | 2026-03-28 | 初版作成 |
