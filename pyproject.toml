@@ -24,9 +24,15 @@ dev = [
 [project.scripts]
 paypay2mf = "main:main"
 
+[tool.setuptools.package-data]
+src = ["mf_categories.yml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "smoke_test: explicit Playwright smoke tests against a logged-in Money Forward profile",
+]
 
 [tool.ruff]
 exclude = [

@@ -138,6 +138,28 @@ def test_defaults_applied(tmp_path: Path) -> None:
     assert config.duplicate_detection.backend == "local"
     assert config.parser.encoding_priority == ["utf-8", "shift_jis"]
     assert config.advanced.screenshot_on_error is False
+    assert config.advanced.mf_categories_path is None
+
+
+def test_mf_categories_path_is_resolved_relative_to_config(tmp_path: Path) -> None:
+    """advanced.mf_categories_path は config.yml 基準の相対パスとして解決されることを確認する。"""
+    data = _base_data(tmp_path)
+    categories_file = tmp_path / "custom_categories.yml"
+    categories_file.write_text("middle_to_large:\n  食料品: 食費\n", encoding="utf-8")
+    data["advanced"] = {"mf_categories_path": "custom_categories.yml"}
+
+    config = load_config(_write_config(tmp_path, data))
+
+    assert config.advanced.mf_categories_path == categories_file
+
+
+def test_missing_mf_categories_path_raises_value_error(tmp_path: Path) -> None:
+    """advanced.mf_categories_path が存在しない場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["advanced"] = {"mf_categories_path": "missing_categories.yml"}
+
+    with pytest.raises(ValueError, match="advanced.mf_categories_path"):
+        load_config(_write_config(tmp_path, data))
 
 
 # TC-01-09: 存在しない chrome_user_data_dir（本番実行）

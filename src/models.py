@@ -119,9 +119,12 @@ class AdvancedConfig:
 
     Attributes:
         screenshot_on_error: True の場合のみ、エラー発生時にスクリーンショットを保存する。
+        mf_categories_path: Money Forward カテゴリマップ YAML の上書きパス。
+            None の場合は同梱の既定マップを使用する。
     """
 
     screenshot_on_error: bool = False
+    mf_categories_path: Path | None = None
 
 
 @dataclass

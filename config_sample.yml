@@ -76,6 +76,7 @@ log_settings:
 
 advanced:
   screenshot_on_error: false    # true にした場合のみエラー時 PNG を保存
+  mf_categories_path: null      # 例: ".\\mf_categories_sample.yml"。null で同梱カテゴリ定義を使用
 
 # gcloud_credentials_path: "C:\\Users\\yourname\\gcloud-service-account.json"
 # ↑ duplicate_detection.backend: "gcloud" 使用時のみ設定する

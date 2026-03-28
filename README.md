@@ -353,6 +353,36 @@ gcloud_credentials_path: "C:\\Users\\yourname\\paypay2mf-credentials.json"
 - VS Code 最新版
 - Python 3.9 以上
 
+### UI 自動化の保守方針
+
+- Money Forward の DOM セレクタ契約は [src/mf_selectors.py](src/mf_selectors.py) に集約する。
+- 手入力モーダルの UI 操作は
+  [src/mf_page.py](src/mf_page.py) の `MFManualFormPage` にまとめる。
+- Money Forward のカテゴリ対応表は同梱の [src/mf_categories.yml](src/mf_categories.yml) を既定とし、必要時のみ `config.yml` の `advanced.mf_categories_path` で差し替える。
+- 独自カテゴリ YAML のひな形として [mf_categories_sample.yml](mf_categories_sample.yml) を同梱している。差し替え時はこの形式をベースに編集する。
+- [src/mf_registrar.py](src/mf_registrar.py) はブラウザ起動と
+  コンテキスト管理に専念させる。
+- DOM 変更対応時は、まず selector 定義と Page Object を確認し、registrar 本体へ直接セレクタを増やさない。
+
+`advanced.mf_categories_path` に相対パスを指定した場合は `config.yml` の配置ディレクトリ基準で解決されます。差し替え先 YAML は `middle_to_large:` をルートに持ち、中項目名から大項目名への対応を定義してください。
+指定時は完全置換になるため、必要な中項目をサンプルから削らずに調整してください。
+
+### Playwright スモークテスト
+
+Money Forward 実サイトに対するスモークテストは通常の `pytest` には含めません。ログイン済み Chrome プロファイルを用意し、必要な環境変数を設定したうえで明示実行してください。
+
+PowerShell 例:
+
+```powershell
+$env:PAYPAY2MF_RUN_SMOKE_TEST = "1"
+$env:PAYPAY2MF_SMOKE_CHROME_USER_DATA_DIR = "C:\Users\yourname\AppData\Local\Google\Chrome\User Data"
+$env:PAYPAY2MF_SMOKE_CHROME_PROFILE = "Default"
+$env:PAYPAY2MF_SMOKE_MF_ACCOUNT = "PayPay残高"
+c:/Git/PayPay2MF/.venv/Scripts/python.exe -m pytest -m smoke_test tests/test_mf_smoke.py
+```
+
+このスモークテストは、Money Forward の入出金ページへ遷移し、手入力モーダルが開けることだけを確認します。実データの送信や保存は行いません。
+
 ### 検証環境
 
 | 項目 | 内容 |

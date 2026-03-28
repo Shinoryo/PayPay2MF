@@ -54,6 +54,7 @@ _KEY_LOG_MAX_TOTAL_LOG_SIZE_MB = "max_total_log_size_mb"
 
 # 設定ファイル キー名 advanced サブキー
 _KEY_ADV_SCREENSHOT_ON_ERROR = "screenshot_on_error"
+_KEY_ADV_MF_CATEGORIES_PATH = "mf_categories_path"
 
 # 設定ファイル キー名 mapping_rules アイテムキー
 _KEY_RULE_KEYWORD = "keyword"
@@ -109,6 +110,9 @@ _MSG_GCLOUD_CREDS_REQUIRED = (
     "gcloud_credentials_path の指定が必要です。"
 )
 _MSG_GCLOUD_CREDS_NOT_EXIST = "gcloud_credentials_path のファイルが存在しません: {path}"
+_MSG_MF_CATEGORIES_NOT_EXIST = (
+    "advanced.mf_categories_path のファイルが存在しません: {path}"
+)
 
 # 検証設定
 _VALID_MATCH_MODES: frozenset[str] = frozenset({"contains", "starts_with", "regex"})
@@ -142,10 +146,10 @@ def load_config(path: Path) -> AppConfig:
         raw: dict = yaml.safe_load(f) or {}
 
     _validate_required(raw)
-    _validate_paths(raw, skip_chrome_validation=raw[_KEY_DRY_RUN])
+    _validate_paths(raw, skip_chrome_validation=raw[_KEY_DRY_RUN], config_dir=path.parent)
     _validate_mapping_rules(raw.get("mapping_rules") or [])
     _validate_gcloud(raw)
-    return _build_config(raw)
+    return _build_config(raw, config_dir=path.parent)
 
 
 def _validate_required(raw: dict) -> None:
@@ -168,13 +172,14 @@ def _validate_required(raw: dict) -> None:
         raise ValueError("\n".join(errors))
 
 
-def _validate_paths(raw: dict, *, skip_chrome_validation: bool) -> None:
+def _validate_paths(raw: dict, *, skip_chrome_validation: bool, config_dir: Path) -> None:
     """パス関連の項目を検証する。
 
     Args:
         raw: YAML から読み込んだ辞書。
         skip_chrome_validation: True の場合、Chrome 関連のパス検証を
             スキップする。
+        config_dir: config.yml が置かれたディレクトリ。
 
     Raises:
         ValueError: chrome_user_data_dir が存在しない場合、または
@@ -198,8 +203,27 @@ def _validate_paths(raw: dict, *, skip_chrome_validation: bool) -> None:
     elif input_csv.suffix.lower() != _CSV_EXTENSION:
         errors.append(_MSG_INPUT_CSV_BAD_EXT.format(path=input_csv))
 
+    advanced_raw = raw.get(_KEY_ADVANCED) or {}
+    mf_categories_path = _resolve_optional_path(
+        advanced_raw.get(_KEY_ADV_MF_CATEGORIES_PATH),
+        config_dir,
+    )
+    if mf_categories_path is not None and not mf_categories_path.exists():
+        errors.append(_MSG_MF_CATEGORIES_NOT_EXIST.format(path=mf_categories_path))
+
     if errors:
         raise ValueError("\n".join(errors))
+
+
+def _resolve_optional_path(raw_value: object, config_dir: Path) -> Path | None:
+    """設定値のパスを config.yml 基準で解決する。"""
+    if raw_value in (None, ""):
+        return None
+
+    candidate = Path(str(raw_value))
+    if candidate.is_absolute():
+        return candidate
+    return config_dir / candidate
 
 
 def _validate_mapping_rules(rules: list) -> None:
@@ -248,11 +272,12 @@ def _validate_gcloud(raw: dict) -> None:
         raise ValueError(_MSG_GCLOUD_CREDS_NOT_EXIST.format(path=creds))
 
 
-def _build_config(raw: dict) -> AppConfig:
+def _build_config(raw: dict, *, config_dir: Path) -> AppConfig:
     """検証済みの辞書から AppConfig を構築する。
 
     Args:
         raw: 検証済みの YAML 辞書。
+        config_dir: config.yml が置かれたディレクトリ。
 
     Returns:
         AppConfig インスタンス。
@@ -297,6 +322,10 @@ def _build_config(raw: dict) -> AppConfig:
     advanced = AdvancedConfig(
         screenshot_on_error=adv_raw.get(
             _KEY_ADV_SCREENSHOT_ON_ERROR, _DEFAULT_SCREENSHOT_ON_ERROR,
+        ),
+        mf_categories_path=_resolve_optional_path(
+            adv_raw.get(_KEY_ADV_MF_CATEGORIES_PATH),
+            config_dir,
         ),
     )
 
