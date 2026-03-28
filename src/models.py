@@ -124,7 +124,8 @@ class AppConfig:
     Attributes:
         chrome_user_data_dir: Chrome のユーザーデータディレクトリのパス。
         chrome_profile: Chrome のプロファイル名（例: "Default"）。
-        dry_run: True の場合、MF への実際の登録は行わず診断ログを出力する。
+        dry_run: True の場合、MF への実際の登録や重複履歴の更新は行わず、
+            診断ログのみを出力する。
         input_csv: 入力 CSV ファイルのパス。
         mf_account: MF の登録先口座名。
         mapping_rules: カテゴリマッピングルールのリスト。

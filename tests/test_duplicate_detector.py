@@ -31,7 +31,7 @@ def _make_config(tmp_path: Path) -> AppConfig:
     return AppConfig(
         chrome_user_data_dir="C:\\dummy",
         chrome_profile="Default",
-        dry_run=True,
+        dry_run=False,
         input_csv=csv_file,
         mf_account="PayPay残高",
         log_settings=LogSettings(logs_dir=tmp_path),
@@ -116,6 +116,22 @@ def test_local_persistence(tmp_path: Path) -> None:
     # 新しいインスタンスで読み込み → 重複として検知
     detector2 = LocalDuplicateDetector(config)
     assert detector2.is_duplicate(tx) is True
+
+
+def test_local_dry_run_does_not_persist(tmp_path: Path) -> None:
+    """dry_run=True の場合は mark_processed を呼んでも状態が保存されないことを確認する。"""
+    config = _make_config(tmp_path)
+    config.dry_run = True
+
+    detector1 = LocalDuplicateDetector(config)
+    tx = _make_tx(transaction_id="TX_DRY_RUN")
+    detector1.mark_processed(tx)
+
+    assert detector1.is_duplicate(tx) is False
+
+    detector2 = LocalDuplicateDetector(config)
+    assert detector2.is_duplicate(tx) is False
+    assert (tmp_path / "processed.json").exists() is False
 
 
 # フォールバック: tolerance_seconds 内は重複

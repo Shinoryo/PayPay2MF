@@ -97,8 +97,6 @@ def main() -> None:
                 tx.merchant,
                 tx.category,
             )
-        for tx in to_process:
-            detector.mark_processed(tx)
         logger.info("ドライラン完了")
         logger.info("アプリケーションを終了します")
         return

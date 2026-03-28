@@ -83,6 +83,7 @@ class LocalDuplicateDetector:
             config: アプリケーション設定。
         """
         self._store_path = _get_store_path(config)
+        self._dry_run = config.dry_run
         self._tolerance = config.duplicate_detection.tolerance_seconds
         self._data: dict = {
             _KEY_TX_IDS: [],
@@ -112,6 +113,9 @@ class LocalDuplicateDetector:
         Args:
             tx: マーク対象の Transaction。
         """
+        if self._dry_run:
+            return
+
         if tx.transaction_id:
             if tx.transaction_id not in self._data[_KEY_TX_IDS]:
                 self._data[_KEY_TX_IDS].append(tx.transaction_id)
@@ -200,6 +204,7 @@ class GCloudDuplicateDetector:
             str(config.gcloud_credentials_path),
         )
         self._client = _firestore.Client(credentials=creds)
+        self._dry_run = config.dry_run
         self._tolerance = config.duplicate_detection.tolerance_seconds
 
     def is_duplicate(self, tx: Transaction) -> bool:
@@ -240,6 +245,9 @@ class GCloudDuplicateDetector:
         Args:
             tx: マーク対象の Transaction。
         """
+        if self._dry_run:
+            return
+
         if tx.transaction_id:
             doc_id = tx.transaction_id
         else:
