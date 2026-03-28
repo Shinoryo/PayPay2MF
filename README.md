@@ -156,8 +156,7 @@ MF の手入力フォームに1件ずつ自動登録します。
 paypay2mf.exe
 ```
 
-初回起動時に Playwright 用ブラウザを自動ダウンロードします
-（`advanced.playwright_browser_download: true` の場合）。
+事前に Playwright 用ブラウザのセットアップが完了している環境で実行してください。
 
 ## 想定実行環境
 
@@ -166,7 +165,7 @@ paypay2mf.exe
 | OS | Windows 11 |
 | Python | 3.9 以上 |
 | ブラウザ | Google Chrome（最新版） |
-| Playwright ブラウザ | `playwright install chromium` 実行済み（EXE 版は自動ダウンロード） |
+| Playwright ブラウザ | `playwright install chromium` 実行済み |
 | Python ライブラリ | playwright / pandas / PyYAML / google-cloud-firestore（任意） |
 
 ## 処理詳細

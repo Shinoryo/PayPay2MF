@@ -49,12 +49,10 @@ _KEY_PARSER_DATE_FORMATS = "date_formats"
 
 # 設定ファイル キー名 log_settings サブキー
 _KEY_LOG_LOGS_DIR = "logs_dir"
-_KEY_LOG_KEEP_LOGS = "keep_logs"
 _KEY_LOG_MAX_LOG_COUNT = "max_log_count"
 _KEY_LOG_MAX_TOTAL_LOG_SIZE_MB = "max_total_log_size_mb"
 
 # 設定ファイル キー名 advanced サブキー
-_KEY_ADV_PLAYWRIGHT_BROWSER_DOWNLOAD = "playwright_browser_download"
 _KEY_ADV_SCREENSHOT_ON_ERROR = "screenshot_on_error"
 
 # 設定ファイル キー名 mapping_rules アイテムキー
@@ -70,8 +68,6 @@ _DEFAULT_BACKEND = "local"
 _DEFAULT_TOLERANCE_SECONDS = 60
 _DEFAULT_ENCODING_PRIORITY: list[str] = ["utf-8", "shift_jis"]
 _DEFAULT_DATE_FORMATS: list[str] = ["%Y/%m/%d %H:%M:%S"]
-_DEFAULT_KEEP_LOGS = True
-_DEFAULT_PLAYWRIGHT_BROWSER_DOWNLOAD = True
 _DEFAULT_SCREENSHOT_ON_ERROR = True
 _DEFAULT_EXCLUDE_PREFIXES: list[str] = ["PPCD_A_"]
 
@@ -293,16 +289,12 @@ def _build_config(raw: dict) -> AppConfig:
     logs_dir_raw = log_raw.get(_KEY_LOG_LOGS_DIR)
     log_settings = LogSettings(
         logs_dir=Path(str(logs_dir_raw)) if logs_dir_raw else None,
-        keep_logs=log_raw.get(_KEY_LOG_KEEP_LOGS, _DEFAULT_KEEP_LOGS),
         max_log_count=log_raw.get(_KEY_LOG_MAX_LOG_COUNT),
         max_total_log_size_mb=log_raw.get(_KEY_LOG_MAX_TOTAL_LOG_SIZE_MB),
     )
 
     adv_raw = raw.get(_KEY_ADVANCED) or {}
     advanced = AdvancedConfig(
-        playwright_browser_download=adv_raw.get(
-            _KEY_ADV_PLAYWRIGHT_BROWSER_DOWNLOAD, _DEFAULT_PLAYWRIGHT_BROWSER_DOWNLOAD,
-        ),
         screenshot_on_error=adv_raw.get(
             _KEY_ADV_SCREENSHOT_ON_ERROR, _DEFAULT_SCREENSHOT_ON_ERROR,
         ),

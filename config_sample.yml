@@ -71,12 +71,10 @@ parser:
 
 log_settings:
   logs_dir: null            # null → デフォルト <tool_folder>\logs を使用
-  keep_logs: true
   max_log_count: null       # null = 無制限
   max_total_log_size_mb: null  # null = 無制限
 
 advanced:
-  playwright_browser_download: true
   screenshot_on_error: true
 
 # gcloud_credentials_path: "C:\\Users\\yourname\\gcloud-service-account.json"

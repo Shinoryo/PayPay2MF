@@ -104,13 +104,11 @@ class LogSettings:
     Attributes:
         logs_dir: ログ・スクリーンショット・エラー CSV の保存先。
             None の場合は ``<tool_folder>/logs`` を使用する。
-        keep_logs: False の場合、実行後にログを削除する。
         max_log_count: 保持するログファイル数の上限。None は無制限。
         max_total_log_size_mb: ログの合計サイズ上限（MB）。None は無制限。
     """
 
     logs_dir: Path | None = None
-    keep_logs: bool = True
     max_log_count: int | None = None
     max_total_log_size_mb: int | None = None
 
@@ -120,12 +118,9 @@ class AdvancedConfig:
     """高度な動作設定。
 
     Attributes:
-        playwright_browser_download: True の場合、初回起動時に Playwright 用
-            ブラウザを自動ダウンロードする。
         screenshot_on_error: True の場合、エラー発生時にスクリーンショットを保存する。
     """
 
-    playwright_browser_download: bool = True
     screenshot_on_error: bool = True
 
 
