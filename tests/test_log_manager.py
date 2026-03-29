@@ -18,6 +18,7 @@ import pytest
 from paypay2mf import log_manager
 from paypay2mf.constants import AppConstants
 from paypay2mf.log_manager import setup_logger, write_error_csv, write_parse_error_csv
+from paypay2mf.models import AppConfig
 
 _ERROR_MESSAGE_SELECTOR_TIMEOUT = "selector timeout"
 _ERROR_MESSAGE_VALIDATION_FAILED = "validation failed"
@@ -59,6 +60,34 @@ def test_setup_logger_writes_log_file_to_configured_logs_dir(
         handler.flush()
 
     log_files = list(logs_dir.glob("app_*.log"))
+    assert len(log_files) == 1
+    assert _LOG_MESSAGE in log_files[0].read_text(
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
+
+
+def test_setup_logger_defaults_to_runtime_base_dir_logs_when_logs_dir_is_unset(
+    tmp_path: Path,
+) -> None:
+    """logs_dir 未指定時は config.yml 基準ディレクトリ配下の logs を使う。"""
+    input_csv = tmp_path / "dummy.csv"
+    input_csv.write_text("", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+    config = AppConfig(
+        chrome_user_data_dir="C:\\dummy",
+        chrome_profile="Default",
+        dry_run=True,
+        input_csv=input_csv,
+        mf_account="PayPay残高",
+        runtime_base_dir=tmp_path,
+    )
+
+    logger = setup_logger(config)
+    logger.info(_LOG_MESSAGE)
+
+    for handler in logger.handlers:
+        handler.flush()
+
+    log_files = list((tmp_path / AppConstants.DEFAULT_LOGS_DIR).glob("app_*.log"))
     assert len(log_files) == 1
     assert _LOG_MESSAGE in log_files[0].read_text(
         encoding=AppConstants.DEFAULT_TEXT_ENCODING,

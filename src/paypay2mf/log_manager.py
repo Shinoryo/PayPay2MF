@@ -171,7 +171,7 @@ def _resolve_logs_dir(config: AppConfig) -> Path:
     """ログディレクトリのパスを解決して返す。
 
     config.log_settings.logs_dir が設定されていない場合は
-    ツールフォルダ直下の ``logs`` ディレクトリを使用する。
+    config.yml 基準ディレクトリ配下の ``logs`` ディレクトリを使用する。
 
     Args:
         config: アプリケーション設定。
@@ -179,9 +179,10 @@ def _resolve_logs_dir(config: AppConfig) -> Path:
     Returns:
         ログディレクトリの Path。
     """
-    if config.log_settings.logs_dir:
+    if config.log_settings.logs_dir is not None:
         return config.log_settings.logs_dir
-    return Path(__file__).parent.parent / AppConstants.DEFAULT_LOGS_DIR
+    base_dir = config.runtime_base_dir or Path.cwd()
+    return base_dir / AppConstants.DEFAULT_LOGS_DIR
 
 
 def _rotate_logs(config: AppConfig, logs_dir: Path) -> None:

@@ -930,4 +930,5 @@ def _build_config(
         parser=parser,
         log_settings=log_settings,
         advanced=advanced,
+        runtime_base_dir=config_dir,
     )

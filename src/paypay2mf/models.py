@@ -151,6 +151,7 @@ class AppConfig:
         parser: CSV パーサーの設定。
         log_settings: ログ出力の設定。
         advanced: 高度な動作設定。
+        runtime_base_dir: 実行時の基準ディレクトリ。通常は config.yml の配置先。
     """
 
     chrome_user_data_dir: str
@@ -169,3 +170,4 @@ class AppConfig:
     parser: ParserConfig = field(default_factory=ParserConfig)
     log_settings: LogSettings = field(default_factory=LogSettings)
     advanced: AdvancedConfig = field(default_factory=AdvancedConfig)
+    runtime_base_dir: Path | None = None

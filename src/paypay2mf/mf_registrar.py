@@ -152,10 +152,10 @@ class MFRegistrar:
             保存したスクリーンショットファイルの Path。
         """
         timestamp = datetime.now().strftime(AppConstants.TIMESTAMP_FORMAT)  # noqa: DTZ005
-        logs_dir = (
-            self._config.log_settings.logs_dir
-            or Path(__file__).parent.parent / AppConstants.DEFAULT_LOGS_DIR
-        )
+        logs_dir = self._config.log_settings.logs_dir
+        if logs_dir is None:
+            base_dir = self._config.runtime_base_dir or Path.cwd()
+            logs_dir = base_dir / AppConstants.DEFAULT_LOGS_DIR
         logs_dir.mkdir(parents=True, exist_ok=True)
         out_path = (
             logs_dir

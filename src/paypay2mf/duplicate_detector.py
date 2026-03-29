@@ -470,8 +470,8 @@ def _get_store_path(config: AppConfig) -> Path:
     Returns:
         processed.json の Path。
     """
-    base = (
-        config.log_settings.logs_dir
-        or Path(__file__).parent.parent / AppConstants.DEFAULT_LOGS_DIR
-    )
+    base = config.log_settings.logs_dir
+    if base is None:
+        base_dir = config.runtime_base_dir or Path.cwd()
+        base = base_dir / AppConstants.DEFAULT_LOGS_DIR
     return base / AppConstants.PROCESSED_FILENAME
