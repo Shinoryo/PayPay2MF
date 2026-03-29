@@ -7,8 +7,5 @@
         "source.organizeImports": "explicit"
     },
     "editor.defaultFormatter": "charliermarsh.ruff",
-    "editor.formatOnPaste": true,
-    "chat.tools.terminal.autoApprove": {
-        "c:/Git/PayPay2MF/.venv/Scripts/python.exe": true
-    }
+    "editor.formatOnPaste": true
 }
