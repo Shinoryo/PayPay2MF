@@ -35,6 +35,7 @@ _DEFAULT_MERCHANT = "モスのネット注文"
 _DEFAULT_TRANSACTION_ID = "TX001"
 _SUBMIT_TIMEOUT_MESSAGE = "submit timeout"
 _SUBMIT_ERROR_MESSAGE = "入力エラーです"
+_UNEXPECTED_ACCOUNT_LOOKUP_SCRIPT = "Unexpected account lookup script"
 
 pytestmark = pytest.mark.ui_contract
 
@@ -126,7 +127,7 @@ class _FakePage:
                 return option_value
 
         if "startsWith(name)" not in script and "=== name" not in script:
-            raise AssertionError("Unexpected account lookup script")
+            raise AssertionError(_UNEXPECTED_ACCOUNT_LOOKUP_SCRIPT)
 
         return None
 
