@@ -1,10 +1,22 @@
-﻿"""main モジュールのテスト。"""
+﻿"""main モジュールのテスト。
+
+対応テストレイヤー:
+    integration_flow: main フローのオーケストレーション、終了経路、副作用
+
+対応テストケース:
+    TC-05-01: ドライラン実行
+    TC-05-02: ドライランのログ出力と重複履歴保護
+    TC-06-01: Chrome 起動中の場合の中断
+    TC-06-02: Chrome 終了済みの場合の継続
+    TC-09-01: 解析失敗 CSV への分離と正常行継続
+    TC-09-03: 登録失敗時の継続処理と終了経路
+"""
 
 from __future__ import annotations
 
+import csv
 import logging
 from contextlib import nullcontext
-from datetime import datetime
 from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
@@ -12,17 +24,25 @@ import pytest
 
 import main as app_main
 from src.constants import AppConstants
-from src.models import AppConfig, LogSettings, ParseFailure, Transaction
+from src.duplicate_detector import LocalDuplicateDetector
 
-_DUMMY_CHROME_USER_DATA_DIR = "C:\\dummy"
-_DEFAULT_CHROME_PROFILE = "Default"
-_DEFAULT_MF_ACCOUNT = "PayPay残高"
-_INPUT_CSV_FILENAME = "input.csv"
-_HEADER_LINE = "header\n"
-_DEFAULT_MEMO = "支払い"
+pytestmark = pytest.mark.integration_flow
+
+_MSG_PARSE_FAILURE_COUNT = "CSV 解析失敗: %d件"
+_MSG_DUPLICATE_SKIP_COUNT = "重複スキップ: %d件"
+_MSG_CSV_READ_FAILED = "CSV 読み込みに失敗しました"
+_MSG_DRY_RUN_COMPLETE = "ドライラン完了: 登録対象 %d件"
+_MSG_APP_EXIT = "アプリケーションを終了します"
+_MSG_REGISTRATION_BOOT_FAILED = "Chrome の起動またはMFへの遷移に失敗しました"
+_MSG_CHROME_RUNNING = (
+    "Chrome が起動中です。Chrome を終了してから再実行してください。"
+)
+_MSG_CHROME_STOPPED = "Chrome 稼働チェック: 停止済み"
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from src.models import Transaction
 
 
 class _FakeDetector:
@@ -48,58 +68,32 @@ class _FakeRegistrar:
             raise RuntimeError(msg)
 
 
-def _make_config(tmp_path: Path, *, dry_run: bool = True) -> AppConfig:
-    csv_file = tmp_path / _INPUT_CSV_FILENAME
-    csv_file.write_text(_HEADER_LINE, encoding=AppConstants.DEFAULT_TEXT_ENCODING)
-    return AppConfig(
-        chrome_user_data_dir=_DUMMY_CHROME_USER_DATA_DIR,
-        chrome_profile=_DEFAULT_CHROME_PROFILE,
-        dry_run=dry_run,
-        input_csv=csv_file,
-        mf_account=_DEFAULT_MF_ACCOUNT,
-        log_settings=LogSettings(logs_dir=tmp_path),
-    )
-
-
-def _make_tx(transaction_id: str) -> Transaction:
-    return Transaction(
-        date=datetime(2025, 1, 1, 12, 0, 0),  # noqa: DTZ001
-        amount=100,
-        direction=AppConstants.DIRECTION_OUT,
-        memo=_DEFAULT_MEMO,
-        merchant=f"merchant-{transaction_id}",
-        transaction_id=transaction_id,
-    )
-
-
 def test_build_transactions_reports_parse_failures(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    parse_failure_factory,
+    transaction_factory,
 ) -> None:
-    """解析失敗 CSV 出力と重複除外を含む取引準備結果を確認する。"""
-    config = _make_config(tmp_path)
+    """TC-09-01: 解析失敗を記録しつつ重複除外後の処理対象を返すことを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
     logger = Mock(spec=logging.Logger)
     detector = _FakeDetector([False, True])
     parse_failures = [
-        ParseFailure(
-            row_index=3,
+        parse_failure_factory(
             transaction_id="TX999",
             merchant="broken",
-            error_type="parse_error",
-            error_message="bad row",
             raw_row={"取引先": "broken"},
         ),
     ]
+    first_tx = transaction_factory(transaction_id="TX001", merchant="merchant-TX001")
+    second_tx = transaction_factory(transaction_id="TX002", merchant="merchant-TX002")
 
-    parse_csv_mock = Mock(
-        return_value=([_make_tx("TX001"), _make_tx("TX002")], parse_failures),
-    )
+    parse_csv_mock = Mock(return_value=([first_tx, second_tx], parse_failures))
     monkeypatch.setattr(app_main, "parse_csv", parse_csv_mock)
     monkeypatch.setattr(app_main, "create_detector", Mock(return_value=detector))
     parse_error_csv = tmp_path / "parse_error.csv"
-    write_parse_error_csv_mock = Mock(
-        return_value=parse_error_csv,
-    )
+    write_parse_error_csv_mock = Mock(return_value=parse_error_csv)
     monkeypatch.setattr(
         app_main,
         "write_parse_error_csv",
@@ -108,30 +102,103 @@ def test_build_transactions_reports_parse_failures(
 
     prepared = app_main.build_transactions(config, logger)
 
-    assert prepared.to_process == [_make_tx("TX001")]
+    assert prepared.to_process == [first_tx]
     assert prepared.excluded_count == 0
     assert prepared.skip_count == 1
     write_parse_error_csv_mock.assert_called_once_with(parse_failures, config)
-    logger.warning.assert_any_call(app_main._LOG_MSG_PARSE_FAILURE_COUNT, 1)
-    logger.info.assert_any_call(app_main._LOG_MSG_DUPLICATE_SKIP_COUNT, 1)
+    logger.warning.assert_any_call(_MSG_PARSE_FAILURE_COUNT, 1)
+    logger.info.assert_any_call(_MSG_DUPLICATE_SKIP_COUNT, 1)
+
+
+def test_build_transactions_writes_parse_error_csv_and_keeps_valid_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    parse_failure_factory,
+    transaction_factory,
+) -> None:
+    """TC-09-01: 解析失敗 CSV を実出力しつつ正常行を継続処理できることを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+    valid_tx = transaction_factory(transaction_id="TX001", merchant="merchant-TX001")
+    parse_failures = [
+        parse_failure_factory(
+            transaction_id="TX999",
+            merchant="broken",
+            error_type="invalid_date",
+            raw_row={"取引先": "broken"},
+        ),
+    ]
+
+    monkeypatch.setattr(
+        app_main,
+        "parse_csv",
+        Mock(return_value=([valid_tx], parse_failures)),
+    )
+
+    prepared = app_main.build_transactions(config, logger)
+
+    assert prepared.to_process == [valid_tx]
+
+    parse_error_files = list(tmp_path.glob("parse_error_*.csv"))
+    assert len(parse_error_files) == 1
+
+    with parse_error_files[0].open(
+        encoding=AppConstants.ENCODING_UTF8_SIG,
+        newline=AppConstants.EMPTY_STRING,
+    ) as file_obj:
+        rows = list(csv.DictReader(file_obj))
+
+    assert rows == [
+        {
+            "row_index": "3",
+            "error_type": "invalid_date",
+            "error_message": "bad row",
+        },
+    ]
+    logger.warning.assert_any_call(_MSG_PARSE_FAILURE_COUNT, 1)
+
+
+def test_build_transactions_exits_when_parse_csv_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    """TC-09-01: CSV 読み込み全体が失敗した場合は終了することを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+
+    monkeypatch.setattr(
+        app_main,
+        "parse_csv",
+        Mock(side_effect=RuntimeError("bad csv")),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_main.build_transactions(config, logger)
+
+    assert exc_info.value.code == 1
+    logger.exception.assert_called_once_with(_MSG_CSV_READ_FAILED)
 
 
 def test_run_dry_run_logs_completion() -> None:
-    """dry_run 用 helper が終了ログを出すことを確認する。"""
+    """TC-05-01: dry_run 用 helper が終了ログを出すことを確認する。"""
     logger = Mock(spec=logging.Logger)
 
     app_main.run_dry_run(logger, 2)
 
-    logger.info.assert_any_call(app_main._LOG_MSG_DRY_RUN_COMPLETE, 2)
-    logger.info.assert_any_call(app_main._LOG_MSG_APP_EXIT)
+    logger.info.assert_any_call(_MSG_DRY_RUN_COMPLETE, 2)
+    logger.info.assert_any_call(_MSG_APP_EXIT)
 
 
 def test_run_registration_continues_after_item_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
 ) -> None:
-    """個別登録失敗時も残りの取引を継続処理することを確認する。"""
-    config = _make_config(tmp_path, dry_run=False)
+    """TC-09-03: 個別登録失敗時も残りの取引を継続処理することを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=False, input_csv_text="header\n")
     logger = Mock(spec=logging.Logger)
     detector = _FakeDetector()
     registrar = _FakeRegistrar({"TX002"})
@@ -142,7 +209,10 @@ def test_run_registration_continues_after_item_failure(
         config,
         logger,
         detector,
-        [_make_tx("TX001"), _make_tx("TX002")],
+        [
+            transaction_factory(transaction_id="TX001", merchant="merchant-TX001"),
+            transaction_factory(transaction_id="TX002", merchant="merchant-TX002"),
+        ],
     )
 
     assert result.success_count == 1
@@ -151,6 +221,35 @@ def test_run_registration_continues_after_item_failure(
     detector.mark_processed.assert_called_once()
     logger.exception.assert_called_once()
     registrar_factory.assert_called_once_with(config, logger)
+
+
+def test_run_registration_exits_when_registrar_boot_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """TC-09-03: MFRegistrar の起動に失敗した場合に終了することを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=False, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+    detector = _FakeDetector()
+
+    monkeypatch.setattr(
+        app_main,
+        "MFRegistrar",
+        Mock(side_effect=RuntimeError("boot failed")),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_main.run_registration(
+            config,
+            logger,
+            detector,
+            [transaction_factory(transaction_id="TX001", merchant="merchant-TX001")],
+        )
+
+    assert exc_info.value.code == 1
+    logger.exception.assert_called_once_with(_MSG_REGISTRATION_BOOT_FAILED)
 
 
 def test_main_exits_when_config_load_fails(
@@ -177,9 +276,11 @@ def test_main_exits_when_config_load_fails(
 def test_main_dry_run_skips_browser_startup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
 ) -> None:
-    """dry_run では Chrome 確認と登録処理を呼ばないことを確認する。"""
-    config = _make_config(tmp_path, dry_run=True)
+    """TC-05-01: dry_run では Chrome 確認と登録処理を呼ばないことを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
     logger = Mock(spec=logging.Logger)
 
     monkeypatch.setattr(app_main, "load_config", Mock(return_value=config))
@@ -189,7 +290,9 @@ def test_main_dry_run_skips_browser_startup(
     build_mock = Mock(
         return_value=app_main.PreparedTransactions(
             detector=_FakeDetector(),
-            to_process=[_make_tx("TX001")],
+            to_process=[
+                transaction_factory(transaction_id="TX001", merchant="merchant-TX001"),
+            ],
             excluded_count=0,
             skip_count=0,
         ),
@@ -206,3 +309,59 @@ def test_main_dry_run_skips_browser_startup(
     build_mock.assert_called_once_with(config, logger)
     run_dry_run_mock.assert_called_once_with(logger, 1)
     run_registration_mock.assert_not_called()
+
+
+def test_main_dry_run_does_not_persist_processed_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """TC-05-02: dry_run の main フローが重複履歴を汚染しないことを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+    transaction = transaction_factory(transaction_id="TX001", merchant="merchant-TX001")
+
+    monkeypatch.setattr(app_main, "load_config", Mock(return_value=config))
+    monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
+    monkeypatch.setattr(app_main, "parse_csv", Mock(return_value=([transaction], [])))
+
+    app_main.main()
+
+    processed_file = tmp_path / AppConstants.PROCESSED_FILENAME
+    assert processed_file.exists() is False
+    assert LocalDuplicateDetector(config).is_duplicate(transaction) is False
+
+
+def test_ensure_chrome_stopped_exits_when_chrome_is_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    """TC-06-01: dry_run ではない状態で Chrome 稼働中なら終了することを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=False, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+
+    monkeypatch.setattr(app_main, "is_chrome_running", Mock(return_value=True))
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_main.ensure_chrome_stopped(config, logger)
+
+    assert exc_info.value.code == 1
+    logger.error.assert_called_once_with(_MSG_CHROME_RUNNING)
+
+
+def test_ensure_chrome_stopped_allows_when_chrome_is_not_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    """TC-06-02: Chrome 停止済みなら処理継続できることを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=False, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+
+    monkeypatch.setattr(app_main, "is_chrome_running", Mock(return_value=False))
+
+    app_main.ensure_chrome_stopped(config, logger)
+
+    logger.info.assert_called_once_with(_MSG_CHROME_STOPPED)

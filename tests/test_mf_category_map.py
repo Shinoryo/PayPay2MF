@@ -1,4 +1,8 @@
-﻿"""mf_category_map モジュールのテスト。"""
+﻿"""mf_category_map モジュールのテスト。
+
+対応テストケース:
+    TC-07-00A: カテゴリ対応表 override 確認
+"""
 
 from __future__ import annotations
 
@@ -13,7 +17,7 @@ if TYPE_CHECKING:
 
 
 def test_load_mf_category_map_uses_default_resource() -> None:
-    """既定の同梱カテゴリマップを読み込めることを確認する。"""
+    """TC-07-00A: 既定の同梱カテゴリマップを読み込めることを確認する。"""
     category_map = load_mf_category_map()
 
     assert category_map["食料品"] == "食費"
@@ -21,7 +25,7 @@ def test_load_mf_category_map_uses_default_resource() -> None:
 
 
 def test_load_mf_category_map_uses_override_file(tmp_path: Path) -> None:
-    """指定した YAML パスが既定リソースより優先されることを確認する。"""
+    """TC-07-00A: 指定した YAML パスが既定リソースより優先されることを確認する。"""
     override_file = tmp_path / "override.yml"
     override_file.write_text(
         "middle_to_large:\n  食料品: 特別な支出\n",
@@ -34,7 +38,7 @@ def test_load_mf_category_map_uses_override_file(tmp_path: Path) -> None:
 
 
 def test_load_mf_category_map_rejects_invalid_root(tmp_path: Path) -> None:
-    """middle_to_large が mapping でない場合に ValueError が送出されることを確認する。"""
+    """TC-07-00A: middle_to_large が mapping でない場合に TypeError が送出されることを確認する。"""
     invalid_file = tmp_path / "invalid.yml"
     invalid_file.write_text("middle_to_large: []\n", encoding="utf-8")
 
@@ -43,7 +47,7 @@ def test_load_mf_category_map_rejects_invalid_root(tmp_path: Path) -> None:
 
 
 def test_load_mf_category_map_rejects_invalid_entry(tmp_path: Path) -> None:
-    """空値を含むカテゴリマップを拒否することを確認する。"""
+    """TC-07-00A: 空値を含むカテゴリマップを拒否することを確認する。"""
     invalid_file = tmp_path / "invalid_entry.yml"
     invalid_file.write_text("middle_to_large:\n  食料品: ''\n", encoding="utf-8")
 

@@ -1,9 +1,20 @@
-﻿"""mf_page モジュールのテスト。"""
+﻿"""mf_page モジュールのテスト。
+
+対応テストレイヤー:
+    ui_contract: Fake Page を使った UI 操作契約の検証
+
+対応テストケース:
+    TC-07-00: 手入力モーダル起動確認の前提契約
+    TC-07-01: 取引登録操作のフォーム契約
+    TC-08-01: 未対応カテゴリ時の warning 契約
+"""
 
 from __future__ import annotations
 
 from datetime import datetime
 from unittest.mock import Mock
+
+import pytest
 
 from src import mf_selectors
 from src.constants import AppConstants
@@ -20,6 +31,8 @@ _AMOUNT_INPUT_VALUE = "920"
 _DEFAULT_MEMO = "支払い"
 _DEFAULT_MERCHANT = "モスのネット注文"
 _DEFAULT_TRANSACTION_ID = "TX001"
+
+pytestmark = pytest.mark.ui_contract
 
 
 class _FakeLocator:
@@ -87,7 +100,7 @@ def _make_tx(*, category: str = _DEFAULT_CATEGORY) -> Transaction:
 
 
 def test_open_navigates_to_moneyforward_page() -> None:
-    """open が Money Forward 入出金ページへ遷移し、手入力ボタンを待つことを確認する。"""
+    """TC-07-00: open が Money Forward 入出金ページへ遷移し、手入力ボタンを待つことを確認する。"""
     page = _FakePage()
     form_page = MFManualFormPage(
         page,
@@ -107,7 +120,7 @@ def test_open_navigates_to_moneyforward_page() -> None:
 
 
 def test_register_transaction_uses_selector_contract() -> None:
-    """register_transaction がセレクタ定義経由でフォーム入力を進めることを確認する。"""
+    """TC-07-01: register_transaction がセレクタ定義経由でフォーム入力を進めることを確認する。"""
     page = _FakePage()
     form_page = MFManualFormPage(
         page,
@@ -146,7 +159,7 @@ def test_register_transaction_uses_selector_contract() -> None:
 
 
 def test_register_transaction_warns_for_unknown_category() -> None:
-    """未対応カテゴリでは warning を出し、カテゴリ操作をスキップすることを確認する。"""
+    """TC-08-01: 未対応カテゴリでは warning を出し、カテゴリ操作をスキップすることを確認する。"""
     logger = Mock()
     page = _FakePage()
     form_page = MFManualFormPage(

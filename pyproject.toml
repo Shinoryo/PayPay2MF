@@ -31,7 +31,9 @@ src = ["mf_categories.yml"]
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
+    "integration_flow: orchestration and side-effect tests around the main application flow",
     "smoke_test: explicit Playwright smoke tests against a logged-in Money Forward profile",
+    "ui_contract: fake-based UI contract tests for Money Forward page and registrar interactions",
 ]
 
 [tool.ruff]
@@ -69,8 +71,10 @@ ignore = ["BLE001", "D", "ERA001", "INP001", "T201", "TRY401", "RUF001", "RUF002
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
+    "ANN001",  # fixture 引数は未注釈で簡潔に扱う
     "E501",     # テストデータの長い行
     "PLR2004",  # assert での数値比較（マジックナンバー）
+    "PLR0913",  # factory fixture は引数が多くなりやすい
     "S101",     # assert 文の使用
 ]
 

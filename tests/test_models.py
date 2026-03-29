@@ -1,13 +1,15 @@
-﻿"""models モジュールの既定値テスト。"""
+﻿"""models モジュールの既定値テスト。
+
+共通テストデータ生成の基礎整合性を確認する。
+"""
 
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from src.constants import AppConstants
 from src.models import (
-    AppConfig,
     DuplicateDetectionConfig,
     MappingRule,
     ParserConfig,
@@ -24,13 +26,15 @@ _DEFAULT_MEMO = "memo"
 _DEFAULT_MERCHANT = "merchant"
 _DEFAULT_TRANSACTION_ID = "TX001"
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
-def test_dataclass_defaults_match_app_constants(tmp_path: Path) -> None:
-    csv_file = tmp_path / _INPUT_CSV_FILENAME
-    csv_file.write_text(
-        AppConstants.EMPTY_STRING,
-        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
-    )
+
+def test_dataclass_defaults_match_app_constants(
+    tmp_path: Path,
+    app_config_factory,
+) -> None:
+    """dataclass の既定値が AppConstants と整合することを確認する。"""
 
     mapping_rule = MappingRule(keyword=_DEFAULT_KEYWORD, category=_DEFAULT_RULE_CATEGORY)
     transaction = Transaction(
@@ -43,13 +47,7 @@ def test_dataclass_defaults_match_app_constants(tmp_path: Path) -> None:
     )
     duplicate_detection = DuplicateDetectionConfig()
     parser = ParserConfig()
-    config = AppConfig(
-        chrome_user_data_dir=_DUMMY_CHROME_USER_DATA_DIR,
-        chrome_profile=_DEFAULT_CHROME_PROFILE,
-        dry_run=True,
-        input_csv=csv_file,
-        mf_account=_DEFAULT_MF_ACCOUNT,
-    )
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_name=_INPUT_CSV_FILENAME)
 
     assert mapping_rule.match_mode == AppConstants.DEFAULT_MATCH_MODE
     assert transaction.category == AppConstants.DEFAULT_CATEGORY
