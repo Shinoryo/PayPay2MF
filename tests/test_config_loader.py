@@ -612,6 +612,11 @@ def test_mapping_rule_invalid_match_mode(tmp_path: Path) -> None:
             "match_mode": _MATCH_MODE_INVALID,
         },
     ]
+    cfg_path = _write_config(tmp_path, data)
+    with pytest.raises(ValueError, match="match_mode"):
+        load_config(cfg_path)
+
+
 def test_mapping_rule_invalid_regex_is_rejected_at_load_time(tmp_path: Path) -> None:
     """regex モードの不正パターンは起動時に ValueError として拒否する。"""
     data = _base_data(tmp_path)
@@ -625,11 +630,6 @@ def test_mapping_rule_invalid_regex_is_rejected_at_load_time(tmp_path: Path) -> 
 
     with pytest.raises(ValueError, match="regex が不正"):
         load_config(_write_config(tmp_path, data))
-
-
-    cfg_path = _write_config(tmp_path, data)
-    with pytest.raises(ValueError, match="match_mode"):
-        load_config(cfg_path)
 
 
 def test_mapping_rules_must_be_list(tmp_path: Path) -> None:
