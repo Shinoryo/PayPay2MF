@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import logging
 import os
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -70,7 +71,7 @@ def setup_logger(config: AppConfig) -> logging.Logger:
 
     logger = logging.getLogger(_LOGGER_NAME)
     logger.setLevel(logging.DEBUG)
-    logger.handlers.clear()
+    _reset_logger_handlers(logger)
 
     fh = logging.FileHandler(log_file, encoding=AppConstants.DEFAULT_TEXT_ENCODING)
     fh.setLevel(_FILE_LOG_LEVEL)
@@ -85,6 +86,16 @@ def setup_logger(config: AppConfig) -> logging.Logger:
     _rotate_logs(config, logs_dir)
 
     return logger
+
+
+def _reset_logger_handlers(logger: logging.Logger) -> None:
+    """既存 handler を logger から外し、必要ならクローズする。"""
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+        with suppress(Exception):
+            handler.flush()
+        with suppress(Exception):
+            handler.close()
 
 
 def write_error_csv(
