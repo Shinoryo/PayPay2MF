@@ -15,8 +15,9 @@ if TYPE_CHECKING:
 
 from src.models import AppConfig, ParseFailure, Transaction
 
-# UTF8 BOM
-_UTF8_BOM = "\ufeff"
+_ENCODING_CHECK_CHUNK_SIZE = 8192
+_UTF8_ENCODING_NAMES = {"utf-8", "utf8"}
+_UTF8_SIG_ENCODING = "utf-8-sig"
 
 # エラーメッセージ定数
 _ERR_UNSUPPORTED_ENCODING = "対応するエンコーディングで読み込めません: {}"
@@ -79,11 +80,20 @@ def _can_read_with_encoding(path: Path, enc: str) -> bool:
     """
     try:
         with path.open(encoding=enc) as f:
-            f.read()
+            for chunk in iter(lambda: f.read(_ENCODING_CHECK_CHUNK_SIZE), ""):
+                if not chunk:
+                    break
     except (UnicodeDecodeError, LookupError):
         return False
     else:
         return True
+
+
+def _resolve_csv_encoding(encoding: str) -> str:
+    normalized = encoding.replace("_", "-").lower()
+    if normalized in _UTF8_ENCODING_NAMES:
+        return _UTF8_SIG_ENCODING
+    return encoding
 
 
 def _detect_encoding(path: Path, priority: list[str]) -> str:
@@ -119,12 +129,9 @@ def _read_rows(path: Path, encoding: str) -> list[CsvRow]:
     Returns:
         各行の物理行番号と辞書を組み合わせたリスト。
     """
-    with path.open(encoding=encoding, newline="") as f:
-        content = f.read()
-    # BOM 付き UTF-8 対応
-    content = content.lstrip(_UTF8_BOM)
-    reader = csv.DictReader(content.splitlines())
-    return [(i, dict(row)) for i, row in enumerate(reader, start=2)]
+    with path.open(encoding=_resolve_csv_encoding(encoding), newline="") as f:
+        reader = csv.DictReader(f)
+        return [(i, dict(row)) for i, row in enumerate(reader, start=2)]
 
 
 def _parse_amount(s: str | None) -> int:

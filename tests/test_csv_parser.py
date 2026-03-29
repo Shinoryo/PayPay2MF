@@ -7,6 +7,7 @@
     TC-02-04: ポイント入金のパース
     TC-02-05: UTF-8 エンコーディング
     TC-02-06: Shift_JIS エンコーディング
+    TC-02-07: BOM 付き UTF-8 エンコーディング
 """
 from __future__ import annotations
 
@@ -126,6 +127,25 @@ def test_encoding_sjis() -> None:
     assert any(t.merchant == "モスのネット注文" for t in txs)
 
 
+def test_encoding_utf8_bom(tmp_path: Path) -> None:
+    """TC-02-07: UTF-8 BOM 付き CSV ファイルが正しく読み込まれることを確認する。"""
+    csv_content = (
+        "取引日,出金金額（円）,入金金額（円）,海外出金金額,通貨,変換レート（円）,"
+        "利用国,取引内容,取引先,取引方法,支払い区分,利用者,取引番号\r\n"
+        "2025/02/11 19:24:02,920,-,-,-,-,-,支払い,モスのネット注文,"
+        "クレジット VISA 4575,-,本人,BOM001\r\n"
+    )
+    csv_file = tmp_path / "bom.csv"
+    csv_file.write_text(csv_content, encoding="utf-8-sig")
+
+    txs, failures = parse_csv(csv_file, _make_config(csv_file))
+
+    assert failures == []
+    assert len(txs) == 1
+    assert txs[0].transaction_id == "BOM001"
+    assert txs[0].merchant == "モスのネット注文"
+
+
 # 海外取引のメモ追記
 def test_foreign_transaction_memo() -> None:
     """海外取引の memo に国・通貨情報が追記されることを確認する。"""
@@ -160,6 +180,27 @@ def test_parse_csv_collects_invalid_rows(tmp_path: Path) -> None:
     assert len(failures) == 1
     assert failures[0].transaction_id == "BAD001"
     assert failures[0].error_type == "invalid_date"
+    assert failures[0].row_index == 3
+
+
+def test_parse_csv_bom_preserves_row_index_for_invalid_rows(tmp_path: Path) -> None:
+    """BOM 付き UTF-8 でも ParseFailure の row_index が物理行番号を維持することを確認する。"""
+    csv_content = (
+        "取引日,出金金額（円）,入金金額（円）,海外出金金額,通貨,変換レート（円）,"
+        "利用国,取引内容,取引先,取引方法,支払い区分,利用者,取引番号\r\n"
+        "2025/02/11 19:24:02,920,-,-,-,-,-,支払い,モスのネット注文,"
+        "クレジット VISA 4575,-,本人,OK001\r\n"
+        ",-,-,-,-,-,-,支払い,giftee,PayPayポイント,-,-,BAD001\r\n"
+    )
+    csv_file = tmp_path / "mixed_bom.csv"
+    csv_file.write_text(csv_content, encoding="utf-8-sig")
+
+    txs, failures = parse_csv(csv_file, _make_config(csv_file))
+
+    assert len(txs) == 1
+    assert txs[0].transaction_id == "OK001"
+    assert len(failures) == 1
+    assert failures[0].transaction_id == "BAD001"
     assert failures[0].row_index == 3
 
 
