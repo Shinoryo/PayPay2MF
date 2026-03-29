@@ -224,6 +224,41 @@ def test_build_transactions_exits_when_duplicate_history_is_corrupted(
     )
 
 
+def test_build_transactions_exits_when_duplicate_history_schema_is_invalid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """不正スキーマの processed.json でも明示エラーで終了することを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+    transaction = transaction_factory(transaction_id="TX001", merchant="merchant-TX001")
+    processed_file = tmp_path / AppConstants.PROCESSED_FILENAME
+    processed_file.write_text(
+        "[]",
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
+
+    monkeypatch.setattr(
+        app_main,
+        "parse_csv",
+        Mock(return_value=([transaction], [])),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_main.build_transactions(config, logger)
+
+    assert exc_info.value.code == 1
+    logger.exception.assert_called_once()
+    log_args = logger.exception.call_args.args
+    assert log_args[0] == "重複履歴ファイルの読み込みに失敗しました: %s"
+    assert "processed.json が破損しているため読み込めません" in log_args[1]
+    backup_files = list(tmp_path.glob("processed.corrupted_*.json"))
+    assert len(backup_files) == 1
+    assert processed_file.exists() is False
+
+
 def test_build_transactions_exits_when_gcloud_dependency_is_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

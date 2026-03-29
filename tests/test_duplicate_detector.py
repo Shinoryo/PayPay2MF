@@ -370,6 +370,70 @@ def test_local_corrupted_history_is_backed_up_and_raises_explicit_error(
     )
 
 
+@pytest.mark.parametrize(
+    ("payload", "expected_backup_payload"),
+    [
+        ([], []),
+        ({"transaction_ids": {}, "fallback_keys": []}, {
+            "transaction_ids": {},
+            "fallback_keys": [],
+        }),
+        ({"transaction_ids": [], "fallback_keys": {}}, {
+            "transaction_ids": [],
+            "fallback_keys": {},
+        }),
+        ({
+            "transaction_ids": [],
+            "fallback_keys": [
+                {
+                    "datetime": "2025-01-01T12:00:00",
+                    "amount": "100",
+                    "merchant": "broken",
+                }
+            ],
+        }, {
+            "transaction_ids": [],
+            "fallback_keys": [
+                {
+                    "datetime": "2025-01-01T12:00:00",
+                    "amount": "100",
+                    "merchant": "broken",
+                }
+            ],
+        }),
+    ],
+    ids=[
+        "root_list",
+        "transaction_ids_not_list",
+        "fallback_keys_not_list",
+        "fallback_entry_invalid_amount",
+    ],
+)
+def test_local_corrupted_history_schema_is_backed_up_and_raises_explicit_error(
+    tmp_path: Path,
+    app_config_factory,
+    payload: object,
+    expected_backup_payload: object,
+) -> None:
+    """不正スキーマの processed.json は退避され、明示エラーに変換される。"""
+    config = app_config_factory(tmp_path, input_csv_name="dummy.csv")
+    processed_file = tmp_path / AppConstants.PROCESSED_FILENAME
+    processed_file.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
+
+    with pytest.raises(DuplicateHistoryError, match=r"processed\.json"):
+        LocalDuplicateDetector(config)
+
+    backup_files = list(tmp_path.glob("processed.corrupted_*.json"))
+    assert len(backup_files) == 1
+    assert processed_file.exists() is False
+    assert json.loads(
+        backup_files[0].read_text(encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+    ) == expected_backup_payload
+
+
 def test_local_dry_run_does_not_persist(
     tmp_path: Path,
     app_config_factory,

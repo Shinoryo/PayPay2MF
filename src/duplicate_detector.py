@@ -227,12 +227,10 @@ class LocalDuplicateDetector:
                 with self._store_path.open(
                     encoding=AppConstants.DEFAULT_TEXT_ENCODING,
                 ) as f:
-                    self._data = json.load(f)
-                self._data.setdefault(_KEY_TX_IDS, [])
-                self._data.setdefault(_KEY_FALLBACK, [])
+                    self._data = self._validate_loaded_data(json.load(f))
                 self._tx_ids = set(self._data[_KEY_TX_IDS])
                 self._dirty = False
-            except json.JSONDecodeError as exc:
+            except (json.JSONDecodeError, ValueError) as exc:
                 backup_path = self._backup_corrupted_store()
                 msg = (
                     "processed.json が破損しているため読み込めません。"
@@ -241,6 +239,45 @@ class LocalDuplicateDetector:
                 raise DuplicateHistoryError(msg) from exc
         else:
             self._tx_ids = set(self._data[_KEY_TX_IDS])
+
+    def _validate_loaded_data(self, loaded_data: object) -> dict:
+        if not isinstance(loaded_data, dict):
+            raise ValueError("processed.json のルートは object である必要があります")
+
+        loaded_data.setdefault(_KEY_TX_IDS, [])
+        loaded_data.setdefault(_KEY_FALLBACK, [])
+
+        transaction_ids = loaded_data[_KEY_TX_IDS]
+        fallback_entries = loaded_data[_KEY_FALLBACK]
+
+        if not isinstance(transaction_ids, list):
+            raise ValueError("transaction_ids は list である必要があります")
+        if not isinstance(fallback_entries, list):
+            raise ValueError("fallback_keys は list である必要があります")
+
+        for transaction_id in transaction_ids:
+            if not isinstance(transaction_id, str):
+                raise ValueError("transaction_ids の要素は文字列である必要があります")
+
+        for entry in fallback_entries:
+            self._validate_fallback_entry(entry)
+
+        return loaded_data
+
+    def _validate_fallback_entry(self, entry: object) -> None:
+        if not isinstance(entry, dict):
+            raise ValueError("fallback_keys の要素は object である必要があります")
+
+        datetime_value = entry.get(_KEY_DATETIME)
+        amount_value = entry.get(_KEY_AMOUNT)
+        merchant_value = entry.get(_KEY_MERCHANT)
+
+        if not isinstance(datetime_value, str):
+            raise ValueError("fallback_keys.datetime は文字列である必要があります")
+        if not isinstance(amount_value, int) or isinstance(amount_value, bool):
+            raise ValueError("fallback_keys.amount は整数である必要があります")
+        if not isinstance(merchant_value, str):
+            raise ValueError("fallback_keys.merchant は文字列である必要があります")
 
     def _save(self) -> None:
         """処理済みデータを JSON ファイルに書き出す。"""

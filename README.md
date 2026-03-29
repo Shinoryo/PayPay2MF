@@ -180,7 +180,7 @@ mf_account: "PayPay残高"
   アプリ内でタイムゾーン変換は行わない。
 - `duplicate_detection.backend: "local"` は処理済み取引を実行中はメモリに保持し、
   登録ループ終了時に `processed.json` を 1 回だけ原子的に更新する。
-- `duplicate_detection.backend: "local"` で `processed.json` が破損していた場合、
+- `duplicate_detection.backend: "local"` で `processed.json` が破損または不正スキーマだった場合、
   退避ファイル名 `processed.corrupted_YYYYMMDD_HHMMSS_ffffff.json` の
   タイムスタンプは UTC で付与する。
 - ログや `parse_error_*.csv`、`error_*.csv` など通常の出力ファイル名は、
