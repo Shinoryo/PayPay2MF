@@ -25,6 +25,43 @@ if TYPE_CHECKING:
     from src.models import AppConfig, ParseFailure, Transaction
 
 
+# 設定読み込みと標準出力に使う定数。
+_CONFIG_FILENAME = "config.yml"
+_STDERR_CONFIG_LOAD_FAILED = "[ERROR] 設定ファイルの読み込みに失敗しました:\n{}"
+
+# 実行フローのログ文言に使う定数。
+_LOG_MSG_CHROME_RUNNING = (
+    "Chrome が起動中です。Chrome を終了してから再実行してください。"
+)
+_LOG_MSG_CHROME_STOPPED = "Chrome 稼働チェック: 停止済み"
+_LOG_MSG_PARSE_FAILURE_COUNT = "CSV 解析失敗: %d件"
+_LOG_MSG_PARSE_ERROR_CSV_WRITTEN = "解析エラーCSVを出力しました: %s"
+_LOG_MSG_PARSE_ERROR_CSV_SENSITIVE = (
+    "解析エラーCSVは機微情報を含む可能性があります。共有しないでください。"
+)
+_LOG_MSG_CSV_READ_FAILED = "CSV 読み込みに失敗しました"
+_LOG_MSG_CSV_READ_COMPLETE = "CSV 読み込み完了: 正常 %d件 / 解析失敗 %d件"
+_LOG_MSG_EXCLUDED_COUNT = "除外: %d件"
+_LOG_MSG_DUPLICATE_SKIP_COUNT = "重複スキップ: %d件"
+_LOG_MSG_TO_PROCESS_COUNT = "処理対象: %d件"
+_LOG_MSG_DRY_RUN_COMPLETE = "ドライラン完了: 登録対象 %d件"
+_LOG_MSG_APP_EXIT = "アプリケーションを終了します"
+_LOG_MSG_REGISTER_FAILED = "登録失敗 (%d/%d): %s"
+_LOG_MSG_REGISTRATION_BOOT_FAILED = "Chrome の起動またはMFへの遷移に失敗しました"
+_LOG_MSG_SUMMARY = "実行完了: 成功 %d件 / 除外 %d件 / 重複スキップ %d件 / 失敗 %d件"
+_LOG_MSG_ERROR_CSV_WRITTEN = "登録失敗CSVを出力しました: %s"
+_LOG_MSG_ERROR_CSV_SENSITIVE = (
+    "登録失敗CSVは機微情報を含む可能性があります。共有しないでください。"
+)
+_LOG_MSG_LOG_DIR_SENSITIVE = (
+    "logs_dir 配下のログ、CSV、PNG は機微情報を含む可能性があります。"
+    "ローカル保管とし、共有やクラウド同期を避けてください。"
+)
+_LOG_MSG_DRY_RUN_MODE = "DRY RUN: ブラウザを起動しません。CSV診断のみ実行します。"
+_LOG_MSG_CONFIG_LOADED = "config.yml を読み込みました"
+_LOG_MSG_NO_TRANSACTIONS = "登録対象がないためブラウザを起動しません。"
+
+
 @dataclass(slots=True)
 class PreparedTransactions:
     detector: DuplicateDetector
@@ -44,12 +81,10 @@ def ensure_chrome_stopped(config: AppConfig, logger: logging.Logger) -> None:
         return
 
     if is_chrome_running():
-        logger.error(
-            "Chrome が起動中です。Chrome を終了してから再実行してください。",
-        )
+        logger.error(_LOG_MSG_CHROME_RUNNING)
         sys.exit(1)
 
-    logger.info("Chrome 稼働チェック: 停止済み")
+    logger.info(_LOG_MSG_CHROME_STOPPED)
 
 
 def _log_parse_failures(
@@ -61,11 +96,9 @@ def _log_parse_failures(
         return
 
     parse_error_csv_path = write_parse_error_csv(parse_failures, config)
-    logger.warning("CSV 解析失敗: %d件", len(parse_failures))
-    logger.warning("解析エラーCSVを出力しました: %s", parse_error_csv_path.name)
-    logger.warning(
-        "解析エラーCSVは機微情報を含む可能性があります。共有しないでください。",
-    )
+    logger.warning(_LOG_MSG_PARSE_FAILURE_COUNT, len(parse_failures))
+    logger.warning(_LOG_MSG_PARSE_ERROR_CSV_WRITTEN, parse_error_csv_path.name)
+    logger.warning(_LOG_MSG_PARSE_ERROR_CSV_SENSITIVE)
 
 
 def build_transactions(
@@ -75,19 +108,15 @@ def build_transactions(
     try:
         transactions, parse_failures = parse_csv(config.input_csv, config)
     except Exception:
-        logger.exception("CSV 読み込みに失敗しました")
+        logger.exception(_LOG_MSG_CSV_READ_FAILED)
         sys.exit(1)
 
     _log_parse_failures(parse_failures, config, logger)
 
-    logger.info(
-        "CSV 読み込み完了: 正常 %d件 / 解析失敗 %d件",
-        len(transactions),
-        len(parse_failures),
-    )
+    logger.info(_LOG_MSG_CSV_READ_COMPLETE, len(transactions), len(parse_failures))
 
     passed, excluded = apply_exclude(transactions, config.exclude_prefixes)
-    logger.info("除外: %d件", len(excluded))
+    logger.info(_LOG_MSG_EXCLUDED_COUNT, len(excluded))
 
     mapped = apply_mapping(passed, config.mapping_rules)
 
@@ -101,8 +130,8 @@ def build_transactions(
             continue
         to_process.append(tx)
 
-    logger.info("重複スキップ: %d件", skip_count)
-    logger.info("処理対象: %d件", len(to_process))
+    logger.info(_LOG_MSG_DUPLICATE_SKIP_COUNT, skip_count)
+    logger.info(_LOG_MSG_TO_PROCESS_COUNT, len(to_process))
 
     return PreparedTransactions(
         detector=detector,
@@ -113,8 +142,8 @@ def build_transactions(
 
 
 def run_dry_run(logger: logging.Logger, to_process_count: int) -> None:
-    logger.info("ドライラン完了: 登録対象 %d件", to_process_count)
-    logger.info("アプリケーションを終了します")
+    logger.info(_LOG_MSG_DRY_RUN_COMPLETE, to_process_count)
+    logger.info(_LOG_MSG_APP_EXIT)
 
 
 def _register_transaction(
@@ -131,12 +160,7 @@ def _register_transaction(
         registrar.register(tx)
         detector.mark_processed(tx)
     except Exception as exc:
-        logger.exception(
-            "登録失敗 (%d/%d): %s",
-            index,
-            total_count,
-            exc,
-        )
+        logger.exception(_LOG_MSG_REGISTER_FAILED, index, total_count, exc)
         return str(exc)
 
     return None
@@ -167,7 +191,7 @@ def run_registration(
 
                 failed_records.append(error_message)
     except Exception:
-        logger.exception("Chrome の起動またはMFへの遷移に失敗しました")
+        logger.exception(_LOG_MSG_REGISTRATION_BOOT_FAILED)
         sys.exit(1)
 
     return RegistrationResult(
@@ -183,7 +207,7 @@ def log_summary(
     registration_result: RegistrationResult,
 ) -> None:
     logger.info(
-        "実行完了: 成功 %d件 / 除外 %d件 / 重複スキップ %d件 / 失敗 %d件",
+        _LOG_MSG_SUMMARY,
         registration_result.success_count,
         prepared.excluded_count,
         prepared.skip_count,
@@ -192,10 +216,8 @@ def log_summary(
 
     if registration_result.failed_records:
         error_csv_path = write_error_csv(registration_result.failed_records, config)
-        logger.warning("登録失敗CSVを出力しました: %s", error_csv_path.name)
-        logger.warning(
-            "登録失敗CSVは機微情報を含む可能性があります。共有しないでください。",
-        )
+        logger.warning(_LOG_MSG_ERROR_CSV_WRITTEN, error_csv_path.name)
+        logger.warning(_LOG_MSG_ERROR_CSV_SENSITIVE)
 
 
 def main() -> None:
@@ -211,24 +233,21 @@ def main() -> None:
         7. MF 登録（dry_run の場合は診断ログを出力）
         8. サマリーログ出力・エラー CSV 書き出し
     """
-    config_path = Path(__file__).parent / "config.yml"
+    config_path = Path(__file__).parent / _CONFIG_FILENAME
 
     try:
         config = load_config(config_path)
     except (FileNotFoundError, ValueError) as e:
-        print(f"[ERROR] 設定ファイルの読み込みに失敗しました:\n{e}")
+        print(_STDERR_CONFIG_LOAD_FAILED.format(e))
         sys.exit(1)
 
     logger = setup_logger(config)
-    logger.warning(
-        "logs_dir 配下のログ、CSV、PNG は機微情報を含む可能性があります。"
-        "ローカル保管とし、共有やクラウド同期を避けてください。",
-    )
+    logger.warning(_LOG_MSG_LOG_DIR_SENSITIVE)
 
     if config.dry_run:
-        logger.info("DRY RUN: ブラウザを起動しません。CSV診断のみ実行します。")
+        logger.info(_LOG_MSG_DRY_RUN_MODE)
 
-    logger.info("config.yml を読み込みました")
+    logger.info(_LOG_MSG_CONFIG_LOADED)
 
     ensure_chrome_stopped(config, logger)
     prepared = build_transactions(config, logger)
@@ -238,8 +257,8 @@ def main() -> None:
         return
 
     if not prepared.to_process:
-        logger.info("登録対象がないためブラウザを起動しません。")
-        logger.info("アプリケーションを終了します")
+        logger.info(_LOG_MSG_NO_TRANSACTIONS)
+        logger.info(_LOG_MSG_APP_EXIT)
         return
 
     registration_result = run_registration(
@@ -256,7 +275,7 @@ def main() -> None:
         registration_result,
     )
 
-    logger.info("アプリケーションを終了します")
+    logger.info(_LOG_MSG_APP_EXIT)
 
 
 if __name__ == "__main__":

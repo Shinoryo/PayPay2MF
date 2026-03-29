@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+from src.constants import AppConstants
 from src.models import (
     AdvancedConfig,
     AppConfig,
@@ -18,12 +19,6 @@ from src.models import (
     MappingRule,
     ParserConfig,
 )
-
-# エンコーディング
-_YAML_ENCODING = "utf-8"
-
-# 拡張子
-_CSV_EXTENSION = ".csv"
 
 # 設定ファイル キー名 トップレベル
 _KEY_CHROME_USER_DATA_DIR = "chrome_user_data_dir"
@@ -63,14 +58,9 @@ _KEY_RULE_MATCH_MODE = "match_mode"
 _KEY_RULE_PRIORITY = "priority"
 
 # デフォルト値
-_DEFAULT_MATCH_MODE = "contains"
 _DEFAULT_PRIORITY = 0
-_DEFAULT_BACKEND = "local"
 _DEFAULT_TOLERANCE_SECONDS = 60
-_DEFAULT_ENCODING_PRIORITY: list[str] = ["utf-8", "shift_jis"]
-_DEFAULT_DATE_FORMATS: list[str] = ["%Y/%m/%d %H:%M:%S"]
 _DEFAULT_SCREENSHOT_ON_ERROR = False
-_DEFAULT_EXCLUDE_PREFIXES: list[str] = ["PPCD_A_"]
 
 # エラーメッセージ
 _MSG_CONFIG_NOT_FOUND = "config.yml が見つかりません: {path}"
@@ -114,9 +104,6 @@ _MSG_MF_CATEGORIES_NOT_EXIST = (
     "advanced.mf_categories_path のファイルが存在しません: {path}"
 )
 
-# 検証設定
-_VALID_MATCH_MODES: frozenset[str] = frozenset({"contains", "starts_with", "regex"})
-
 _REQUIRED_KEYS: dict[str, str] = {
     _KEY_CHROME_USER_DATA_DIR: _MSG_REQUIRED_CHROME_USER_DATA_DIR,
     _KEY_CHROME_PROFILE: _MSG_REQUIRED_CHROME_PROFILE,
@@ -142,7 +129,7 @@ def load_config(path: Path) -> AppConfig:
     if not path.exists():
         raise FileNotFoundError(_MSG_CONFIG_NOT_FOUND.format(path=path))
 
-    with path.open(encoding=_YAML_ENCODING) as f:
+    with path.open(encoding=AppConstants.DEFAULT_TEXT_ENCODING) as f:
         raw: dict = yaml.safe_load(f) or {}
 
     _validate_required(raw)
@@ -151,7 +138,7 @@ def load_config(path: Path) -> AppConfig:
         skip_chrome_validation=raw[_KEY_DRY_RUN],
         config_dir=path.parent,
     )
-    _validate_mapping_rules(raw.get("mapping_rules") or [])
+    _validate_mapping_rules(raw.get(_KEY_MAPPING_RULES) or [])
     _validate_gcloud(raw)
     return _build_config(raw, config_dir=path.parent)
 
@@ -209,7 +196,7 @@ def _validate_paths(
     input_csv = Path(str(raw[_KEY_INPUT_CSV]))
     if not input_csv.exists():
         errors.append(_MSG_INPUT_CSV_NOT_EXIST.format(path=input_csv))
-    elif input_csv.suffix.lower() != _CSV_EXTENSION:
+    elif input_csv.suffix.lower() != AppConstants.CSV_EXTENSION:
         errors.append(_MSG_INPUT_CSV_BAD_EXT.format(path=input_csv))
 
     advanced_raw = raw.get(_KEY_ADVANCED) or {}
@@ -250,9 +237,9 @@ def _validate_mapping_rules(rules: list) -> None:
             errors.append(_MSG_MAPPING_KEYWORD_EMPTY.format(i=i))
         if not rule.get(_KEY_RULE_CATEGORY):
             errors.append(_MSG_MAPPING_CATEGORY_EMPTY.format(i=i))
-        mode = rule.get(_KEY_RULE_MATCH_MODE, _DEFAULT_MATCH_MODE)
-        if mode not in _VALID_MATCH_MODES:
-            valids = ", ".join(sorted(_VALID_MATCH_MODES))
+        mode = rule.get(_KEY_RULE_MATCH_MODE, AppConstants.DEFAULT_MATCH_MODE)
+        if mode not in AppConstants.VALID_MATCH_MODES:
+            valids = ", ".join(sorted(AppConstants.VALID_MATCH_MODES))
             errors.append(
                 _MSG_MAPPING_MATCH_MODE_INVALID.format(i=i, mode=mode, valids=valids),
             )
@@ -271,10 +258,10 @@ def _validate_gcloud(raw: dict) -> None:
             未設定の場合、または認証情報ファイルが存在しない場合。
     """
     dd = raw.get(_KEY_DUPLICATE_DETECTION) or {}
-    backend = dd.get(_KEY_DD_BACKEND, _DEFAULT_BACKEND)
+    backend = dd.get(_KEY_DD_BACKEND, AppConstants.DEFAULT_BACKEND)
     creds = raw.get(_KEY_GCLOUD_CREDENTIALS_PATH)
 
-    if backend == "gcloud" and not creds:
+    if backend == AppConstants.BACKEND_GCLOUD and not creds:
         raise ValueError(_MSG_GCLOUD_CREDS_REQUIRED)
 
     if creds and not Path(str(creds)).exists():
@@ -295,7 +282,7 @@ def _build_config(raw: dict, *, config_dir: Path) -> AppConfig:
         MappingRule(
             keyword=r[_KEY_RULE_KEYWORD],
             category=r[_KEY_RULE_CATEGORY],
-            match_mode=r.get(_KEY_RULE_MATCH_MODE, _DEFAULT_MATCH_MODE),
+            match_mode=r.get(_KEY_RULE_MATCH_MODE, AppConstants.DEFAULT_MATCH_MODE),
             priority=r.get(_KEY_RULE_PRIORITY, _DEFAULT_PRIORITY),
         )
         for r in (raw.get(_KEY_MAPPING_RULES) or [])
@@ -303,7 +290,7 @@ def _build_config(raw: dict, *, config_dir: Path) -> AppConfig:
 
     dd_raw = raw.get(_KEY_DUPLICATE_DETECTION) or {}
     dup = DuplicateDetectionConfig(
-        backend=dd_raw.get(_KEY_DD_BACKEND, _DEFAULT_BACKEND),
+        backend=dd_raw.get(_KEY_DD_BACKEND, AppConstants.DEFAULT_BACKEND),
         tolerance_seconds=dd_raw.get(
             _KEY_DD_TOLERANCE_SECONDS, _DEFAULT_TOLERANCE_SECONDS,
         ),
@@ -312,10 +299,12 @@ def _build_config(raw: dict, *, config_dir: Path) -> AppConfig:
     parser_raw = raw.get(_KEY_PARSER) or {}
     parser = ParserConfig(
         encoding_priority=parser_raw.get(
-            _KEY_PARSER_ENCODING_PRIORITY, _DEFAULT_ENCODING_PRIORITY,
+            _KEY_PARSER_ENCODING_PRIORITY,
+            list(AppConstants.DEFAULT_ENCODING_PRIORITY),
         ),
         date_formats=parser_raw.get(
-            _KEY_PARSER_DATE_FORMATS, _DEFAULT_DATE_FORMATS,
+            _KEY_PARSER_DATE_FORMATS,
+            list(AppConstants.DEFAULT_DATE_FORMATS),
         ),
     )
 
@@ -346,7 +335,8 @@ def _build_config(raw: dict, *, config_dir: Path) -> AppConfig:
         input_csv=Path(str(raw[_KEY_INPUT_CSV])),
         mf_account=str(raw[_KEY_MF_ACCOUNT]),
         mapping_rules=mapping_rules,
-        exclude_prefixes=raw.get(_KEY_EXCLUDE_PREFIXES) or _DEFAULT_EXCLUDE_PREFIXES,
+        exclude_prefixes=raw.get(_KEY_EXCLUDE_PREFIXES)
+        or list(AppConstants.DEFAULT_EXCLUDE_PREFIXES),
         gcloud_credentials_path=Path(str(creds)) if creds else None,
         duplicate_detection=dup,
         parser=parser,

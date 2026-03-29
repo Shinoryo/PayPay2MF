@@ -6,8 +6,20 @@ from datetime import datetime
 from unittest.mock import Mock
 
 from src import mf_selectors
+from src.constants import AppConstants
 from src.mf_page import MFManualFormPage
 from src.models import Transaction
+
+_DEFAULT_OPTION_VALUE = "account-001"
+_DEFAULT_ACCOUNT_NAME = "PayPay残高"
+_DEFAULT_CATEGORY = "食料品"
+_DEFAULT_LARGE_CATEGORY = "食費"
+_UNKNOWN_CATEGORY = "未知カテゴリ"
+_DATE_INPUT_VALUE = "2025/01/01"
+_AMOUNT_INPUT_VALUE = "920"
+_DEFAULT_MEMO = "支払い"
+_DEFAULT_MERCHANT = "モスのネット注文"
+_DEFAULT_TRANSACTION_ID = "TX001"
 
 
 class _FakeLocator:
@@ -40,7 +52,7 @@ class _FakeLocator:
 
 
 class _FakePage:
-    def __init__(self, *, option_value: str | None = "account-001") -> None:
+    def __init__(self, *, option_value: str | None = _DEFAULT_OPTION_VALUE) -> None:
         self.actions: list[tuple] = []
         self._option_value = option_value
 
@@ -62,14 +74,14 @@ class _FakePage:
         self.actions.append(("wait_for_selector", selector, timeout))
 
 
-def _make_tx(*, category: str = "食料品") -> Transaction:
+def _make_tx(*, category: str = _DEFAULT_CATEGORY) -> Transaction:
     return Transaction(
         date=datetime(2025, 1, 1, 12, 0, 0),  # noqa: DTZ001
         amount=920,
-        direction="out",
-        memo="支払い",
-        merchant="モスのネット注文",
-        transaction_id="TX001",
+        direction=AppConstants.DIRECTION_OUT,
+        memo=_DEFAULT_MEMO,
+        merchant=_DEFAULT_MERCHANT,
+        transaction_id=_DEFAULT_TRANSACTION_ID,
         category=category,
     )
 
@@ -80,8 +92,8 @@ def test_open_navigates_to_moneyforward_page() -> None:
     form_page = MFManualFormPage(
         page,
         Mock(),
-        "PayPay残高",
-        category_map={"食料品": "食費"},
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
     )
 
     form_page.open()
@@ -100,8 +112,8 @@ def test_register_transaction_uses_selector_contract() -> None:
     form_page = MFManualFormPage(
         page,
         Mock(),
-        "PayPay残高",
-        category_map={"食料品": "食費"},
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
     )
 
     form_page.register_transaction(_make_tx())
@@ -111,17 +123,17 @@ def test_register_transaction_uses_selector_contract() -> None:
     assert (
         "fill",
         f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.DATE_INPUT}",
-        "2025/01/01",
+        _DATE_INPUT_VALUE,
     ) in page.actions
     assert (
         "fill",
         f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.AMOUNT_INPUT}",
-        "920",
+        _AMOUNT_INPUT_VALUE,
     ) in page.actions
     assert (
         "select_option",
         f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.ACCOUNT_SELECT}",
-        {"value": "account-001"},
+        {"value": _DEFAULT_OPTION_VALUE},
     ) in page.actions
     assert (
         "locator_click",
@@ -140,10 +152,10 @@ def test_register_transaction_warns_for_unknown_category() -> None:
     form_page = MFManualFormPage(
         page,
         logger,
-        "PayPay残高",
-        category_map={"食料品": "食費"},
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
     )
 
-    form_page.register_transaction(_make_tx(category="未知カテゴリ"))
+    form_page.register_transaction(_make_tx(category=_UNKNOWN_CATEGORY))
 
     logger.warning.assert_called_once()

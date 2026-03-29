@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import psutil
 
-# 比較対象のプロセス名
-_CHROME_EXE = "chrome.exe"
+from src.constants import AppConstants
+
+# psutil の参照キーに使う定数。
+_PROCESS_INFO_NAME = "name"
 
 
 def is_chrome_running() -> bool:
@@ -20,6 +22,7 @@ def is_chrome_running() -> bool:
         Chrome が起動中であれば True、そうでなければ False。
     """
     return any(
-        p.info["name"] and p.info["name"].lower() == _CHROME_EXE
-        for p in psutil.process_iter(["name"])
+        p.info[_PROCESS_INFO_NAME]
+        and p.info[_PROCESS_INFO_NAME].lower() == AppConstants.CHROME_EXECUTABLE
+        for p in psutil.process_iter([_PROCESS_INFO_NAME])
     )

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from src.constants import AppConstants
 from src.models import AdvancedConfig, AppConfig, LogSettings
 
 _RUN_SMOKE_ENV = "PAYPAY2MF_RUN_SMOKE_TEST"
@@ -14,12 +15,16 @@ _CHROME_USER_DATA_ENV = "PAYPAY2MF_SMOKE_CHROME_USER_DATA_DIR"
 _CHROME_PROFILE_ENV = "PAYPAY2MF_SMOKE_CHROME_PROFILE"
 _MF_ACCOUNT_ENV = "PAYPAY2MF_SMOKE_MF_ACCOUNT"
 _LOGS_DIR_ENV = "PAYPAY2MF_SMOKE_LOGS_DIR"
+_SMOKE_MARK_NAME = "smoke_test"
+_SMOKE_ENABLED_VALUE = "1"
+_SMOKE_LOG_DIR_PREFIX = "mf-smoke-logs"
+_SMOKE_PLACEHOLDER_CSV = "smoke-placeholder.csv"
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """明示実行でない smoke_test を自動 skip する。"""
-    run_smoke = os.getenv(_RUN_SMOKE_ENV) == "1"
-    smoke_selected = "smoke_test" in (config.option.markexpr or "")
+    run_smoke = os.getenv(_RUN_SMOKE_ENV) == _SMOKE_ENABLED_VALUE
+    smoke_selected = _SMOKE_MARK_NAME in (config.option.markexpr or AppConstants.EMPTY_STRING)
     if run_smoke and smoke_selected:
         return
 
@@ -30,7 +35,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         ),
     )
     for item in items:
-        if "smoke_test" in item.keywords:
+        if _SMOKE_MARK_NAME in item.keywords:
             item.add_marker(skip_marker)
 
 
@@ -51,10 +56,13 @@ def mf_smoke_config(tmp_path_factory: pytest.TempPathFactory) -> AppConfig:
     logs_dir = (
         Path(logs_dir_raw)
         if logs_dir_raw
-        else tmp_path_factory.mktemp("mf-smoke-logs")
+        else tmp_path_factory.mktemp(_SMOKE_LOG_DIR_PREFIX)
     )
-    input_csv = logs_dir / "smoke-placeholder.csv"
-    input_csv.write_text("", encoding="utf-8")
+    input_csv = logs_dir / _SMOKE_PLACEHOLDER_CSV
+    input_csv.write_text(
+        AppConstants.EMPTY_STRING,
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
 
     return AppConfig(
         chrome_user_data_dir=os.environ[_CHROME_USER_DATA_ENV],

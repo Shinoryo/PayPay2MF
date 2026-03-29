@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from src.constants import AppConstants
+
 if TYPE_CHECKING:
     from src.models import MappingRule, Transaction
 
@@ -33,7 +35,7 @@ def apply_exclude(
     excluded: list[Transaction] = []
 
     for tx in records:
-        tid = tx.transaction_id or ""
+        tid = tx.transaction_id or AppConstants.EMPTY_STRING
         if any(tid.startswith(p) for p in prefixes):
             excluded.append(tx)
         else:
@@ -83,7 +85,7 @@ def _match_category(
     for rule in sorted_rules:
         if _matches(merchant, rule):
             return rule.category
-    return "未分類"
+    return AppConstants.DEFAULT_CATEGORY
 
 
 def _matches(merchant: str, rule: MappingRule) -> bool:
@@ -96,10 +98,10 @@ def _matches(merchant: str, rule: MappingRule) -> bool:
     Returns:
         マッチすれば True、しなければ False。
     """
-    if rule.match_mode == "contains":
+    if rule.match_mode == AppConstants.MATCH_MODE_CONTAINS:
         return rule.keyword in merchant
-    if rule.match_mode == "starts_with":
+    if rule.match_mode == AppConstants.MATCH_MODE_STARTS_WITH:
         return merchant.startswith(rule.keyword)
-    if rule.match_mode == "regex":
+    if rule.match_mode == AppConstants.MATCH_MODE_REGEX:
         return bool(re.search(rule.keyword, merchant))
     return False

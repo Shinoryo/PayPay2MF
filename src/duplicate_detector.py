@@ -15,17 +15,17 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from src.models import AppConfig, Transaction
 
-# ローカルストア JSON のキー名
+from src.constants import AppConstants
+
+# ローカルストア JSON のキー名。
 _KEY_TX_IDS = "transaction_ids"
 _KEY_FALLBACK = "fallback_keys"
 _KEY_DATETIME = "datetime"
 _KEY_AMOUNT = "amount"
 _KEY_MERCHANT = "merchant"
 
-_BACKEND_GCLOUD = "gcloud"
-_PROCESSED_FILENAME = "processed.json"
-_DEFAULT_LOGS_DIR = "logs"
-_ENCODING = "utf-8"
+# Firestore のクエリ構築に使う定数。
+_FIRESTORE_EQUALS_OPERATOR = "=="
 
 
 @runtime_checkable
@@ -63,7 +63,7 @@ def create_detector(config: AppConfig) -> DuplicateDetector:
     Returns:
         LocalDuplicateDetector または GCloudDuplicateDetector のインスタンス。
     """
-    if config.duplicate_detection.backend == _BACKEND_GCLOUD:
+    if config.duplicate_detection.backend == AppConstants.BACKEND_GCLOUD:
         return GCloudDuplicateDetector(config)
     return LocalDuplicateDetector(config)
 
@@ -158,13 +158,13 @@ class LocalDuplicateDetector:
         ファイルが存在しない場合は空の状態のままにする。
         """
         if self._store_path.exists():
-            with self._store_path.open(encoding=_ENCODING) as f:
+            with self._store_path.open(encoding=AppConstants.DEFAULT_TEXT_ENCODING) as f:
                 self._data = json.load(f)
 
     def _save(self) -> None:
         """処理済みデータを JSON ファイルに書き出す。"""
         self._store_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._store_path.open("w", encoding=_ENCODING) as f:
+        with self._store_path.open("w", encoding=AppConstants.DEFAULT_TEXT_ENCODING) as f:
             json.dump(self._data, f, ensure_ascii=False, indent=2)
 
 
@@ -228,8 +228,8 @@ class GCloudDuplicateDetector:
         # NOTE T03: Firestore の複合インデックス（amount, merchant）が必要
         query = (
             self._client.collection(self._COLLECTION)
-            .where(_KEY_AMOUNT, "==", tx.amount)
-            .where(_KEY_MERCHANT, "==", tx.merchant)
+            .where(_KEY_AMOUNT, _FIRESTORE_EQUALS_OPERATOR, tx.amount)
+            .where(_KEY_MERCHANT, _FIRESTORE_EQUALS_OPERATOR, tx.merchant)
         )
         for doc in query.stream():
             data = doc.to_dict()
@@ -252,7 +252,8 @@ class GCloudDuplicateDetector:
             doc_id = tx.transaction_id
         else:
             doc_id = (
-                f"{tx.amount}_{tx.merchant}_{tx.date.strftime('%Y%m%d%H%M%S')}"
+                f"{tx.amount}_{tx.merchant}_"
+                f"{tx.date.strftime(AppConstants.DUPLICATE_KEY_DATE_FORMAT)}"
             )
         self._client.collection(self._COLLECTION).document(doc_id).set(
             {
@@ -273,6 +274,7 @@ def _get_store_path(config: AppConfig) -> Path:
         processed.json の Path。
     """
     base = (
-        config.log_settings.logs_dir or Path(__file__).parent.parent / _DEFAULT_LOGS_DIR
+        config.log_settings.logs_dir
+        or Path(__file__).parent.parent / AppConstants.DEFAULT_LOGS_DIR
     )
-    return base / _PROCESSED_FILENAME
+    return base / AppConstants.PROCESSED_FILENAME

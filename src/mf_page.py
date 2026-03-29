@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from src import mf_selectors
+from src.constants import AppConstants
 from src.mf_category_map import load_mf_category_map
 
 if TYPE_CHECKING:
@@ -14,6 +15,20 @@ if TYPE_CHECKING:
     from playwright.sync_api import Locator, Page
 
     from src.models import Transaction
+
+
+# フォーム入力時の分岐や警告に使う定数。
+_SKIP_CATEGORY_VALUES = {
+    AppConstants.DEFAULT_CATEGORY,
+    AppConstants.EMPTY_STRING,
+}
+_ACCOUNT_NOT_FOUND_MESSAGE = (
+    "口座 '{account_name}' が MF で見つかりません。"
+    "config.yml の mf_account を確認してください。"
+)
+_CATEGORY_NOT_FOUND_WARNING = (
+    "カテゴリ '%s' がマップに存在しません。未分類で登録します。"
+)
 
 
 class MFManualFormPage:
@@ -49,33 +64,36 @@ class MFManualFormPage:
         """手入力モーダルを開き、表示完了を待つ。"""
         self._page.click(mf_selectors.OPEN_MANUAL_FORM_BUTTON)
         modal = self._page.locator(mf_selectors.MANUAL_FORM_MODAL)
-        modal.wait_for(state="visible", timeout=mf_selectors.MODAL_TIMEOUT_MS)
+        modal.wait_for(
+            state=AppConstants.LOCATOR_STATE_VISIBLE,
+            timeout=mf_selectors.MODAL_TIMEOUT_MS,
+        )
         return modal
 
     def register_transaction(self, tx: Transaction) -> None:
         """1件の取引を手入力フォームへ反映して保存する。"""
         modal = self.open_manual_form()
 
-        if tx.direction == "in":
+        if tx.direction == AppConstants.DIRECTION_IN:
             modal.locator(mf_selectors.PLUS_PAYMENT_INPUT).click()
         else:
             modal.locator(mf_selectors.MINUS_PAYMENT_INPUT).click()
 
         date_input = modal.locator(mf_selectors.DATE_INPUT)
-        date_input.fill(tx.date.strftime("%Y/%m/%d"))
-        date_input.press("Escape")
+        date_input.fill(tx.date.strftime(AppConstants.FORM_DATE_FORMAT))
+        date_input.press(AppConstants.KEY_ESCAPE)
 
         modal.locator(mf_selectors.AMOUNT_INPUT).fill(str(tx.amount))
         self._select_account(modal)
 
-        if tx.category not in ("未分類", ""):
+        if tx.category not in _SKIP_CATEGORY_VALUES:
             self._select_category(modal, tx.category)
 
         modal.locator(mf_selectors.MEMO_INPUT).fill(tx.memo)
         modal.locator(mf_selectors.SUBMIT_BUTTON).click()
 
         self._page.locator(mf_selectors.CLOSE_BUTTON).wait_for(
-            state="visible",
+            state=AppConstants.LOCATOR_STATE_VISIBLE,
             timeout=mf_selectors.SUBMIT_TIMEOUT_MS,
         )
         self._page.locator(mf_selectors.CLOSE_BUTTON).click()
@@ -86,20 +104,14 @@ class MFManualFormPage:
             self._mf_account,
         )
         if option_value is None:
-            msg = (
-                f"口座 '{self._mf_account}' が MF で見つかりません。"
-                "config.yml の mf_account を確認してください。"
-            )
+            msg = _ACCOUNT_NOT_FOUND_MESSAGE.format(account_name=self._mf_account)
             raise ValueError(msg)
         modal.locator(mf_selectors.ACCOUNT_SELECT).select_option(value=option_value)
 
     def _select_category(self, modal: Locator, category: str) -> None:
         large_name = self._category_map.get(category)
         if large_name is None:
-            self._logger.warning(
-                "カテゴリ '%s' がマップに存在しません。未分類で登録します。",
-                category,
-            )
+            self._logger.warning(_CATEGORY_NOT_FOUND_WARNING, category)
             return
 
         modal.locator(mf_selectors.CATEGORY_DROPDOWN).click()

@@ -8,6 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from src.constants import AppConstants
+
 if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
@@ -26,7 +28,7 @@ class MappingRule:
 
     keyword: str
     category: str
-    match_mode: str = "contains"
+    match_mode: str = AppConstants.DEFAULT_MATCH_MODE
     priority: int = 0
 
 
@@ -47,11 +49,11 @@ class Transaction:
 
     date: datetime
     amount: int
-    direction: str  # "in" or "out"
+    direction: str  # AppConstants.DIRECTION_IN or AppConstants.DIRECTION_OUT
     memo: str
     merchant: str
     transaction_id: str | None
-    category: str = "未分類"
+    category: str = AppConstants.DEFAULT_CATEGORY
 
 
 @dataclass
@@ -76,7 +78,7 @@ class DuplicateDetectionConfig:
         tolerance_seconds: 取引番号欠損時の日時比較許容幅（秒）。
     """
 
-    backend: str = "local"
+    backend: str = AppConstants.DEFAULT_BACKEND
     tolerance_seconds: int = 60
 
 
@@ -90,10 +92,13 @@ class ParserConfig:
     """
 
     encoding_priority: list[str] = field(
-        default_factory=lambda: ["utf-8", "shift_jis"],
+        default_factory=lambda: [
+            AppConstants.ENCODING_UTF8,
+            AppConstants.ENCODING_SHIFT_JIS,
+        ],
     )
     date_formats: list[str] = field(
-        default_factory=lambda: ["%Y/%m/%d %H:%M:%S"],
+        default_factory=lambda: [AppConstants.CSV_DATE_FORMAT],
     )
 
 
@@ -155,7 +160,7 @@ class AppConfig:
     mf_account: str
     mapping_rules: list[MappingRule] = field(default_factory=list)
     exclude_prefixes: list[str] = field(
-        default_factory=lambda: ["PPCD_A_"],
+        default_factory=lambda: [AppConstants.EXCLUDE_PREFIX_PAYPAY_CARD],
     )
     gcloud_credentials_path: Path | None = None
     duplicate_detection: DuplicateDetectionConfig = field(

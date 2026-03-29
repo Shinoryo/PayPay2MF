@@ -7,9 +7,13 @@ from pathlib import Path
 
 import yaml
 
+from src.constants import AppConstants
+
+# カテゴリマップの読み込み先と YAML キー。
 _DEFAULT_MF_CATEGORIES_PATH = Path(__file__).with_name("mf_categories.yml")
 _ROOT_KEY = "middle_to_large"
 
+# カテゴリマップ検証に使うエラーメッセージ。
 _MSG_CATEGORY_MAP_NOT_FOUND = "MF カテゴリマップが見つかりません: {path}"
 _MSG_CATEGORY_MAP_ROOT_INVALID = (
     "MF カテゴリマップ YAML の middle_to_large は mapping である必要があります: {path}"
@@ -36,7 +40,7 @@ def _load_mf_category_map(path: Path) -> dict[str, str]:
     if not path.exists():
         raise FileNotFoundError(_MSG_CATEGORY_MAP_NOT_FOUND.format(path=path))
 
-    with path.open(encoding="utf-8") as f:
+    with path.open(encoding=AppConstants.DEFAULT_TEXT_ENCODING) as f:
         raw = yaml.safe_load(f) or {}
 
     mapping = raw.get(_ROOT_KEY)

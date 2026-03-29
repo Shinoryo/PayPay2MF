@@ -11,7 +11,15 @@ from unittest.mock import Mock
 import pytest
 
 import main as app_main
+from src.constants import AppConstants
 from src.models import AppConfig, LogSettings, ParseFailure, Transaction
+
+_DUMMY_CHROME_USER_DATA_DIR = "C:\\dummy"
+_DEFAULT_CHROME_PROFILE = "Default"
+_DEFAULT_MF_ACCOUNT = "PayPay残高"
+_INPUT_CSV_FILENAME = "input.csv"
+_HEADER_LINE = "header\n"
+_DEFAULT_MEMO = "支払い"
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -41,14 +49,14 @@ class _FakeRegistrar:
 
 
 def _make_config(tmp_path: Path, *, dry_run: bool = True) -> AppConfig:
-    csv_file = tmp_path / "input.csv"
-    csv_file.write_text("header\n", encoding="utf-8")
+    csv_file = tmp_path / _INPUT_CSV_FILENAME
+    csv_file.write_text(_HEADER_LINE, encoding=AppConstants.DEFAULT_TEXT_ENCODING)
     return AppConfig(
-        chrome_user_data_dir="C:\\dummy",
-        chrome_profile="Default",
+        chrome_user_data_dir=_DUMMY_CHROME_USER_DATA_DIR,
+        chrome_profile=_DEFAULT_CHROME_PROFILE,
         dry_run=dry_run,
         input_csv=csv_file,
-        mf_account="PayPay残高",
+        mf_account=_DEFAULT_MF_ACCOUNT,
         log_settings=LogSettings(logs_dir=tmp_path),
     )
 
@@ -57,8 +65,8 @@ def _make_tx(transaction_id: str) -> Transaction:
     return Transaction(
         date=datetime(2025, 1, 1, 12, 0, 0),  # noqa: DTZ001
         amount=100,
-        direction="out",
-        memo="支払い",
+        direction=AppConstants.DIRECTION_OUT,
+        memo=_DEFAULT_MEMO,
         merchant=f"merchant-{transaction_id}",
         transaction_id=transaction_id,
     )
@@ -104,8 +112,8 @@ def test_build_transactions_reports_parse_failures(
     assert prepared.excluded_count == 0
     assert prepared.skip_count == 1
     write_parse_error_csv_mock.assert_called_once_with(parse_failures, config)
-    logger.warning.assert_any_call("CSV 解析失敗: %d件", 1)
-    logger.info.assert_any_call("重複スキップ: %d件", 1)
+    logger.warning.assert_any_call(app_main._LOG_MSG_PARSE_FAILURE_COUNT, 1)
+    logger.info.assert_any_call(app_main._LOG_MSG_DUPLICATE_SKIP_COUNT, 1)
 
 
 def test_run_dry_run_logs_completion() -> None:
@@ -114,8 +122,8 @@ def test_run_dry_run_logs_completion() -> None:
 
     app_main.run_dry_run(logger, 2)
 
-    logger.info.assert_any_call("ドライラン完了: 登録対象 %d件", 2)
-    logger.info.assert_any_call("アプリケーションを終了します")
+    logger.info.assert_any_call(app_main._LOG_MSG_DRY_RUN_COMPLETE, 2)
+    logger.info.assert_any_call(app_main._LOG_MSG_APP_EXIT)
 
 
 def test_run_registration_continues_after_item_failure(

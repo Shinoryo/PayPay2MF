@@ -10,8 +10,17 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
+from src.constants import AppConstants
 from src.duplicate_detector import LocalDuplicateDetector, create_detector
 from src.models import AppConfig, LogSettings, Transaction
+
+_DUMMY_CHROME_USER_DATA_DIR = "C:\\dummy"
+_DEFAULT_CHROME_PROFILE = "Default"
+_DEFAULT_MF_ACCOUNT = "PayPay残高"
+_DEFAULT_TRANSACTION_ID = "TX001"
+_DEFAULT_MERCHANT = "テスト商店"
+_DEFAULT_MEMO = "支払い"
+_INPUT_CSV_FILENAME = "dummy.csv"
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -26,21 +35,24 @@ def _make_config(tmp_path: Path) -> AppConfig:
     Returns:
         logs_dir が tmp_path に設定されたテスト用 AppConfig インスタンス。
     """
-    csv_file = tmp_path / "dummy.csv"
-    csv_file.write_text("", encoding="utf-8")
+    csv_file = tmp_path / _INPUT_CSV_FILENAME
+    csv_file.write_text(
+        AppConstants.EMPTY_STRING,
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
     return AppConfig(
-        chrome_user_data_dir="C:\\dummy",
-        chrome_profile="Default",
+        chrome_user_data_dir=_DUMMY_CHROME_USER_DATA_DIR,
+        chrome_profile=_DEFAULT_CHROME_PROFILE,
         dry_run=False,
         input_csv=csv_file,
-        mf_account="PayPay残高",
+        mf_account=_DEFAULT_MF_ACCOUNT,
         log_settings=LogSettings(logs_dir=tmp_path),
     )
 
 
 def _make_tx(
-    transaction_id: str | None = "TX001",
-    merchant: str = "テスト商店",
+    transaction_id: str | None = _DEFAULT_TRANSACTION_ID,
+    merchant: str = _DEFAULT_MERCHANT,
     amount: int = 100,
     date: datetime | None = None,
 ) -> Transaction:
@@ -58,8 +70,8 @@ def _make_tx(
     return Transaction(
         date=date or datetime(2025, 1, 1, 12, 0, 0),  # noqa: DTZ001
         amount=amount,
-        direction="out",
-        memo="支払い",
+        direction=AppConstants.DIRECTION_OUT,
+        memo=_DEFAULT_MEMO,
         merchant=merchant,
         transaction_id=transaction_id,
     )
@@ -131,7 +143,7 @@ def test_local_dry_run_does_not_persist(tmp_path: Path) -> None:
 
     detector2 = LocalDuplicateDetector(config)
     assert detector2.is_duplicate(tx) is False
-    assert (tmp_path / "processed.json").exists() is False
+    assert (tmp_path / AppConstants.PROCESSED_FILENAME).exists() is False
 
 
 # フォールバック: tolerance_seconds 内は重複

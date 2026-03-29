@@ -19,6 +19,20 @@ import pytest
 import yaml
 
 from src.config_loader import load_config
+from src.constants import AppConstants
+
+_CONFIG_FILENAME = "config.yml"
+_YAML_ENCODING = AppConstants.DEFAULT_TEXT_ENCODING
+_DEFAULT_CHROME_PROFILE = "Default"
+_DEFAULT_MF_ACCOUNT = "PayPay残高"
+_INPUT_CSV_FILENAME = "test.csv"
+_HEADER_LINE = "header\n"
+_USER_DATA_DIRNAME = "User Data"
+_CUSTOM_CATEGORIES_FILENAME = "custom_categories.yml"
+_MISSING_CATEGORIES_FILENAME = "missing_categories.yml"
+_MISSING_PATH_NAME = "nonexistent"
+_MISSING_PROFILE = "MissingProfile"
+_MATCH_MODE_INVALID = "fuzzy"
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -34,9 +48,9 @@ def _write_config(tmp_path: Path, data: dict) -> Path:
     Returns:
         書き出した設定ファイルの Path。
     """
-    config_file = tmp_path / "config.yml"
+    config_file = tmp_path / _CONFIG_FILENAME
     config_file.write_text(
-        yaml.dump(data, allow_unicode=True), encoding="utf-8",
+        yaml.dump(data, allow_unicode=True), encoding=_YAML_ENCODING,
     )
     return config_file
 
@@ -53,17 +67,17 @@ def _base_data(tmp_path: Path) -> dict:
     Returns:
         必須項目をすべて含む設定辞書。
     """
-    user_data = tmp_path / "User Data"
+    user_data = tmp_path / _USER_DATA_DIRNAME
     user_data.mkdir()
-    (user_data / "Default").mkdir()
-    csv_file = tmp_path / "test.csv"
-    csv_file.write_text("header\n", encoding="utf-8")
+    (user_data / _DEFAULT_CHROME_PROFILE).mkdir()
+    csv_file = tmp_path / _INPUT_CSV_FILENAME
+    csv_file.write_text(_HEADER_LINE, encoding=_YAML_ENCODING)
     return {
         "chrome_user_data_dir": str(user_data),
-        "chrome_profile": "Default",
+        "chrome_profile": _DEFAULT_CHROME_PROFILE,
         "dry_run": True,
         "input_csv": str(csv_file),
-        "mf_account": "PayPay残高",
+        "mf_account": _DEFAULT_MF_ACCOUNT,
     }
 
 
@@ -74,8 +88,8 @@ def test_load_config_ok(tmp_path: Path) -> None:
     cfg_path = _write_config(tmp_path, data)
     config = load_config(cfg_path)
     assert config.dry_run is True
-    assert config.mf_account == "PayPay残高"
-    assert config.exclude_prefixes == ["PPCD_A_"]
+    assert config.mf_account == _DEFAULT_MF_ACCOUNT
+    assert config.exclude_prefixes == list(AppConstants.DEFAULT_EXCLUDE_PREFIXES)
 
 
 # TC-01-02: 必須項目欠落（chrome_user_data_dir）
@@ -135,8 +149,8 @@ def test_defaults_applied(tmp_path: Path) -> None:
     cfg_path = _write_config(tmp_path, data)
     config = load_config(cfg_path)
     assert config.log_settings.logs_dir is None
-    assert config.duplicate_detection.backend == "local"
-    assert config.parser.encoding_priority == ["utf-8", "shift_jis"]
+    assert config.duplicate_detection.backend == AppConstants.DEFAULT_BACKEND
+    assert config.parser.encoding_priority == list(AppConstants.DEFAULT_ENCODING_PRIORITY)
     assert config.advanced.screenshot_on_error is False
     assert config.advanced.mf_categories_path is None
 
@@ -144,9 +158,9 @@ def test_defaults_applied(tmp_path: Path) -> None:
 def test_mf_categories_path_is_resolved_relative_to_config(tmp_path: Path) -> None:
     """advanced.mf_categories_path は config.yml 基準の相対パスとして解決されることを確認する。"""
     data = _base_data(tmp_path)
-    categories_file = tmp_path / "custom_categories.yml"
-    categories_file.write_text("middle_to_large:\n  食料品: 食費\n", encoding="utf-8")
-    data["advanced"] = {"mf_categories_path": "custom_categories.yml"}
+    categories_file = tmp_path / _CUSTOM_CATEGORIES_FILENAME
+    categories_file.write_text("middle_to_large:\n  食料品: 食費\n", encoding=_YAML_ENCODING)
+    data["advanced"] = {"mf_categories_path": _CUSTOM_CATEGORIES_FILENAME}
 
     config = load_config(_write_config(tmp_path, data))
 
@@ -156,7 +170,7 @@ def test_mf_categories_path_is_resolved_relative_to_config(tmp_path: Path) -> No
 def test_missing_mf_categories_path_raises_value_error(tmp_path: Path) -> None:
     """advanced.mf_categories_path が存在しない場合に ValueError が送出されることを確認する。"""
     data = _base_data(tmp_path)
-    data["advanced"] = {"mf_categories_path": "missing_categories.yml"}
+    data["advanced"] = {"mf_categories_path": _MISSING_CATEGORIES_FILENAME}
 
     with pytest.raises(ValueError, match=r"advanced\.mf_categories_path"):
         load_config(_write_config(tmp_path, data))
@@ -167,7 +181,7 @@ def test_nonexistent_chrome_user_data_dir_when_not_dry_run(tmp_path: Path) -> No
     """TC-01-09: dry_run=False で存在しない chrome_user_data_dir を指定した場合に ValueError が送出されることを確認する。"""
     data = _base_data(tmp_path)
     data["dry_run"] = False
-    data["chrome_user_data_dir"] = str(tmp_path / "nonexistent")
+    data["chrome_user_data_dir"] = str(tmp_path / _MISSING_PATH_NAME)
     cfg_path = _write_config(tmp_path, data)
     with pytest.raises(ValueError, match="chrome_user_data_dir のパスが存在しません"):
         load_config(cfg_path)
@@ -176,20 +190,20 @@ def test_nonexistent_chrome_user_data_dir_when_not_dry_run(tmp_path: Path) -> No
 def test_nonexistent_chrome_user_data_dir_is_allowed_in_dry_run(tmp_path: Path) -> None:
     """dry_run=True では存在しない chrome_user_data_dir を指定しても設定読み込みが成功することを確認する。"""
     data = _base_data(tmp_path)
-    data["chrome_user_data_dir"] = str(tmp_path / "nonexistent")
+    data["chrome_user_data_dir"] = str(tmp_path / _MISSING_PATH_NAME)
     cfg_path = _write_config(tmp_path, data)
 
     config = load_config(cfg_path)
 
     assert config.dry_run is True
-    assert config.chrome_user_data_dir == str(tmp_path / "nonexistent")
+    assert config.chrome_user_data_dir == str(tmp_path / _MISSING_PATH_NAME)
 
 
 def test_nonexistent_chrome_profile_when_not_dry_run(tmp_path: Path) -> None:
     """dry_run=False で存在しない chrome_profile を指定した場合に ValueError が送出されることを確認する。"""
     data = _base_data(tmp_path)
     data["dry_run"] = False
-    data["chrome_profile"] = "MissingProfile"
+    data["chrome_profile"] = _MISSING_PROFILE
     cfg_path = _write_config(tmp_path, data)
 
     with pytest.raises(ValueError, match="chrome_profile のディレクトリが存在しません"):
@@ -199,13 +213,13 @@ def test_nonexistent_chrome_profile_when_not_dry_run(tmp_path: Path) -> None:
 def test_nonexistent_chrome_profile_is_allowed_in_dry_run(tmp_path: Path) -> None:
     """dry_run=True では存在しない chrome_profile を指定しても設定読み込みが成功することを確認する。"""
     data = _base_data(tmp_path)
-    data["chrome_profile"] = "MissingProfile"
+    data["chrome_profile"] = _MISSING_PROFILE
     cfg_path = _write_config(tmp_path, data)
 
     config = load_config(cfg_path)
 
     assert config.dry_run is True
-    assert config.chrome_profile == "MissingProfile"
+    assert config.chrome_profile == _MISSING_PROFILE
 
 
 # dry_run の型不正
@@ -233,7 +247,11 @@ def test_mapping_rule_invalid_match_mode(tmp_path: Path) -> None:
     """mapping_rules の match_mode に無効な値を指定した場合に ValueError が送出されることを確認する。"""
     data = _base_data(tmp_path)
     data["mapping_rules"] = [
-        {"keyword": "test", "category": "コンビニ", "match_mode": "fuzzy"},
+        {
+            "keyword": "test",
+            "category": "コンビニ",
+            "match_mode": _MATCH_MODE_INVALID,
+        },
     ]
     cfg_path = _write_config(tmp_path, data)
     with pytest.raises(ValueError, match="match_mode"):

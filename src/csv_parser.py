@@ -13,11 +13,34 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
+from src.constants import AppConstants
 from src.models import AppConfig, ParseFailure, Transaction
 
+# エンコーディング判定に使う定数。
 _ENCODING_CHECK_CHUNK_SIZE = 8192
-_UTF8_ENCODING_NAMES = {"utf-8", "utf8"}
-_UTF8_SIG_ENCODING = "utf-8-sig"
+_UTF8_ENCODING_NAMES = {
+    AppConstants.ENCODING_UTF8,
+    AppConstants.ENCODING_UTF8_ALT,
+}
+
+# 金額文字列の正規化に使う定数。
+_AMOUNT_FIELD_NAME = "金額"
+_AMOUNT_STRIP_CHAR = '"'
+_AMOUNT_SEPARATOR_PATTERN = r"[,，]"
+_ZERO_AMOUNT_MARKERS = (
+    AppConstants.HYPHEN,
+    AppConstants.EMPTY_STRING,
+    AppConstants.WAVE_DASH,
+)
+
+# 行の集約やエラー分類に使う定数。
+_MISSING_ID_PREFIX = "__no_id_"
+_FOREIGN_MEMO_TEMPLATE = "{}（海外: {} {}）"
+_PARSE_ERROR_MISSING_COLUMN = "missing_column"
+_PARSE_ERROR_INVALID_DATE = "invalid_date"
+_PARSE_ERROR_INVALID_VALUE = "invalid_value"
+_PARSE_ERROR_CONVERSION = "conversion_error"
+_DATE_PARSE_ERROR_PREFIX = "日付のパースに失敗しました"
 
 # エラーメッセージ定数
 _ERR_UNSUPPORTED_ENCODING = "対応するエンコーディングで読み込めません: {}"
@@ -80,7 +103,10 @@ def _can_read_with_encoding(path: Path, enc: str) -> bool:
     """
     try:
         with path.open(encoding=enc) as f:
-            for chunk in iter(lambda: f.read(_ENCODING_CHECK_CHUNK_SIZE), ""):
+            for chunk in iter(
+                lambda: f.read(_ENCODING_CHECK_CHUNK_SIZE),
+                AppConstants.EMPTY_STRING,
+            ):
                 if not chunk:
                     break
     except (UnicodeDecodeError, LookupError):
@@ -90,9 +116,9 @@ def _can_read_with_encoding(path: Path, enc: str) -> bool:
 
 
 def _resolve_csv_encoding(encoding: str) -> str:
-    normalized = encoding.replace("_", "-").lower()
+    normalized = encoding.replace(AppConstants.UNDERSCORE, AppConstants.HYPHEN).lower()
     if normalized in _UTF8_ENCODING_NAMES:
-        return _UTF8_SIG_ENCODING
+        return AppConstants.ENCODING_UTF8_SIG
     return encoding
 
 
@@ -129,7 +155,10 @@ def _read_rows(path: Path, encoding: str) -> list[CsvRow]:
     Returns:
         各行の物理行番号と辞書を組み合わせたリスト。
     """
-    with path.open(encoding=_resolve_csv_encoding(encoding), newline="") as f:
+    with path.open(
+        encoding=_resolve_csv_encoding(encoding),
+        newline=AppConstants.EMPTY_STRING,
+    ) as f:
         reader = csv.DictReader(f)
         return [(i, dict(row)) for i, row in enumerate(reader, start=2)]
 
@@ -146,11 +175,11 @@ def _parse_amount(s: str | None) -> int:
         金額の整数値。変換できない場合は 0。
     """
     if s is None:
-        raise ValueError(_ERR_REQUIRED_VALUE_MISSING.format("金額"))
-    stripped = s.strip().strip('"')
-    if stripped in ("-", "", "ー"):
+        raise ValueError(_ERR_REQUIRED_VALUE_MISSING.format(_AMOUNT_FIELD_NAME))
+    stripped = s.strip().strip(_AMOUNT_STRIP_CHAR)
+    if stripped in _ZERO_AMOUNT_MARKERS:
         return 0
-    return int(re.sub(r"[,，]", "", stripped))
+    return int(re.sub(_AMOUNT_SEPARATOR_PATTERN, AppConstants.EMPTY_STRING, stripped))
 
 
 def _merge_compound(rows: list[CsvRow]) -> list[CsvRow]:
@@ -169,10 +198,10 @@ def _merge_compound(rows: list[CsvRow]) -> list[CsvRow]:
     order: list[str] = []
 
     for row_index, row in rows:
-        tid = (row.get(_COL_TID) or "").strip()
+        tid = (row.get(_COL_TID) or AppConstants.EMPTY_STRING).strip()
         if not tid:
             # 取引番号なし → 独立行として追加
-            key = f"__no_id_{len(seen)}"
+            key = f"{_MISSING_ID_PREFIX}{len(seen)}"
             seen[key] = (row_index, row)
             order.append(key)
             continue
@@ -242,19 +271,19 @@ def _to_transaction(
 
     if out_amount > 0:
         amount = out_amount
-        direction = "out"
+        direction = AppConstants.DIRECTION_OUT
     else:
         amount = in_amount
-        direction = "in"
+        direction = AppConstants.DIRECTION_IN
 
     memo = _get_required_value(row, _COL_CONTENT)
-    foreign = (row.get(_COL_FOREIGN) or "-").strip()
-    currency = (row.get(_COL_CURRENCY) or "-").strip()
-    if foreign not in ("-", ""):
-        memo = f"{memo}（海外: {foreign} {currency}）"
+    foreign = (row.get(_COL_FOREIGN) or AppConstants.HYPHEN).strip()
+    currency = (row.get(_COL_CURRENCY) or AppConstants.HYPHEN).strip()
+    if foreign not in (AppConstants.HYPHEN, AppConstants.EMPTY_STRING):
+        memo = _FOREIGN_MEMO_TEMPLATE.format(memo, foreign, currency)
 
     merchant = _get_required_value(row, _COL_MERCHANT)
-    tid = (row.get(_COL_TID) or "").strip() or None
+    tid = (row.get(_COL_TID) or AppConstants.EMPTY_STRING).strip() or None
 
     return Transaction(
         date=date,
@@ -321,13 +350,13 @@ def _build_parse_failure(
 ) -> ParseFailure:
     """例外内容から ParseFailure を生成する。"""
     normalized_row = {
-        key: "" if value is None else str(value)
+        key: AppConstants.EMPTY_STRING if value is None else str(value)
         for key, value in row.items()
     }
     return ParseFailure(
         row_index=row_index,
-        transaction_id=(row.get(_COL_TID) or "").strip() or None,
-        merchant=(row.get(_COL_MERCHANT) or "").strip() or None,
+        transaction_id=(row.get(_COL_TID) or AppConstants.EMPTY_STRING).strip() or None,
+        merchant=(row.get(_COL_MERCHANT) or AppConstants.EMPTY_STRING).strip() or None,
         error_type=_classify_parse_error(exc),
         error_message=str(exc),
         raw_row=normalized_row,
@@ -337,9 +366,9 @@ def _build_parse_failure(
 def _classify_parse_error(exc: Exception) -> str:
     """例外から解析エラー種別を決定する。"""
     if isinstance(exc, KeyError):
-        return "missing_column"
+        return _PARSE_ERROR_MISSING_COLUMN
     if isinstance(exc, ValueError):
-        if str(exc).startswith("日付のパースに失敗しました"):
-            return "invalid_date"
-        return "invalid_value"
-    return "conversion_error"
+        if str(exc).startswith(_DATE_PARSE_ERROR_PREFIX):
+            return _PARSE_ERROR_INVALID_DATE
+        return _PARSE_ERROR_INVALID_VALUE
+    return _PARSE_ERROR_CONVERSION

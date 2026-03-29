@@ -16,30 +16,24 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from src.models import AppConfig, ParseFailure
 
-# ロガー設定
+from src.constants import AppConstants
+
+# ロガーの出力形式に使う定数。
 _LOGGER_NAME = "paypay2mf"
 _LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 _DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 _FILE_LOG_LEVEL = logging.DEBUG
 _CONSOLE_LOG_LEVEL = logging.INFO
 
-# ファイル名・エンコーディング
-_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
+# ログファイル名と CSV 出力に使う定数。
 _LOG_FILE_PREFIX = "app_"
-_LOG_FILE_SUFFIX = ".log"
-_LOG_GLOB_PATTERN = f"{_LOG_FILE_PREFIX}*{_LOG_FILE_SUFFIX}"
-_LOG_FILE_ENCODING = "utf-8"
+_LOG_GLOB_PATTERN = f"{_LOG_FILE_PREFIX}*{AppConstants.LOG_FILE_EXTENSION}"
 _ERROR_CSV_PREFIX = "error_"
-_ERROR_CSV_SUFFIX = ".csv"
-_ERROR_CSV_ENCODING = "utf-8-sig"
-
-# デフォルトディレクトリ
-_DEFAULT_LOGS_DIR_NAME = "logs"
 
 # サイズ計算
 _BYTES_PER_MB = 1024 * 1024
 
-# エラー CSV
+# エラー CSV に出力する列名。
 _ERROR_CSV_FIELDNAMES = (
     "failure_index",
     "error_message",
@@ -69,14 +63,14 @@ def setup_logger(config: AppConfig) -> logging.Logger:
     logs_dir = _resolve_logs_dir(config)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime(_TIMESTAMP_FORMAT)  # noqa: DTZ005
-    log_file = logs_dir / f"{_LOG_FILE_PREFIX}{timestamp}{_LOG_FILE_SUFFIX}"
+    timestamp = datetime.now().strftime(AppConstants.TIMESTAMP_FORMAT)  # noqa: DTZ005
+    log_file = logs_dir / f"{_LOG_FILE_PREFIX}{timestamp}{AppConstants.LOG_FILE_EXTENSION}"
 
     logger = logging.getLogger(_LOGGER_NAME)
     logger.setLevel(logging.DEBUG)
     logger.handlers.clear()
 
-    fh = logging.FileHandler(log_file, encoding=_LOG_FILE_ENCODING)
+    fh = logging.FileHandler(log_file, encoding=AppConstants.DEFAULT_TEXT_ENCODING)
     fh.setLevel(_FILE_LOG_LEVEL)
     fh.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_DATE_FORMAT))
     logger.addHandler(fh)
@@ -106,10 +100,14 @@ def write_error_csv(
     logs_dir = _resolve_logs_dir(config)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime(_TIMESTAMP_FORMAT)  # noqa: DTZ005
-    out_path = logs_dir / f"{_ERROR_CSV_PREFIX}{timestamp}{_ERROR_CSV_SUFFIX}"
+    timestamp = datetime.now().strftime(AppConstants.TIMESTAMP_FORMAT)  # noqa: DTZ005
+    out_path = logs_dir / f"{_ERROR_CSV_PREFIX}{timestamp}{AppConstants.CSV_EXTENSION}"
 
-    with out_path.open("w", newline="", encoding=_ERROR_CSV_ENCODING) as f:
+    with out_path.open(
+        "w",
+        newline=AppConstants.EMPTY_STRING,
+        encoding=AppConstants.ENCODING_UTF8_SIG,
+    ) as f:
         writer = csv.DictWriter(f, fieldnames=_ERROR_CSV_FIELDNAMES)
         writer.writeheader()
         for failure_index, error_message in enumerate(records, start=1):
@@ -130,10 +128,17 @@ def write_parse_error_csv(
     logs_dir = _resolve_logs_dir(config)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime(_TIMESTAMP_FORMAT)  # noqa: DTZ005
-    out_path = logs_dir / f"{_PARSE_ERROR_CSV_PREFIX}{timestamp}{_ERROR_CSV_SUFFIX}"
+    timestamp = datetime.now().strftime(AppConstants.TIMESTAMP_FORMAT)  # noqa: DTZ005
+    out_path = (
+        logs_dir
+        / f"{_PARSE_ERROR_CSV_PREFIX}{timestamp}{AppConstants.CSV_EXTENSION}"
+    )
 
-    with out_path.open("w", newline="", encoding=_ERROR_CSV_ENCODING) as f:
+    with out_path.open(
+        "w",
+        newline=AppConstants.EMPTY_STRING,
+        encoding=AppConstants.ENCODING_UTF8_SIG,
+    ) as f:
         writer = csv.DictWriter(f, fieldnames=_PARSE_ERROR_CSV_FIELDNAMES)
         writer.writeheader()
         for record in records:
@@ -162,7 +167,7 @@ def _resolve_logs_dir(config: AppConfig) -> Path:
     """
     if config.log_settings.logs_dir:
         return config.log_settings.logs_dir
-    return Path(__file__).parent.parent / _DEFAULT_LOGS_DIR_NAME
+    return Path(__file__).parent.parent / AppConstants.DEFAULT_LOGS_DIR
 
 
 def _rotate_logs(config: AppConfig, logs_dir: Path) -> None:
