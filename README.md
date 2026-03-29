@@ -437,7 +437,7 @@ $env:PAYPAY2MF_RUN_SMOKE_TEST = "1"
 $env:PAYPAY2MF_SMOKE_CHROME_USER_DATA_DIR = "C:\Users\yourname\AppData\Local\Google\Chrome\User Data"
 $env:PAYPAY2MF_SMOKE_CHROME_PROFILE = "Default"
 $env:PAYPAY2MF_SMOKE_MF_ACCOUNT = "PayPay残高"
-c:/Git/PayPay2MF/.venv/Scripts/python.exe -m pytest -m smoke_test tests/test_mf_smoke.py
+python -m pytest -q -m smoke_test tests/test_mf_smoke.py
 ```
 
 このスモークテストは、Money Forward の入出金ページへ遷移し、手入力モーダルが開けることだけを確認します。実データの送信や保存は行いません。

@@ -1,7 +1,6 @@
 """MoneyForward ME への手動フォーム登録を Playwright で自動化するモジュール。
 
 Chrome プロフィールを継承して起動し、MF 手動入力フォームへ自動入力する。
-実証セレクターは TODO T01 としてプレースホルダーが入っている。
 """
 
 from __future__ import annotations
@@ -24,7 +23,7 @@ if TYPE_CHECKING:
 
     from src.models import AppConfig, Transaction
 
-# NOTE: Playwright はオプション依存のため実行時にのみ import する
+# NOTE: Playwright の同期 API はブラウザ起動時に import する
 # playwright install chromium を事前に実行しておくこと
 
 # ブラウザ起動やスクリーンショット保存に使う定数。
@@ -64,9 +63,6 @@ class MFRegistrar:
 
         Returns:
             self
-
-        Raises:
-            NotImplementedError: TODO T01 が未実装の場合。
         """
         from playwright.sync_api import sync_playwright  # noqa: PLC0415
 
