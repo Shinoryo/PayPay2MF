@@ -405,6 +405,11 @@ def test_absolute_paths_are_preserved(tmp_path: Path) -> None:
             id="null",
         ),
         pytest.param(
+            1.5,
+            re.escape("mapping_rules[0]: priority には整数を指定してください。"),
+            id="float",
+        ),
+        pytest.param(
             -1,
             re.escape(
                 "mapping_rules[0]: priority には 0 以上の整数を指定してください: -1"
@@ -432,20 +437,24 @@ def test_invalid_mapping_rule_priority_raises_value_error(
         load_config(_write_config(tmp_path, data))
 
 
-def test_mapping_rule_priority_is_loaded_when_non_negative_int(tmp_path: Path) -> None:
+@pytest.mark.parametrize("priority", [0, 10], ids=["zero", "positive"])
+def test_mapping_rule_priority_is_loaded_when_non_negative_int(
+    tmp_path: Path,
+    priority: int,
+) -> None:
     """mapping_rules[].priority が 0 以上の整数なら設定に反映されることを確認する。"""
     data = _base_data(tmp_path)
     data["mapping_rules"] = [
         {
             "keyword": "セブン",
             "category": "食料品",
-            "priority": 10,
+            "priority": priority,
         }
     ]
 
     config = load_config(_write_config(tmp_path, data))
 
-    assert config.mapping_rules[0].priority == 10
+    assert config.mapping_rules[0].priority == priority
 
 
 @pytest.mark.parametrize(
@@ -466,7 +475,9 @@ def test_invalid_logs_dir_type_raises_value_error(
 
     with pytest.raises(
         ValueError,
-        match=re.escape("log_settings.logs_dir には文字列または null を指定してください。"),
+        match=re.escape(
+            "log_settings.logs_dir には文字列または null を指定してください。"
+        ),
     ):
         load_config(_write_config(tmp_path, data))
 

@@ -374,39 +374,126 @@ def test_local_corrupted_history_is_backed_up_and_raises_explicit_error(
     ("payload", "expected_backup_payload"),
     [
         ([], []),
-        ({"transaction_ids": {}, "fallback_keys": []}, {
-            "transaction_ids": {},
-            "fallback_keys": [],
-        }),
-        ({"transaction_ids": [], "fallback_keys": {}}, {
-            "transaction_ids": [],
-            "fallback_keys": {},
-        }),
-        ({
-            "transaction_ids": [],
-            "fallback_keys": [
-                {
-                    "datetime": "2025-01-01T12:00:00",
-                    "amount": "100",
-                    "merchant": "broken",
-                }
-            ],
-        }, {
-            "transaction_ids": [],
-            "fallback_keys": [
-                {
-                    "datetime": "2025-01-01T12:00:00",
-                    "amount": "100",
-                    "merchant": "broken",
-                }
-            ],
-        }),
+        (
+            {"transaction_ids": {}, "fallback_keys": []},
+            {
+                "transaction_ids": {},
+                "fallback_keys": [],
+            },
+        ),
+        (
+            {"transaction_ids": [], "fallback_keys": {}},
+            {
+                "transaction_ids": [],
+                "fallback_keys": {},
+            },
+        ),
+        (
+            {
+                "transaction_ids": [],
+                "fallback_keys": [
+                    {
+                        "datetime": "2025-01-01T12:00:00",
+                        "amount": "100",
+                        "merchant": "broken",
+                    }
+                ],
+            },
+            {
+                "transaction_ids": [],
+                "fallback_keys": [
+                    {
+                        "datetime": "2025-01-01T12:00:00",
+                        "amount": "100",
+                        "merchant": "broken",
+                    }
+                ],
+            },
+        ),
+        (
+            {
+                "transaction_ids": [123],
+                "fallback_keys": [],
+            },
+            {
+                "transaction_ids": [123],
+                "fallback_keys": [],
+            },
+        ),
+        (
+            {
+                "transaction_ids": [],
+                "fallback_keys": [
+                    {
+                        "datetime": 123,
+                        "amount": 100,
+                        "merchant": "broken",
+                    }
+                ],
+            },
+            {
+                "transaction_ids": [],
+                "fallback_keys": [
+                    {
+                        "datetime": 123,
+                        "amount": 100,
+                        "merchant": "broken",
+                    }
+                ],
+            },
+        ),
+        (
+            {
+                "transaction_ids": [],
+                "fallback_keys": [
+                    {
+                        "datetime": "2025-01-01T12:00:00",
+                        "amount": 100,
+                        "merchant": 123,
+                    }
+                ],
+            },
+            {
+                "transaction_ids": [],
+                "fallback_keys": [
+                    {
+                        "datetime": "2025-01-01T12:00:00",
+                        "amount": 100,
+                        "merchant": 123,
+                    }
+                ],
+            },
+        ),
+        (
+            {
+                "transaction_ids": [],
+                "fallback_keys": [
+                    {
+                        "datetime": "2025-01-01T12:00:00",
+                        "merchant": "broken",
+                    }
+                ],
+            },
+            {
+                "transaction_ids": [],
+                "fallback_keys": [
+                    {
+                        "datetime": "2025-01-01T12:00:00",
+                        "merchant": "broken",
+                    }
+                ],
+            },
+        ),
     ],
     ids=[
         "root_list",
         "transaction_ids_not_list",
         "fallback_keys_not_list",
         "fallback_entry_invalid_amount",
+        "transaction_id_item_not_string",
+        "fallback_entry_invalid_datetime",
+        "fallback_entry_invalid_merchant",
+        "fallback_entry_missing_amount",
     ],
 )
 def test_local_corrupted_history_schema_is_backed_up_and_raises_explicit_error(
@@ -429,9 +516,12 @@ def test_local_corrupted_history_schema_is_backed_up_and_raises_explicit_error(
     backup_files = list(tmp_path.glob("processed.corrupted_*.json"))
     assert len(backup_files) == 1
     assert processed_file.exists() is False
-    assert json.loads(
-        backup_files[0].read_text(encoding=AppConstants.DEFAULT_TEXT_ENCODING)
-    ) == expected_backup_payload
+    assert (
+        json.loads(
+            backup_files[0].read_text(encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+        )
+        == expected_backup_payload
+    )
 
 
 def test_local_dry_run_does_not_persist(
