@@ -1,4 +1,6 @@
-﻿# 設計書
+﻿# PayPay2MF
+
+PayPay の利用明細 CSV を Money Forward ME へ登録する Windows 向けローカル CLI ツールです。
 
 ## 概要
 
@@ -37,8 +39,8 @@
   `config.yml` の配置ディレクトリ基準で解決されます。
 - `log_settings.logs_dir` を `null` または未指定にした場合のみ、既定値として `<tool_folder>\logs` を使用します。
 - `gcloud_credentials_path` は
-  `duplicate_detection.backend: "gcloud"` を明示した場合だけ使われます。
-  この項目だけを設定しても backend は自動で切り替わりません。
+  `duplicate_detection.backend: "gcloud"` を明示した場合に認証へ使用します。
+  この項目だけを設定しても backend は自動で切り替わりません。未使用なら未設定のままで構いません。
 - `chrome_user_data_dir` は実マシンの Chrome プロファイルを指すため、通常はローカル環境の絶対パスを指定してください。
 
 ### 保存される情報と運用上の注意
@@ -306,7 +308,7 @@ flowchart TD
 | 項目 | 内容 |
 | ---- | ---- |
 | 出力先 | `<logs_dir>\app_yyyyMMdd_HHmmss.log` |
-| ログレベル | INFO / ERROR |
+| ログレベル | INFO / WARNING / ERROR |
 | フォーマット | `yyyy-MM-dd HH:mm:ss [LEVEL] message` |
 
 取引日、金額、加盟店、transaction_id などの個別取引明細は app ログへ出力しません。ログは件数サマリーとエラー状態の把握を主目的とします。
@@ -434,6 +436,16 @@ gcloud_credentials_path: "./secrets/paypay2mf-credentials.json"
 ### 7. 既存 Firestore データの backfill
 
 この変更以降は、Firestore の既存ドキュメントにも `date_bucket` が必要です。切り替え前に一度だけ backfill を実行してください。
+
+backfill CLI は通常の `config.yml` をそのまま利用できますが、実装上は必要キーだけを読むため、検証用には最小構成の設定ファイルでも実行できます。
+
+```yaml
+duplicate_detection:
+  backend: "gcloud"
+  tolerance_seconds: 60
+
+gcloud_credentials_path: "./secrets/paypay2mf-credentials.json"
+```
 
 ```bash
 # まず更新予定件数だけ確認
