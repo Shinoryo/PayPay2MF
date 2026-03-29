@@ -29,6 +29,8 @@ _ACCOUNT_NOT_FOUND_MESSAGE = (
 _CATEGORY_NOT_FOUND_WARNING = (
     "カテゴリ '%s' がマップに存在しません。未分類で登録します。"
 )
+_SUBMIT_REPORTED_ERROR_MESSAGE = "MF 登録に失敗しました。{detail}"
+_SUBMIT_ERROR_FALLBACK_DETAIL = "送信後にフォームエラーが表示されました。"
 
 
 class MFManualFormPage:
@@ -92,10 +94,36 @@ class MFManualFormPage:
         modal.locator(mf_selectors.MEMO_INPUT).fill(tx.memo)
         modal.locator(mf_selectors.SUBMIT_BUTTON).click()
 
-        modal.wait_for(
-            state=AppConstants.LOCATOR_STATE_HIDDEN,
+        self._wait_for_submit_outcome(modal)
+
+    def _wait_for_submit_outcome(self, modal: Locator) -> None:
+        outcome_handle = self._page.wait_for_function(
+            mf_selectors.SUBMIT_OUTCOME_SCRIPT,
+            {
+                "modalSelector": mf_selectors.MANUAL_FORM_MODAL,
+                "successSelectors": list(
+                    mf_selectors.SUBMIT_SUCCESS_FEEDBACK_SELECTORS
+                ),
+                "errorSelectors": list(mf_selectors.SUBMIT_ERROR_FEEDBACK_SELECTORS),
+            },
             timeout=mf_selectors.SUBMIT_TIMEOUT_MS,
         )
+        outcome = outcome_handle.json_value()
+
+        if isinstance(outcome, dict) and outcome.get("status") == "error":
+            detail = str(
+                outcome.get("text")
+                or outcome.get("selector")
+                or _SUBMIT_ERROR_FALLBACK_DETAIL
+            )
+            msg = _SUBMIT_REPORTED_ERROR_MESSAGE.format(detail=detail)
+            raise RuntimeError(msg)
+
+        if not isinstance(outcome, dict) or outcome.get("status") != "closed":
+            modal.wait_for(
+                state=AppConstants.LOCATOR_STATE_HIDDEN,
+                timeout=mf_selectors.SUBMIT_TIMEOUT_MS,
+            )
 
     def _select_account(self, modal: Locator) -> None:
         option_value: str | None = self._page.evaluate(

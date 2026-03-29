@@ -16,6 +16,21 @@ MEMO_INPUT = "#js-content-field"
 SUBMIT_BUTTON = "#submit-button"
 CLOSE_BUTTON = "#cancel-button"
 
+SUBMIT_SUCCESS_FEEDBACK_SELECTORS = (
+    ".flash_notice",
+    ".alert-success",
+    ".toast-success",
+)
+SUBMIT_ERROR_FEEDBACK_SELECTORS = (
+    ".flash_alert",
+    ".alert-danger",
+    ".alert-error",
+    ".errorExplanation",
+    ".error-message",
+    ".mf-input-error",
+    ".formError",
+)
+
 CATEGORY_DROPDOWN = ".btn_l_ctg .v_l_ctg"
 LARGE_CATEGORY_LINK = "a.l_c_name"
 MIDDLE_CATEGORY_LINK = "a.m_c_name"
@@ -32,6 +47,61 @@ ACCOUNT_OPTION_LOOKUP_SCRIPT = """(name) => {
     for (const opt of sel.options) {
         if (opt.text.trim().startsWith(name)) return opt.value;
     }
+    return null;
+}"""
+
+SUBMIT_OUTCOME_SCRIPT = """({ modalSelector, successSelectors, errorSelectors }) => {
+    const isVisible = (element) => {
+        if (!element) return false;
+        const style = window.getComputedStyle(element);
+        return style.visibility !== 'hidden' && style.display !== 'none' && (
+            element.offsetWidth > 0 ||
+            element.offsetHeight > 0 ||
+            element.getClientRects().length > 0
+        );
+    };
+
+    const firstVisible = (selectors, root) => {
+        for (const selector of selectors) {
+            try {
+                for (const element of root.querySelectorAll(selector)) {
+                    if (isVisible(element)) {
+                        return {
+                            selector,
+                            text: (element.textContent || '').trim(),
+                        };
+                    }
+                }
+            } catch (_error) {
+                continue;
+            }
+        }
+        return null;
+    };
+
+    const modal = document.querySelector(modalSelector);
+    const errorMatch = modal ? firstVisible(errorSelectors, modal) : null;
+    if (errorMatch) {
+        return {
+            status: 'error',
+            selector: errorMatch.selector,
+            text: errorMatch.text,
+        };
+    }
+
+    const successMatch = firstVisible(successSelectors, document);
+    if (successMatch) {
+        return {
+            status: 'success',
+            selector: successMatch.selector,
+            text: successMatch.text,
+        };
+    }
+
+    if (!modal || !isVisible(modal)) {
+        return { status: 'closed' };
+    }
+
     return null;
 }"""
 

@@ -406,6 +406,9 @@ gcloud_credentials_path: "C:\\Users\\yourname\\paypay2mf-credentials.json"
 - optional dependency は [src/duplicate_detector.py](src/duplicate_detector.py)
   のように遅延 import と案内メッセージを組み合わせ、
   未導入環境でも基本機能が動作するようにする。
+- GCloud backend の自動テストは、[tests/test_duplicate_detector.py](tests/test_duplicate_detector.py)
+  で Firestore client をモックした単体テストまでを標準範囲とし、
+  実サービス接続は別途手動確認で扱う。
 
 ### UI 自動化の保守方針
 
@@ -429,6 +432,7 @@ gcloud_credentials_path: "C:\\Users\\yourname\\paypay2mf-credentials.json"
 ### Playwright スモークテスト
 
 Money Forward 実サイトに対するスモークテストは通常の `pytest` には含めません。ログイン済み Chrome プロファイルを用意し、必要な環境変数を設定したうえで明示実行してください。
+標準の `python -m pytest -q` では `smoke_test` マーカー付きテストは skip されます。
 
 PowerShell 例:
 
