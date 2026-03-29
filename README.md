@@ -344,18 +344,23 @@ gcloud_credentials_path: "C:\\Users\\yourname\\paypay2mf-credentials.json"
 
 ### 6. Firestore 複合インデックスの作成（フォールバック検索用）
 
-取引番号が欠損している場合のフォールバック検索では、`amount + merchant` の複合クエリを使用します。  
+取引番号が欠損している場合のフォールバック検索では、`amount + merchant` の複合クエリで候補を絞り込み、
+取得した候補に対して `datetime` と `tolerance_seconds` を用いた許容幅判定を行います。  
 初回実行時にインデックスエラーが発生した場合は、Firestore コンソールで以下の複合インデックスを作成してください。
 
 | コレクション | フィールド 1 | フィールド 2 |
 | ---- | ---- | ---- |
 | `paypay_transactions` | `amount` (昇順) | `merchant` (昇順) |
 
+> 注意: `duplicate_detection.backend: "gcloud"` を使用する場合、
+> Firestore には `transaction_id` がある取引はその値、
+> `transaction_id` がない取引は `datetime` / `amount` / `merchant` を重複判定用に保存します。
+
 ## ライセンス
 
 ### 本プログラムのライセンス
 
-- このプログラムは MIT ライセンスに基づいて提供されます。
+- このリポジトリのソースコードは MIT ライセンスです。詳細は同梱の LICENSE を参照してください。
 
 ### 使用ライブラリのライセンス
 
