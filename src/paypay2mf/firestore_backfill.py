@@ -9,16 +9,38 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from paypay2mf.config_loader import CONFIG_ENV_VAR, load_config, resolve_config_path
+import yaml
+
+from paypay2mf.config_loader import CONFIG_ENV_VAR, resolve_config_path
 from paypay2mf.constants import AppConstants
 from paypay2mf.duplicate_detector import GCloudDuplicateDetector, build_date_bucket
+from paypay2mf.models import DuplicateDetectionConfig
 
 _KEY_DATETIME = "datetime"
 _KEY_DATE_BUCKET = "date_bucket"
+_KEY_DUPLICATE_DETECTION = "duplicate_detection"
+_KEY_DD_BACKEND = "backend"
+_KEY_DD_TOLERANCE_SECONDS = "tolerance_seconds"
+_KEY_GCLOUD_CREDENTIALS_PATH = "gcloud_credentials_path"
 _WRITE_BATCH_SIZE = 500
 _LOG_FORMAT = "[%(levelname)s] %(message)s"
 _MSG_BACKEND_REQUIRED = (
     'duplicate_detection.backend: "gcloud" を設定してから実行してください。'
+)
+_MSG_CONFIG_NOT_FOUND = "config.yml が見つかりません: {path}"
+_MSG_CONFIG_ROOT_TYPE = "config.yml のルート要素は object で指定してください。"
+_MSG_CONFIG_YAML_INVALID = "config.yml の YAML 構文が不正です: {detail}"
+_MSG_DUPLICATE_DETECTION_TYPE = "duplicate_detection は object で指定してください。"
+_MSG_GCLOUD_CREDS_REQUIRED = (
+    'duplicate_detection.backend: "gcloud" の場合は '
+    "gcloud_credentials_path の指定が必要です。"
+)
+_MSG_GCLOUD_CREDS_NOT_EXIST = "gcloud_credentials_path のファイルが存在しません: {path}"
+_MSG_DUPLICATE_TOLERANCE_TYPE = (
+    "duplicate_detection.tolerance_seconds には整数を指定してください。"
+)
+_MSG_DUPLICATE_TOLERANCE_RANGE = (
+    "duplicate_detection.tolerance_seconds には 0 以上の整数を指定してください: {value}"
 )
 _MSG_START = "Firestore date_bucket backfill を開始します"
 _MSG_SUMMARY = "走査 %d件 / 更新対象 %d件 / スキップ %d件"
@@ -37,6 +59,13 @@ class BackfillSummary:
     scanned_count: int
     updated_count: int
     skipped_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class _BackfillDetectorConfig:
+    gcloud_credentials_path: Path
+    duplicate_detection: DuplicateDetectionConfig
+    dry_run: bool = False
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -65,10 +94,94 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _load_gcloud_detector(config_path: Path) -> GCloudDuplicateDetector:
-    config = load_config(config_path)
+    config = _load_backfill_config(config_path)
     if config.duplicate_detection.backend != AppConstants.BACKEND_GCLOUD:
         raise ValueError(_MSG_BACKEND_REQUIRED)
     return GCloudDuplicateDetector(config)
+
+
+def _load_backfill_config(config_path: Path) -> _BackfillDetectorConfig:
+    raw = _load_raw_config(config_path)
+    duplicate_detection_section = _get_duplicate_detection_section(raw)
+    _validate_backfill_backend(duplicate_detection_section)
+    try:
+        tolerance = _get_tolerance_seconds(duplicate_detection_section)
+    except TypeError as exc:
+        raise ValueError(str(exc)) from exc
+    credentials_path = _resolve_gcloud_credentials_path(raw, config_path.parent)
+
+    return _BackfillDetectorConfig(
+        gcloud_credentials_path=credentials_path,
+        duplicate_detection=DuplicateDetectionConfig(
+            backend=AppConstants.BACKEND_GCLOUD,
+            tolerance_seconds=tolerance,
+        ),
+    )
+
+
+def _load_raw_config(config_path: Path) -> dict[str, object]:
+    if not config_path.exists():
+        raise FileNotFoundError(_MSG_CONFIG_NOT_FOUND.format(path=config_path))
+
+    try:
+        with config_path.open(encoding=AppConstants.DEFAULT_TEXT_ENCODING) as file_obj:
+            loaded = yaml.safe_load(file_obj)
+    except yaml.YAMLError as exc:
+        raise ValueError(_MSG_CONFIG_YAML_INVALID.format(detail=str(exc))) from exc
+
+    if loaded is None:
+        return {}
+    if isinstance(loaded, dict):
+        return loaded
+    raise ValueError(_MSG_CONFIG_ROOT_TYPE)
+
+
+def _get_duplicate_detection_section(raw: dict[str, object]) -> dict[str, object]:
+    duplicate_detection = raw.get(_KEY_DUPLICATE_DETECTION)
+    if duplicate_detection is None:
+        return {}
+    if isinstance(duplicate_detection, dict):
+        return duplicate_detection
+    raise ValueError(_MSG_DUPLICATE_DETECTION_TYPE)
+
+
+def _validate_backfill_backend(duplicate_detection_section: dict[str, object]) -> None:
+    backend = duplicate_detection_section.get(
+        _KEY_DD_BACKEND,
+        AppConstants.DEFAULT_BACKEND,
+    )
+    if backend != AppConstants.BACKEND_GCLOUD:
+        raise ValueError(_MSG_BACKEND_REQUIRED)
+
+
+def _get_tolerance_seconds(duplicate_detection_section: dict[str, object]) -> int:
+    tolerance = duplicate_detection_section.get(_KEY_DD_TOLERANCE_SECONDS, 60)
+    if isinstance(tolerance, bool) or not isinstance(tolerance, int):
+        raise TypeError(_MSG_DUPLICATE_TOLERANCE_TYPE)
+    if tolerance < 0:
+        raise ValueError(_MSG_DUPLICATE_TOLERANCE_RANGE.format(value=tolerance))
+    return tolerance
+
+
+def _resolve_gcloud_credentials_path(
+    raw: dict[str, object],
+    config_dir: Path,
+) -> Path:
+    credentials_raw = raw.get(_KEY_GCLOUD_CREDENTIALS_PATH)
+    if not isinstance(credentials_raw, str) or not credentials_raw.strip():
+        raise ValueError(_MSG_GCLOUD_CREDS_REQUIRED)
+
+    credentials_path = _resolve_path(credentials_raw, config_dir)
+    if not credentials_path.exists():
+        raise ValueError(_MSG_GCLOUD_CREDS_NOT_EXIST.format(path=credentials_path))
+    return credentials_path
+
+
+def _resolve_path(raw_value: str, config_dir: Path) -> Path:
+    candidate = Path(raw_value)
+    if candidate.is_absolute():
+        return candidate
+    return config_dir / candidate
 
 
 def backfill_date_buckets(
@@ -106,6 +219,7 @@ def backfill_date_buckets(
             continue
 
         if data.get(_KEY_DATE_BUCKET) == date_bucket:
+            skipped_count += 1
             continue
 
         updated_count += 1

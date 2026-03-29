@@ -12,7 +12,10 @@ import pytest
 from paypay2mf import firestore_backfill
 from paypay2mf.constants import AppConstants
 from paypay2mf.duplicate_detector import build_date_bucket
-from tests.test_duplicate_detector import _FakeFirestoreClient
+from tests.test_duplicate_detector import (
+    _FakeFirestoreClient,
+    _install_fake_gcloud_modules,
+)
 
 
 class _FakeBackfillDetector:
@@ -180,6 +183,84 @@ def test_backfill_dry_run_counts_updates_without_writing() -> None:
     assert detector.batch_call_count == 0
     assert detector.client.batch_commits == []
     assert detector.client.store == original_store
+
+
+def test_backfill_counts_current_date_bucket_as_skipped() -> None:
+    """既に最新の date_bucket を持つ文書も skipped_count に含める。"""
+    current_datetime = _build_datetime(0)
+    detector = _FakeBackfillDetector(
+        {
+            "current": {
+                "datetime": current_datetime.isoformat(),
+                "date_bucket": build_date_bucket(current_datetime),
+            },
+        }
+    )
+    logger = Mock(spec=logging.Logger)
+
+    summary = firestore_backfill.backfill_date_buckets(
+        detector,
+        logger,
+        dry_run=True,
+        limit=None,
+    )
+
+    assert summary == firestore_backfill.BackfillSummary(
+        scanned_count=1,
+        updated_count=0,
+        skipped_count=1,
+    )
+
+
+def test_load_gcloud_detector_accepts_minimal_backfill_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """backfill は通常アプリの必須5項目なしでも最小 gcloud 設定で初期化できる。"""
+    _install_fake_gcloud_modules(monkeypatch)
+    credentials_file = tmp_path / "service-account.json"
+    credentials_file.write_text("{}", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        (
+            "duplicate_detection:\n"
+            "  backend: 'gcloud'\n"
+            "  tolerance_seconds: 60\n"
+            "gcloud_credentials_path: 'service-account.json'"
+        ),
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
+    logger = Mock(spec=logging.Logger)
+    captured_detectors: list[object] = []
+
+    def _capture_backfill(
+        detector: object,
+        logger: object,
+        *,
+        dry_run: bool,
+        limit: int | None,
+    ) -> firestore_backfill.BackfillSummary:
+        _ = (logger, dry_run, limit)
+        captured_detectors.append(detector)
+        return firestore_backfill.BackfillSummary(0, 0, 0)
+
+    monkeypatch.setattr(
+        firestore_backfill,
+        "backfill_date_buckets",
+        _capture_backfill,
+    )
+    monkeypatch.setattr(firestore_backfill.logging, "basicConfig", Mock())
+    monkeypatch.setattr(
+        firestore_backfill.logging,
+        "getLogger",
+        Mock(return_value=logger),
+    )
+
+    firestore_backfill.main(["--config", str(config_path), "--dry-run"])
+
+    assert len(captured_detectors) == 1
+    detector = captured_detectors[0]
+    assert detector.client.credentials == ("creds", str(credentials_file))
 
 
 def test_main_uses_cli_config_path_before_env_and_cwd(
