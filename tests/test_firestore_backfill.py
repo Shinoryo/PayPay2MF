@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -10,6 +11,26 @@ import pytest
 
 import firestore_backfill
 from src.constants import AppConstants
+from src.duplicate_detector import build_date_bucket
+from tests.test_duplicate_detector import _FakeFirestoreClient
+
+
+class _FakeBackfillDetector:
+    def __init__(self, store: dict[str, dict]) -> None:
+        self.client = _FakeFirestoreClient(credentials=("creds", "dummy"))
+        self.client.store.update({doc_id: dict(data) for doc_id, data in store.items()})
+        self.batch_call_count = 0
+
+    def collection(self):
+        return self.client.collection("paypay_transactions")
+
+    def batch(self):
+        self.batch_call_count += 1
+        return self.client.batch()
+
+
+def _build_datetime(minutes: int) -> datetime:
+    return datetime(2025, 3, 28, 12, 0, 30) + timedelta(minutes=minutes)
 
 
 @pytest.fixture
@@ -33,6 +54,130 @@ def test_parse_args_accepts_dry_run_limit_and_config() -> None:
     assert args.dry_run is True
     assert args.limit == 10
     assert args.config == config_path
+
+
+def test_backfill_skips_invalid_datetime_and_logs_warning() -> None:
+    """不正 datetime は skip し、警告だけを残すことを確認する。"""
+    valid_datetime = _build_datetime(0)
+    detector = _FakeBackfillDetector(
+        {
+            "blank": {"datetime": ""},
+            "whitespace": {"datetime": "   "},
+            "bad-format": {"datetime": "not-a-datetime"},
+            "valid": {"datetime": valid_datetime.isoformat()},
+        }
+    )
+    logger = Mock(spec=logging.Logger)
+
+    summary = firestore_backfill.backfill_date_buckets(
+        detector,
+        logger,
+        dry_run=False,
+        limit=None,
+    )
+
+    assert summary == firestore_backfill.BackfillSummary(
+        scanned_count=4,
+        updated_count=1,
+        skipped_count=3,
+    )
+    assert [len(commit) for commit in detector.client.batch_commits] == [1]
+    assert detector.client.store["valid"]["date_bucket"] == build_date_bucket(valid_datetime)
+    assert [call.args[1] for call in logger.warning.call_args_list] == [
+        "blank",
+        "whitespace",
+        "bad-format",
+    ]
+
+
+def test_backfill_commits_every_500_writes_and_tail_commit() -> None:
+    """更新対象が 500 件を超えると閾値 commit と tail commit が走ることを確認する。"""
+    store = {
+        f"doc-{index:03d}": {"datetime": _build_datetime(index).isoformat()}
+        for index in range(501)
+    }
+    detector = _FakeBackfillDetector(store)
+    logger = Mock(spec=logging.Logger)
+
+    summary = firestore_backfill.backfill_date_buckets(
+        detector,
+        logger,
+        dry_run=False,
+        limit=None,
+    )
+
+    assert summary == firestore_backfill.BackfillSummary(
+        scanned_count=501,
+        updated_count=501,
+        skipped_count=0,
+    )
+    assert detector.batch_call_count == 2
+    assert [len(commit) for commit in detector.client.batch_commits] == [500, 1]
+    first_operation = detector.client.batch_commits[0][0]
+    last_operation = detector.client.batch_commits[-1][0]
+    assert first_operation == {
+        "doc_id": "doc-000",
+        "data": {"date_bucket": build_date_bucket(_build_datetime(0))},
+        "merge": True,
+    }
+    assert last_operation == {
+        "doc_id": "doc-500",
+        "data": {"date_bucket": build_date_bucket(_build_datetime(500))},
+        "merge": True,
+    }
+
+
+def test_backfill_commits_remaining_writes_at_end() -> None:
+    """閾値未満でもループ終了時に残件 commit されることを確認する。"""
+    detector = _FakeBackfillDetector(
+        {
+            "doc-a": {"datetime": _build_datetime(1).isoformat()},
+            "doc-b": {"datetime": _build_datetime(2).isoformat()},
+        }
+    )
+    logger = Mock(spec=logging.Logger)
+
+    summary = firestore_backfill.backfill_date_buckets(
+        detector,
+        logger,
+        dry_run=False,
+        limit=None,
+    )
+
+    assert summary == firestore_backfill.BackfillSummary(
+        scanned_count=2,
+        updated_count=2,
+        skipped_count=0,
+    )
+    assert detector.batch_call_count == 1
+    assert [len(commit) for commit in detector.client.batch_commits] == [2]
+
+
+def test_backfill_dry_run_counts_updates_without_writing() -> None:
+    """dry-run では更新件数だけ数え、Firestore へ書き込まないことを確認する。"""
+    original_store = {
+        "doc-a": {"datetime": _build_datetime(0).isoformat()},
+        "doc-b": {"datetime": _build_datetime(1).isoformat(), "date_bucket": "stale"},
+        "doc-c": {"datetime": "invalid"},
+    }
+    detector = _FakeBackfillDetector(original_store)
+    logger = Mock(spec=logging.Logger)
+
+    summary = firestore_backfill.backfill_date_buckets(
+        detector,
+        logger,
+        dry_run=True,
+        limit=None,
+    )
+
+    assert summary == firestore_backfill.BackfillSummary(
+        scanned_count=3,
+        updated_count=2,
+        skipped_count=1,
+    )
+    assert detector.batch_call_count == 0
+    assert detector.client.batch_commits == []
+    assert detector.client.store == original_store
 
 
 def test_main_uses_cli_config_path_before_env_and_cwd(

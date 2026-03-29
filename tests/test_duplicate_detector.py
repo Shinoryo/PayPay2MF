@@ -38,10 +38,12 @@ class _FakeFirestoreDocumentSnapshot:
         exists: bool,
         data: dict | None = None,
         doc_id: str | None = None,
+        reference: _FakeFirestoreDocumentReference | None = None,
     ) -> None:
         self.exists = exists
         self._data = data or {}
         self.id = doc_id or AppConstants.EMPTY_STRING
+        self.reference = reference
 
     def to_dict(self) -> dict:
         return dict(self._data)
@@ -52,11 +54,17 @@ class _FakeFirestoreDocumentReference:
         self._store = store
         self._doc_id = doc_id
 
+    @property
+    def doc_id(self) -> str:
+        return self._doc_id
+
     def get(self) -> _FakeFirestoreDocumentSnapshot:
         data = self._store.get(self._doc_id)
         return _FakeFirestoreDocumentSnapshot(
             exists=data is not None,
             data=data,
+            doc_id=self._doc_id,
+            reference=self,
         )
 
     def set(self, data: dict) -> None:
@@ -86,14 +94,65 @@ class _FakeFirestoreQuery:
         matches: list[_FakeFirestoreDocumentSnapshot] = []
         for doc_id, data in self._store.items():
             if all(data.get(field) == value for field, value in self._filters):
+                reference = _FakeFirestoreDocumentReference(self._store, doc_id)
                 matches.append(
                     _FakeFirestoreDocumentSnapshot(
                         exists=True,
                         data=data,
                         doc_id=doc_id,
+                        reference=reference,
                     )
                 )
         return matches
+
+
+class _FakeFirestoreBatch:
+    def __init__(
+        self,
+        store: dict[str, dict],
+        commit_log: list[list[dict[str, object]]],
+    ) -> None:
+        self._store = store
+        self._commit_log = commit_log
+        self._pending_operations: list[dict[str, object]] = []
+
+    def set(
+        self,
+        reference: _FakeFirestoreDocumentReference,
+        data: dict,
+        *,
+        merge: bool = False,
+    ) -> None:
+        self._pending_operations.append(
+            {
+                "reference": reference,
+                "data": dict(data),
+                "merge": merge,
+            }
+        )
+
+    def commit(self) -> None:
+        committed_operations: list[dict[str, object]] = []
+        for operation in self._pending_operations:
+            reference = operation["reference"]
+            data = dict(operation["data"])
+            merge = bool(operation["merge"])
+            assert isinstance(reference, _FakeFirestoreDocumentReference)
+            if merge:
+                existing = dict(self._store.get(reference.doc_id, {}))
+                existing.update(data)
+                self._store[reference.doc_id] = existing
+            else:
+                self._store[reference.doc_id] = data
+            committed_operations.append(
+                {
+                    "doc_id": reference.doc_id,
+                    "data": data,
+                    "merge": merge,
+                }
+            )
+        self._commit_log.append(committed_operations)
+        self._pending_operations = []
 
 
 class _FakeFirestoreCollection:
@@ -108,6 +167,17 @@ class _FakeFirestoreCollection:
     def document(self, doc_id: str) -> _FakeFirestoreDocumentReference:
         return _FakeFirestoreDocumentReference(self._store, doc_id)
 
+    def stream(self) -> list[_FakeFirestoreDocumentSnapshot]:
+        return [
+            _FakeFirestoreDocumentSnapshot(
+                exists=True,
+                data=data,
+                doc_id=doc_id,
+                reference=_FakeFirestoreDocumentReference(self._store, doc_id),
+            )
+            for doc_id, data in self._store.items()
+        ]
+
     def where(self, field: str, _operator: str, value: object) -> _FakeFirestoreQuery:
         return _FakeFirestoreQuery(
             self._store,
@@ -121,9 +191,13 @@ class _FakeFirestoreClient:
         self.credentials = credentials
         self.store: dict[str, dict] = {}
         self.executed_queries: list[tuple[tuple[str, object], ...]] = []
+        self.batch_commits: list[list[dict[str, object]]] = []
 
     def collection(self, _name: str) -> _FakeFirestoreCollection:
         return _FakeFirestoreCollection(self.store, self.executed_queries)
+
+    def batch(self) -> _FakeFirestoreBatch:
+        return _FakeFirestoreBatch(self.store, self.batch_commits)
 
 
 def _install_fake_gcloud_modules(monkeypatch: pytest.MonkeyPatch) -> None:
