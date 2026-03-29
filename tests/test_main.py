@@ -460,8 +460,9 @@ def test_main_exits_when_config_load_fails(
 
     assert exc_info.value.code == 1
     captured = capsys.readouterr()
-    assert "設定ファイルの読み込みに失敗しました" in captured.out
-    assert "bad config" in captured.out
+    assert captured.out == ""
+    assert "設定ファイルの読み込みに失敗しました" in captured.err
+    assert "bad config" in captured.err
 
 
 def test_main_dry_run_skips_browser_startup(

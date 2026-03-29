@@ -72,7 +72,9 @@ _DEFAULT_SCREENSHOT_ON_ERROR = False
 _MSG_CONFIG_NOT_FOUND = "config.yml が見つかりません: {path}"
 _MSG_CONFIG_ROOT_TYPE = "config.yml のルート要素は object で指定してください。"
 _MSG_DRY_RUN_TYPE = "dry_run には true または false を指定してください。"
+_MSG_CONFIG_YAML_INVALID = "config.yml の YAML 構文が不正です: {detail}"
 
+_MSG_REQUIRED_STRING_TYPE = "{key} には文字列を指定してください。"
 _MSG_REQUIRED_CHROME_USER_DATA_DIR = (
     "chrome_user_data_dir が設定されていません。config.yml に記載してください。"
 )
@@ -269,8 +271,11 @@ def load_config(path: Path) -> AppConfig:
     if not path.exists():
         raise FileNotFoundError(_MSG_CONFIG_NOT_FOUND.format(path=path))
 
-    with path.open(encoding=AppConstants.DEFAULT_TEXT_ENCODING) as f:
-        loaded = yaml.safe_load(f)
+    try:
+        with path.open(encoding=AppConstants.DEFAULT_TEXT_ENCODING) as f:
+            loaded = yaml.safe_load(f)
+    except yaml.YAMLError as exc:
+        raise ValueError(_MSG_CONFIG_YAML_INVALID.format(detail=str(exc))) from exc
 
     if loaded is None:
         raw: dict = {}
@@ -371,8 +376,12 @@ def _validate_required(raw: dict) -> None:
         if value is None:
             errors.append(msg)
             continue
-        if key in _REQUIRED_STRING_KEYS and not str(value).strip():
-            errors.append(msg)
+        if key in _REQUIRED_STRING_KEYS:
+            if not isinstance(value, str):
+                errors.append(_MSG_REQUIRED_STRING_TYPE.format(key=key))
+                continue
+            if not value.strip():
+                errors.append(msg)
     dry_run_val = raw.get(_KEY_DRY_RUN)
     if dry_run_val is not None and not isinstance(dry_run_val, bool):
         errors.append(_MSG_DRY_RUN_TYPE)
@@ -646,7 +655,7 @@ def _validate_gcloud(
     backend = duplicate_detection_raw.get(_KEY_DD_BACKEND, AppConstants.DEFAULT_BACKEND)
     creds = credentials_raw
 
-    if backend == AppConstants.BACKEND_GCLOUD and not creds:
+    if not creds:
         raise ValueError(_MSG_GCLOUD_CREDS_REQUIRED)
 
     resolved_creds = _resolve_optional_path(creds, config_dir)
@@ -693,6 +702,9 @@ def _build_config(
     parser = ParserConfig(
         encoding_priority=sections.parser.get(
             _KEY_PARSER_ENCODING_PRIORITY,
+    if backend != AppConstants.BACKEND_GCLOUD:
+        return
+
             list(AppConstants.DEFAULT_ENCODING_PRIORITY),
         ),
         date_formats=sections.parser.get(
@@ -722,11 +734,11 @@ def _build_config(
     creds = _resolve_optional_path(raw.get(_KEY_GCLOUD_CREDENTIALS_PATH), config_dir)
     exclude_prefixes_raw = raw.get(_KEY_EXCLUDE_PREFIXES)
     return AppConfig(
-        chrome_user_data_dir=str(raw[_KEY_CHROME_USER_DATA_DIR]),
-        chrome_profile=str(raw[_KEY_CHROME_PROFILE]),
+        chrome_user_data_dir=raw[_KEY_CHROME_USER_DATA_DIR],
+        chrome_profile=raw[_KEY_CHROME_PROFILE],
         dry_run=bool(raw[_KEY_DRY_RUN]),
         input_csv=_resolve_path(raw[_KEY_INPUT_CSV], config_dir),
-        mf_account=str(raw[_KEY_MF_ACCOUNT]),
+        mf_account=raw[_KEY_MF_ACCOUNT],
         mapping_rules=mapping_rules,
         exclude_prefixes=(
             list(AppConstants.DEFAULT_EXCLUDE_PREFIXES)

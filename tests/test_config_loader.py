@@ -119,6 +119,15 @@ def test_invalid_yaml_root_type_raises_value_error(
         load_config(_write_config(tmp_path, root_value))
 
 
+def test_invalid_yaml_syntax_raises_value_error(tmp_path: Path) -> None:
+    """壊れた YAML 構文が ValueError に正規化されることを確認する。"""
+    config_file = tmp_path / _CONFIG_FILENAME
+    config_file.write_text("chrome_user_data_dir: [\n", encoding=_YAML_ENCODING)
+
+    with pytest.raises(ValueError, match="YAML 構文"):
+        load_config(config_file)
+
+
 # TC-01-02: 必須項目欠落（chrome_user_data_dir）
 def test_missing_chrome_user_data_dir(tmp_path: Path) -> None:
     """TC-01-02: chrome_user_data_dir 欠落時に ValueError が送出されることを確認する。"""
@@ -194,6 +203,30 @@ def test_blank_required_string_value_raises_value_error(
     data[key] = value
 
     with pytest.raises(ValueError, match=key):
+        load_config(_write_config(tmp_path, data))
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        pytest.param("chrome_user_data_dir", 123, id="chrome_user_data_dir-int"),
+        pytest.param("chrome_profile", False, id="chrome_profile-bool"),
+        pytest.param("input_csv", 999, id="input_csv-int"),
+        pytest.param("mf_account", True, id="mf_account-bool"),
+    ],
+)
+def test_required_string_values_must_be_strings(
+    tmp_path: Path,
+    key: str,
+    value: object,
+) -> None:
+    """必須文字列項目に非文字列を指定した場合は ValueError が送出される。"""
+    data = _base_data(tmp_path)
+    data[key] = value
+
+    with pytest.raises(
+        ValueError, match=re.escape(f"{key} には文字列を指定してください。")
+    ):
         load_config(_write_config(tmp_path, data))
 
 
@@ -367,6 +400,17 @@ def test_missing_relative_gcloud_credentials_path_raises_value_error(
         match=re.escape(str(tmp_path / _GCLOUD_CREDENTIALS_FILENAME)),
     ):
         load_config(_write_config(tmp_path, data))
+
+
+def test_local_backend_ignores_missing_gcloud_credentials_path(tmp_path: Path) -> None:
+    """backend が local の場合は gcloud_credentials_path の存在チェックをしない。"""
+    data = _base_data(tmp_path)
+    data["gcloud_credentials_path"] = _GCLOUD_CREDENTIALS_FILENAME
+
+    config = load_config(_write_config(tmp_path, data))
+
+    assert config.duplicate_detection.backend == AppConstants.BACKEND_LOCAL
+    assert config.gcloud_credentials_path == tmp_path / _GCLOUD_CREDENTIALS_FILENAME
 
 
 def test_absolute_paths_are_preserved(tmp_path: Path) -> None:

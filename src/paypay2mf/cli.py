@@ -287,7 +287,7 @@ def main(argv: list[str] | None = None) -> None:
     try:
         config = load_config(config_path)
     except (FileNotFoundError, ValueError) as e:
-        print(_STDERR_CONFIG_LOAD_FAILED.format(e))
+        print(_STDERR_CONFIG_LOAD_FAILED.format(e), file=sys.stderr)
         sys.exit(1)
 
     logger = setup_logger(config)
