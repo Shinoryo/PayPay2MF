@@ -1,1 +1,1 @@
-﻿"""paypay2mf package."""
+"""paypay2mf package."""

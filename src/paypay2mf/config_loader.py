@@ -103,20 +103,14 @@ _MSG_MAPPING_CATEGORY_EMPTY = "mapping_rules[{i}]: category が空です。"
 _MSG_MAPPING_MATCH_MODE_INVALID = (
     "mapping_rules[{i}]: match_mode が無効です: {mode!r} （有効値: {valids}）"
 )
-_MSG_MAPPING_PRIORITY_TYPE = (
-    "mapping_rules[{i}]: priority には整数を指定してください。"
-)
+_MSG_MAPPING_PRIORITY_TYPE = "mapping_rules[{i}]: priority には整数を指定してください。"
 _MSG_MAPPING_PRIORITY_RANGE = (
     "mapping_rules[{i}]: priority には 0 以上の整数を指定してください: {value}"
 )
 
 _MSG_EXCLUDE_PREFIXES_TYPE = "exclude_prefixes は list で指定してください。"
-_MSG_EXCLUDE_PREFIXES_ITEM_TYPE = (
-    "exclude_prefixes[{i}] には文字列を指定してください。"
-)
-_MSG_EXCLUDE_PREFIXES_ITEM_EMPTY = (
-    "exclude_prefixes[{i}] は空文字を許可しません。"
-)
+_MSG_EXCLUDE_PREFIXES_ITEM_TYPE = "exclude_prefixes[{i}] には文字列を指定してください。"
+_MSG_EXCLUDE_PREFIXES_ITEM_EMPTY = "exclude_prefixes[{i}] は空文字を許可しません。"
 
 _MSG_DUPLICATE_DETECTION_TYPE = "duplicate_detection は object で指定してください。"
 _MSG_DUPLICATE_BACKEND_INVALID = (

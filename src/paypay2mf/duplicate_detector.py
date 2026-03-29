@@ -24,6 +24,21 @@ _KEY_FALLBACK = "fallback_keys"
 _KEY_DATETIME = "datetime"
 _KEY_AMOUNT = "amount"
 _KEY_MERCHANT = "merchant"
+
+_MSG_PROCESSED_ROOT_TYPE = "processed.json のルートは object である必要があります"
+_MSG_PROCESSED_TX_IDS_TYPE = "transaction_ids は list である必要があります"
+_MSG_PROCESSED_FALLBACK_LIST_TYPE = "fallback_keys は list である必要があります"
+_MSG_PROCESSED_TX_ID_ITEM_TYPE = "transaction_ids の要素は文字列である必要があります"
+_MSG_PROCESSED_FALLBACK_ENTRY_TYPE = (
+    "fallback_keys の要素は object である必要があります"
+)
+_MSG_PROCESSED_FALLBACK_DATETIME_TYPE = (
+    "fallback_keys.datetime は文字列である必要があります"
+)
+_MSG_PROCESSED_FALLBACK_AMOUNT_TYPE = "fallback_keys.amount は整数である必要があります"
+_MSG_PROCESSED_FALLBACK_MERCHANT_TYPE = (
+    "fallback_keys.merchant は文字列である必要があります"
+)
 _KEY_DATE_BUCKET = "date_bucket"
 
 # Firestore のクエリ構築に使う定数。
@@ -230,7 +245,7 @@ class LocalDuplicateDetector:
                     self._data = self._validate_loaded_data(json.load(f))
                 self._tx_ids = set(self._data[_KEY_TX_IDS])
                 self._dirty = False
-            except (json.JSONDecodeError, ValueError) as exc:
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
                 backup_path = self._backup_corrupted_store()
                 msg = (
                     "processed.json が破損しているため読み込めません。"
@@ -242,7 +257,7 @@ class LocalDuplicateDetector:
 
     def _validate_loaded_data(self, loaded_data: object) -> dict:
         if not isinstance(loaded_data, dict):
-            raise ValueError("processed.json のルートは object である必要があります")
+            raise TypeError(_MSG_PROCESSED_ROOT_TYPE)
 
         loaded_data.setdefault(_KEY_TX_IDS, [])
         loaded_data.setdefault(_KEY_FALLBACK, [])
@@ -251,13 +266,13 @@ class LocalDuplicateDetector:
         fallback_entries = loaded_data[_KEY_FALLBACK]
 
         if not isinstance(transaction_ids, list):
-            raise ValueError("transaction_ids は list である必要があります")
+            raise TypeError(_MSG_PROCESSED_TX_IDS_TYPE)
         if not isinstance(fallback_entries, list):
-            raise ValueError("fallback_keys は list である必要があります")
+            raise TypeError(_MSG_PROCESSED_FALLBACK_LIST_TYPE)
 
         for transaction_id in transaction_ids:
             if not isinstance(transaction_id, str):
-                raise ValueError("transaction_ids の要素は文字列である必要があります")
+                raise TypeError(_MSG_PROCESSED_TX_ID_ITEM_TYPE)
 
         for entry in fallback_entries:
             self._validate_fallback_entry(entry)
@@ -266,18 +281,18 @@ class LocalDuplicateDetector:
 
     def _validate_fallback_entry(self, entry: object) -> None:
         if not isinstance(entry, dict):
-            raise ValueError("fallback_keys の要素は object である必要があります")
+            raise TypeError(_MSG_PROCESSED_FALLBACK_ENTRY_TYPE)
 
         datetime_value = entry.get(_KEY_DATETIME)
         amount_value = entry.get(_KEY_AMOUNT)
         merchant_value = entry.get(_KEY_MERCHANT)
 
         if not isinstance(datetime_value, str):
-            raise ValueError("fallback_keys.datetime は文字列である必要があります")
+            raise TypeError(_MSG_PROCESSED_FALLBACK_DATETIME_TYPE)
         if not isinstance(amount_value, int) or isinstance(amount_value, bool):
-            raise ValueError("fallback_keys.amount は整数である必要があります")
+            raise TypeError(_MSG_PROCESSED_FALLBACK_AMOUNT_TYPE)
         if not isinstance(merchant_value, str):
-            raise ValueError("fallback_keys.merchant は文字列である必要があります")
+            raise TypeError(_MSG_PROCESSED_FALLBACK_MERCHANT_TYPE)
 
     def _save(self) -> None:
         """処理済みデータを JSON ファイルに書き出す。"""
