@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.models import AppConfig, ParseFailure
+    from paypay2mf.models import AppConfig, ParseFailure
 
-from src.constants import AppConstants
+from paypay2mf.constants import AppConstants
 
 # ロガーの出力形式に使う定数。
 _LOGGER_NAME = "paypay2mf"

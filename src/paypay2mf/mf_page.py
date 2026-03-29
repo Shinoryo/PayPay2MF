@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from src import mf_selectors
-from src.constants import AppConstants
-from src.mf_category_map import load_mf_category_map
+from paypay2mf import mf_selectors
+from paypay2mf.constants import AppConstants
+from paypay2mf.mf_category_map import load_mf_category_map
 
 if TYPE_CHECKING:
     import logging
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
     from playwright.sync_api import Locator, Page
 
-    from src.models import Transaction
+    from paypay2mf.models import Transaction
 
 
 # フォーム入力時の分岐や警告に使う定数。

@@ -9,10 +9,10 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from src.constants import AppConstants
+from paypay2mf.constants import AppConstants
 
 if TYPE_CHECKING:
-    from src.models import MappingRule, Transaction
+    from paypay2mf.models import MappingRule, Transaction
 
 
 def apply_exclude(

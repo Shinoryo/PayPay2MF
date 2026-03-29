@@ -16,8 +16,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.constants import AppConstants
-from src.duplicate_detector import (
+from paypay2mf.constants import AppConstants
+from paypay2mf.duplicate_detector import (
     DuplicateHistoryError,
     GCloudDuplicateDetector,
     LocalDuplicateDetector,
@@ -28,7 +28,7 @@ from src.duplicate_detector import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from src.models import AppConfig
+    from paypay2mf.models import AppConfig
 
 
 class _FakeFirestoreDocumentSnapshot:
@@ -324,7 +324,7 @@ def test_local_mark_processed_buffers_writes_until_flush(
     config = app_config_factory(tmp_path, input_csv_name="dummy.csv")
     detector = LocalDuplicateDetector(config)
     dump_mock = Mock(wraps=json.dump)
-    monkeypatch.setattr("src.duplicate_detector.json.dump", dump_mock)
+    monkeypatch.setattr("paypay2mf.duplicate_detector.json.dump", dump_mock)
 
     detector.mark_processed(transaction_factory(transaction_id="TX001"))
     detector.mark_processed(transaction_factory(transaction_id="TX002"))

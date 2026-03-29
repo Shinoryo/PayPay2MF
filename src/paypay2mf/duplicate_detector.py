@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from src.models import AppConfig, Transaction
+    from paypay2mf.models import AppConfig, Transaction
 
-from src.constants import AppConstants
+from paypay2mf.constants import AppConstants
 
 # ローカルストア JSON のキー名。
 _KEY_TX_IDS = "transaction_ids"

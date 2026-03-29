@@ -15,9 +15,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from src import log_manager
-from src.constants import AppConstants
-from src.log_manager import setup_logger, write_error_csv, write_parse_error_csv
+from paypay2mf import log_manager
+from paypay2mf.constants import AppConstants
+from paypay2mf.log_manager import setup_logger, write_error_csv, write_parse_error_csv
 
 _ERROR_MESSAGE_SELECTOR_TIMEOUT = "selector timeout"
 _ERROR_MESSAGE_VALIDATION_FAILED = "validation failed"

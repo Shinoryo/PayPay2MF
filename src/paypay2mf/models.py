@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from src.constants import AppConstants
+from paypay2mf.constants import AppConstants
 
 if TYPE_CHECKING:
     from datetime import datetime

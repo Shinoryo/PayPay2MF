@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from src.mf_category_map import load_mf_category_map
+from paypay2mf.mf_category_map import load_mf_category_map
 
 if TYPE_CHECKING:
     from pathlib import Path

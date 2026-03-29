@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from src.constants import AppConstants
-from src.models import (
+from paypay2mf.constants import AppConstants
+from paypay2mf.models import (
     AdvancedConfig,
     AppConfig,
     LogSettings,

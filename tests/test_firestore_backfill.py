@@ -9,9 +9,9 @@ from unittest.mock import Mock
 
 import pytest
 
-import firestore_backfill
-from src.constants import AppConstants
-from src.duplicate_detector import build_date_bucket
+from paypay2mf import firestore_backfill
+from paypay2mf.constants import AppConstants
+from paypay2mf.duplicate_detector import build_date_bucket
 from tests.test_duplicate_detector import _FakeFirestoreClient
 
 

@@ -9,9 +9,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
 
-from src.constants import AppConstants
-from src.mf_category_map import load_mf_category_map
-from src.mf_page import MFManualFormPage
+from paypay2mf.constants import AppConstants
+from paypay2mf.mf_category_map import load_mf_category_map
+from paypay2mf.mf_page import MFManualFormPage
 
 if TYPE_CHECKING:
     import logging
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
     from playwright.sync_api import Locator
 
-    from src.models import AppConfig, Transaction
+    from paypay2mf.models import AppConfig, Transaction
 
 # NOTE: Playwright の同期 API はブラウザ起動時に import する
 # playwright install chromium を事前に実行しておくこと

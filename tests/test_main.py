@@ -22,9 +22,9 @@ from unittest.mock import Mock
 
 import pytest
 
-import main as app_main
-from src.constants import AppConstants
-from src.duplicate_detector import (
+import paypay2mf.cli as app_main
+from paypay2mf.constants import AppConstants
+from paypay2mf.duplicate_detector import (
     DuplicateHistoryError,
     DuplicateHistorySaveError,
     LocalDuplicateDetector,
@@ -47,7 +47,7 @@ _MSG_DUPLICATE_BACKEND_INIT_FAILED = "重複検知バックエンドの初期化
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from src.models import Transaction
+    from paypay2mf.models import Transaction
 
 
 class _FakeDetector:

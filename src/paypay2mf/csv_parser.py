@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
-from src.constants import AppConstants
-from src.models import AppConfig, ParseFailure, Transaction
+from paypay2mf.constants import AppConstants
+from paypay2mf.models import AppConfig, ParseFailure, Transaction
 
 # エンコーディング判定に使う定数。
 _ENCODING_CHECK_CHUNK_SIZE = 8192

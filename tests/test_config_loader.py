@@ -19,8 +19,8 @@ from typing import TYPE_CHECKING
 import pytest
 import yaml
 
-from src.config_loader import load_config
-from src.constants import AppConstants
+from paypay2mf.config_loader import load_config
+from paypay2mf.constants import AppConstants
 
 _CONFIG_FILENAME = "config.yml"
 _YAML_ENCODING = AppConstants.DEFAULT_TEXT_ENCODING

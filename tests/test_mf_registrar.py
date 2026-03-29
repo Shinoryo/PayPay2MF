@@ -15,8 +15,8 @@ import re
 
 import pytest
 
-from src.constants import AppConstants
-from src.mf_registrar import MFRegistrar
+from paypay2mf.constants import AppConstants
+from paypay2mf.mf_registrar import MFRegistrar
 
 _SELECTOR_TIMEOUT_MESSAGE = "selector timeout"
 _SCREENSHOT_STUB = "stub"

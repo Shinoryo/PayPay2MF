@@ -23,20 +23,20 @@ dev = [
 ]
 
 [project.scripts]
-paypay2mf = "main:main"
-paypay2mf-firestore-backfill = "firestore_backfill:main"
+paypay2mf = "paypay2mf.cli:main"
+paypay2mf-firestore-backfill = "paypay2mf.firestore_backfill:main"
 
 [tool.setuptools.package-data]
-src = ["mf_categories.yml"]
+paypay2mf = ["mf_categories.yml"]
 
 [tool.setuptools]
-packages = ["src"]
-py-modules = ["main", "firestore_backfill"]
+package-dir = {"" = "src"}
+packages = ["paypay2mf"]
 license-files = ["LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = ["src"]
 markers = [
     "integration_flow: orchestration and side-effect tests around the main application flow",
     "smoke_test: explicit Playwright smoke tests against a logged-in Money Forward profile",

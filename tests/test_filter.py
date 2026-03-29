@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from src.constants import AppConstants
-from src.filter import apply_exclude, apply_mapping
-from src.models import MappingRule, Transaction
+from paypay2mf.constants import AppConstants
+from paypay2mf.filter import apply_exclude, apply_mapping
+from paypay2mf.models import MappingRule, Transaction
 
 _DEFAULT_TRANSACTION_ID = "TX001"
 _DEFAULT_MERCHANT = "テスト商店"

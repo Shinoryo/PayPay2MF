@@ -16,10 +16,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from src import mf_selectors
-from src.constants import AppConstants
-from src.mf_page import MFManualFormPage
-from src.models import Transaction
+from paypay2mf import mf_selectors
+from paypay2mf.constants import AppConstants
+from paypay2mf.mf_page import MFManualFormPage
+from paypay2mf.models import Transaction
 
 _DEFAULT_OPTION_VALUE = "account-001"
 _LEGACY_OPTION_VALUE = "account-legacy"

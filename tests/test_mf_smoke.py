@@ -11,10 +11,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from src.mf_registrar import MFRegistrar
+from paypay2mf.mf_registrar import MFRegistrar
 
 if TYPE_CHECKING:
-    from src.models import AppConfig
+    from paypay2mf.models import AppConfig
 
 
 @pytest.mark.smoke_test

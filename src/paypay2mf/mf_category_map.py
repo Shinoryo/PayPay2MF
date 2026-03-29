@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from src.constants import AppConstants
+from paypay2mf.constants import AppConstants
 
 # カテゴリマップの読み込み先と YAML キー。
 _DEFAULT_MF_CATEGORIES_PATH = Path(__file__).with_name("mf_categories.yml")

@@ -17,7 +17,7 @@
 3. `chrome_user_data_dir` / `chrome_profile` / `dry_run` / `input_csv` /
   `mf_account` の必須 5 項目を設定する。`mf_account` には MF の口座表示名と
   完全一致する値を指定する。
-4. まず `dry_run: true` で `python main.py` を実行し、CSV の読込結果と
+4. まず `dry_run: true` で `paypay2mf` を実行し、CSV の読込結果と
   件数サマリーを確認する。
 5. `logs_dir` 配下のログや `parse_error_*.csv` を確認し、問題がなければ
   `dry_run: false` に変更する。
@@ -199,7 +199,7 @@ mf_account: "PayPay残高"
 
 ```bash
 # config.yml の dry_run: true を設定してから実行
-python main.py
+paypay2mf
 ```
 
 ブラウザは起動しません。CSV の処理件数、除外件数、重複スキップ件数、登録対象件数などのサマリーを標準出力およびログに出力します。
@@ -212,7 +212,7 @@ python main.py
 
 ```bash
 # config.yml の dry_run: false を設定してから実行
-python main.py
+paypay2mf
 ```
 
 Chrome を指定の `chrome_user_data_dir` / `chrome_profile` で起動し、
@@ -245,6 +245,8 @@ typing から利用しています。
 直接 import している third-party package は、転移依存に頼らず
 pyproject.toml の dependencies または optional-dependencies に
 明示的に定義します。
+リポジトリ checkout 上で直接起動したい場合は、互換ラッパーとして
+`python main.py` と `python firestore_backfill.py` も利用できます。
 
 ## 想定実行環境
 
@@ -479,9 +481,9 @@ backfill は `duplicate_detection.backend: "gcloud"` の設定を前提に、
 
 - 直接 import する third-party package は、pyproject.toml の
   dependencies または optional-dependencies に必ず明示する。
-- Python 3.11 以上を前提とし、[src/mf_registrar.py](src/mf_registrar.py)
+- Python 3.11 以上を前提とし、[src/paypay2mf/mf_registrar.py](src/paypay2mf/mf_registrar.py)
   の Self 型注釈は標準ライブラリの typing を使用する。
-- optional dependency は [src/duplicate_detector.py](src/duplicate_detector.py)
+- optional dependency は [src/paypay2mf/duplicate_detector.py](src/paypay2mf/duplicate_detector.py)
   のように遅延 import と案内メッセージを組み合わせ、
   未導入環境でも基本機能が動作するようにする。
 - GCloud backend の自動テストは、[tests/test_duplicate_detector.py](tests/test_duplicate_detector.py)
@@ -490,14 +492,15 @@ backfill は `duplicate_detection.backend: "gcloud"` の設定を前提に、
 
 ### UI 自動化の保守方針
 
-- Money Forward の DOM セレクタ契約は [src/mf_selectors.py](src/mf_selectors.py) に集約する。
+- Money Forward の DOM セレクタ契約は
+  [src/paypay2mf/mf_selectors.py](src/paypay2mf/mf_selectors.py) に集約する。
 - 手入力モーダルの UI 操作は
-  [src/mf_page.py](src/mf_page.py) の `MFManualFormPage` にまとめる。
+  [src/paypay2mf/mf_page.py](src/paypay2mf/mf_page.py) の `MFManualFormPage` にまとめる。
 - Money Forward のカテゴリ対応表は
-  [src/mf_categories.yml](src/mf_categories.yml) を既定とし、
+  [src/paypay2mf/mf_categories.yml](src/paypay2mf/mf_categories.yml) を既定とし、
   必要時のみ `config.yml` の `advanced.mf_categories_path` で差し替える。
 - 独自カテゴリ YAML のひな形として [mf_categories_sample.yml](mf_categories_sample.yml) を同梱している。差し替え時はこの形式をベースに編集する。
-- [src/mf_registrar.py](src/mf_registrar.py) はブラウザ起動と
+- [src/paypay2mf/mf_registrar.py](src/paypay2mf/mf_registrar.py) はブラウザ起動と
   コンテキスト管理に専念させる。
 - DOM 変更対応時は、まず selector 定義と Page Object を確認し、registrar 本体へ直接セレクタを増やさない。
 

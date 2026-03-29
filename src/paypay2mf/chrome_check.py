@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import psutil
 
-from src.constants import AppConstants
+from paypay2mf.constants import AppConstants
 
 # psutil の参照キーに使う定数。
 _PROCESS_INFO_NAME = "name"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import tomllib
 from pathlib import Path
 
@@ -56,15 +57,35 @@ def test_pyproject_declares_mit_license_and_license_file() -> None:
     assert (repo_root / "LICENSE").exists()
 
 
-def test_pyproject_packages_console_script_modules_for_regular_install() -> None:
-    """通常の wheel install でも console script の参照先モジュールが同梱されることを確認する。"""
+def test_pyproject_packages_paypay2mf_namespace_for_regular_install() -> None:
+    """通常の wheel install でも paypay2mf 名前空間が同梱されることを確認する。"""
     pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
 
     pyproject = _load_pyproject(pyproject_path)
     tool = pyproject["tool"]
+    project = pyproject["project"]
 
     assert isinstance(tool, dict)
+    assert isinstance(project, dict)
     setuptools = tool["setuptools"]
     assert isinstance(setuptools, dict)
-    assert setuptools["packages"] == ["src"]
-    assert setuptools["py-modules"] == ["main", "firestore_backfill"]
+    package_data = setuptools["package-data"]
+    assert isinstance(package_data, dict)
+
+    assert setuptools["package-dir"] == {"": "src"}
+    assert setuptools["packages"] == ["paypay2mf"]
+    assert "py-modules" not in setuptools
+    assert package_data["paypay2mf"] == ["mf_categories.yml"]
+    assert project["scripts"] == {
+        "paypay2mf": "paypay2mf.cli:main",
+        "paypay2mf-firestore-backfill": "paypay2mf.firestore_backfill:main",
+    }
+
+
+def test_runtime_import_uses_paypay2mf_namespace() -> None:
+    """ソースチェックアウト上でも paypay2mf パッケージを import できることを確認する。"""
+    package = importlib.import_module("paypay2mf")
+    category_module = importlib.import_module("paypay2mf.mf_category_map")
+
+    assert package.__file__ is not None
+    assert category_module.__file__ is not None

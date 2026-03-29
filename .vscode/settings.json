@@ -2,6 +2,9 @@
     "files.encoding": "utf8bom",
     "files.insertFinalNewline": true,
     "files.trimFinalNewlines": true,
+    "python.analysis.extraPaths": [
+        "src"
+    ],
     "editor.codeActionsOnSave": {
         "source.fixAll": "explicit",
         "source.organizeImports": "explicit"

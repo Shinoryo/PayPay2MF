@@ -19,9 +19,9 @@ from pathlib import Path
 
 import pytest
 
-from src.constants import AppConstants
-from src.csv_parser import _merge_compound, _parse_amount, parse_csv
-from src.models import AppConfig
+from paypay2mf.constants import AppConstants
+from paypay2mf.csv_parser import _merge_compound, _parse_amount, parse_csv
+from paypay2mf.models import AppConfig
 
 _DUMMY_CHROME_USER_DATA_DIR = "C:\\dummy"
 _DEFAULT_CHROME_PROFILE = "Default"
