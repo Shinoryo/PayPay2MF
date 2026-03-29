@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "paypay2mf"
 version = "0.1.0"
 requires-python = ">=3.10"
+license = "MIT"
 dependencies = [
     "playwright>=1.40",
     "psutil>=5.9",
@@ -27,6 +28,9 @@ paypay2mf = "main:main"
 
 [tool.setuptools.package-data]
 src = ["mf_categories.yml"]
+
+[tool.setuptools]
+license-files = ["LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
