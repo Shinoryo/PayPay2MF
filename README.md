@@ -56,6 +56,10 @@ input_csv: "C:\\Users\\yourname\\Downloads\\paypay_history.csv"
 mf_account: "PayPay残高"
 ```
 
+`input_csv`、`log_settings.logs_dir`、`advanced.mf_categories_path`、
+`gcloud_credentials_path` に相対パスを指定した場合は、
+`config.yml` の配置ディレクトリ基準で解決されます。
+
 ### 入力CSVファイル（PayPay 利用明細）
 
 | 項目 | 内容 |
@@ -341,6 +345,8 @@ duplicate_detection:
 
 gcloud_credentials_path: "C:\\Users\\yourname\\paypay2mf-credentials.json"
 ```
+
+`gcloud_credentials_path` も絶対パスに加えて `config.yml` 基準の相対パスを指定できます。
 
 ### 6. Firestore 複合インデックスの作成（フォールバック検索用）
 

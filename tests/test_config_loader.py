@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -28,8 +29,11 @@ _DEFAULT_MF_ACCOUNT = "PayPay残高"
 _INPUT_CSV_FILENAME = "test.csv"
 _HEADER_LINE = "header\n"
 _USER_DATA_DIRNAME = "User Data"
+_OTHER_WORK_DIRNAME = "other-workdir"
+_LOGS_DIRNAME = "custom-logs"
 _CUSTOM_CATEGORIES_FILENAME = "custom_categories.yml"
 _MISSING_CATEGORIES_FILENAME = "missing_categories.yml"
+_GCLOUD_CREDENTIALS_FILENAME = "service-account.json"
 _MISSING_PATH_NAME = "nonexistent"
 _MISSING_PROFILE = "MissingProfile"
 _MATCH_MODE_INVALID = "fuzzy"
@@ -88,6 +92,7 @@ def test_load_config_ok(tmp_path: Path) -> None:
     cfg_path = _write_config(tmp_path, data)
     config = load_config(cfg_path)
     assert config.dry_run is True
+    assert config.input_csv == tmp_path / _INPUT_CSV_FILENAME
     assert config.mf_account == _DEFAULT_MF_ACCOUNT
     assert config.exclude_prefixes == list(AppConstants.DEFAULT_EXCLUDE_PREFIXES)
 
@@ -165,6 +170,89 @@ def test_mf_categories_path_is_resolved_relative_to_config(tmp_path: Path) -> No
     config = load_config(_write_config(tmp_path, data))
 
     assert config.advanced.mf_categories_path == categories_file
+
+
+def test_input_csv_is_resolved_relative_to_config_even_when_cwd_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """input_csv は config.yml 基準の相対パスとして解決され、実行 cwd に依存しないことを確認する。"""
+    data = _base_data(tmp_path)
+    data["input_csv"] = _INPUT_CSV_FILENAME
+    other_dir = tmp_path / _OTHER_WORK_DIRNAME
+    other_dir.mkdir()
+
+    monkeypatch.chdir(other_dir)
+    config = load_config(_write_config(tmp_path, data))
+
+    assert config.input_csv == tmp_path / _INPUT_CSV_FILENAME
+
+
+def test_missing_relative_input_csv_raises_value_error(tmp_path: Path) -> None:
+    """input_csv に config.yml 基準の存在しない相対パスを指定した場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["input_csv"] = _MISSING_PATH_NAME + AppConstants.CSV_EXTENSION
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(str(tmp_path / data["input_csv"])),
+    ):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_logs_dir_is_resolved_relative_to_config(tmp_path: Path) -> None:
+    """log_settings.logs_dir は config.yml 基準の相対パスとして解決されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["log_settings"] = {"logs_dir": _LOGS_DIRNAME}
+
+    config = load_config(_write_config(tmp_path, data))
+
+    assert config.log_settings.logs_dir == tmp_path / _LOGS_DIRNAME
+
+
+def test_gcloud_credentials_path_is_resolved_relative_to_config(tmp_path: Path) -> None:
+    """gcloud_credentials_path は config.yml 基準の相対パスとして解決されることを確認する。"""
+    data = _base_data(tmp_path)
+    credentials_file = tmp_path / _GCLOUD_CREDENTIALS_FILENAME
+    credentials_file.write_text("{}", encoding=_YAML_ENCODING)
+    data["duplicate_detection"] = {"backend": AppConstants.BACKEND_GCLOUD}
+    data["gcloud_credentials_path"] = _GCLOUD_CREDENTIALS_FILENAME
+
+    config = load_config(_write_config(tmp_path, data))
+
+    assert config.gcloud_credentials_path == credentials_file
+
+
+def test_missing_relative_gcloud_credentials_path_raises_value_error(
+    tmp_path: Path,
+) -> None:
+    """gcloud_credentials_path に config.yml 基準の存在しない相対パスを指定した場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["duplicate_detection"] = {"backend": AppConstants.BACKEND_GCLOUD}
+    data["gcloud_credentials_path"] = _GCLOUD_CREDENTIALS_FILENAME
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(str(tmp_path / _GCLOUD_CREDENTIALS_FILENAME)),
+    ):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_absolute_paths_are_preserved(tmp_path: Path) -> None:
+    """絶対パスで指定した設定値はそのまま保持されることを確認する。"""
+    data = _base_data(tmp_path)
+    logs_dir = tmp_path / _LOGS_DIRNAME
+    credentials_file = tmp_path / _GCLOUD_CREDENTIALS_FILENAME
+    credentials_file.write_text("{}", encoding=_YAML_ENCODING)
+    data["log_settings"] = {"logs_dir": str(logs_dir)}
+    data["duplicate_detection"] = {"backend": AppConstants.BACKEND_GCLOUD}
+    data["gcloud_credentials_path"] = str(credentials_file)
+
+    config = load_config(_write_config(tmp_path, data))
+
+    assert config.input_csv == tmp_path / _INPUT_CSV_FILENAME
+    assert config.log_settings.logs_dir == logs_dir
+    assert config.gcloud_credentials_path == credentials_file
 
 
 def test_missing_mf_categories_path_raises_value_error(tmp_path: Path) -> None:

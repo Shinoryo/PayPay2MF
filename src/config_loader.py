@@ -139,7 +139,7 @@ def load_config(path: Path) -> AppConfig:
         config_dir=path.parent,
     )
     _validate_mapping_rules(raw.get(_KEY_MAPPING_RULES) or [])
-    _validate_gcloud(raw)
+    _validate_gcloud(raw, config_dir=path.parent)
     return _build_config(raw, config_dir=path.parent)
 
 
@@ -193,7 +193,7 @@ def _validate_paths(
         else:
             errors.append(_MSG_CHROME_USER_DATA_DIR_NOT_EXIST.format(path=user_data_dir))
 
-    input_csv = Path(str(raw[_KEY_INPUT_CSV]))
+    input_csv = _resolve_path(raw[_KEY_INPUT_CSV], config_dir)
     if not input_csv.exists():
         errors.append(_MSG_INPUT_CSV_NOT_EXIST.format(path=input_csv))
     elif input_csv.suffix.lower() != AppConstants.CSV_EXTENSION:
@@ -211,15 +211,19 @@ def _validate_paths(
         raise ValueError("\n".join(errors))
 
 
-def _resolve_optional_path(raw_value: object, config_dir: Path) -> Path | None:
+def _resolve_path(raw_value: object, config_dir: Path) -> Path:
     """設定値のパスを config.yml 基準で解決する。"""
-    if raw_value in (None, ""):
-        return None
-
     candidate = Path(str(raw_value))
     if candidate.is_absolute():
         return candidate
     return config_dir / candidate
+
+
+def _resolve_optional_path(raw_value: object, config_dir: Path) -> Path | None:
+    """任意の設定パスを config.yml 基準で解決する。"""
+    if raw_value in (None, ""):
+        return None
+    return _resolve_path(raw_value, config_dir)
 
 
 def _validate_mapping_rules(rules: list) -> None:
@@ -247,11 +251,12 @@ def _validate_mapping_rules(rules: list) -> None:
         raise ValueError("\n".join(errors))
 
 
-def _validate_gcloud(raw: dict) -> None:
+def _validate_gcloud(raw: dict, *, config_dir: Path) -> None:
     """gcloud バックエンド使用時の追加検証を行う。
 
     Args:
         raw: YAML から読み込んだ辞書。
+        config_dir: config.yml が置かれたディレクトリ。
 
     Raises:
         ValueError: backend が "gcloud" なのに gcloud_credentials_path が
@@ -264,8 +269,9 @@ def _validate_gcloud(raw: dict) -> None:
     if backend == AppConstants.BACKEND_GCLOUD and not creds:
         raise ValueError(_MSG_GCLOUD_CREDS_REQUIRED)
 
-    if creds and not Path(str(creds)).exists():
-        raise ValueError(_MSG_GCLOUD_CREDS_NOT_EXIST.format(path=creds))
+    resolved_creds = _resolve_optional_path(creds, config_dir)
+    if resolved_creds is not None and not resolved_creds.exists():
+        raise ValueError(_MSG_GCLOUD_CREDS_NOT_EXIST.format(path=resolved_creds))
 
 
 def _build_config(raw: dict, *, config_dir: Path) -> AppConfig:
@@ -311,7 +317,7 @@ def _build_config(raw: dict, *, config_dir: Path) -> AppConfig:
     log_raw = raw.get(_KEY_LOG_SETTINGS) or {}
     logs_dir_raw = log_raw.get(_KEY_LOG_LOGS_DIR)
     log_settings = LogSettings(
-        logs_dir=Path(str(logs_dir_raw)) if logs_dir_raw else None,
+        logs_dir=_resolve_optional_path(logs_dir_raw, config_dir),
         max_log_count=log_raw.get(_KEY_LOG_MAX_LOG_COUNT),
         max_total_log_size_mb=log_raw.get(_KEY_LOG_MAX_TOTAL_LOG_SIZE_MB),
     )
@@ -327,17 +333,17 @@ def _build_config(raw: dict, *, config_dir: Path) -> AppConfig:
         ),
     )
 
-    creds = raw.get(_KEY_GCLOUD_CREDENTIALS_PATH)
+    creds = _resolve_optional_path(raw.get(_KEY_GCLOUD_CREDENTIALS_PATH), config_dir)
     return AppConfig(
         chrome_user_data_dir=str(raw[_KEY_CHROME_USER_DATA_DIR]),
         chrome_profile=str(raw[_KEY_CHROME_PROFILE]),
         dry_run=bool(raw[_KEY_DRY_RUN]),
-        input_csv=Path(str(raw[_KEY_INPUT_CSV])),
+        input_csv=_resolve_path(raw[_KEY_INPUT_CSV], config_dir),
         mf_account=str(raw[_KEY_MF_ACCOUNT]),
         mapping_rules=mapping_rules,
         exclude_prefixes=raw.get(_KEY_EXCLUDE_PREFIXES)
         or list(AppConstants.DEFAULT_EXCLUDE_PREFIXES),
-        gcloud_credentials_path=Path(str(creds)) if creds else None,
+        gcloud_credentials_path=creds,
         duplicate_detection=dup,
         parser=parser,
         log_settings=log_settings,
