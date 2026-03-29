@@ -22,6 +22,7 @@ from paypay2mf.duplicate_detector import (
     GCloudDuplicateDetector,
     LocalDuplicateDetector,
     build_date_bucket,
+    build_firestore_fallback_doc_id,
     create_detector,
 )
 
@@ -591,6 +592,44 @@ def test_local_reload_rebuilds_transaction_id_lookup_from_json_list(
     )
 
 
+def test_local_reload_rebuilds_fallback_index_from_json_list(
+    tmp_path: Path,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """JSON の fallback_keys リストから再読込後の補助 index が再構築されることを確認する。"""
+    config = app_config_factory(tmp_path, input_csv_name="dummy.csv")
+    base = datetime(2025, 1, 1, 12, 0, 0)  # noqa: DTZ001
+    processed_file = tmp_path / AppConstants.PROCESSED_FILENAME
+    processed_file.write_text(
+        json.dumps(
+            {
+                "transaction_ids": [],
+                "fallback_keys": [
+                    {
+                        "datetime": base.isoformat(),
+                        "amount": 300,
+                        "merchant": "テスト商店",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
+
+    detector = LocalDuplicateDetector(config)
+    duplicate_tx = transaction_factory(
+        transaction_id=None,
+        amount=300,
+        merchant="テスト商店",
+        date=base + timedelta(seconds=30),
+    )
+
+    assert detector.is_duplicate(duplicate_tx) is True
+
+
 def test_local_mark_processed_does_not_duplicate_stored_transaction_ids(
     tmp_path: Path,
     app_config_factory,
@@ -855,13 +894,38 @@ def test_gcloud_mark_processed_without_transaction_id_writes_date_bucket_payload
     detector.mark_processed(transaction)
 
     assert client.store == {
-        "920_テスト商店_20250101123456": {
+        build_firestore_fallback_doc_id(transaction): {
             "datetime": transaction.date.isoformat(),
             "amount": 920,
             "merchant": transaction.merchant,
             "date_bucket": "202501011234",
         }
     }
+
+
+def test_gcloud_fallback_doc_id_is_safe_when_merchant_contains_slash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """fallback document id が merchant の記号に依存しない安全な値になることを確認する。"""
+    _install_fake_gcloud_modules(monkeypatch)
+    config = _build_gcloud_config(tmp_path, app_config_factory)
+    detector = create_detector(config)
+    client = detector.client
+    transaction = transaction_factory(
+        transaction_id=None,
+        amount=920,
+        merchant="A/B 店舗",
+        date=datetime(2025, 1, 1, 12, 34, 56),  # noqa: DTZ001
+    )
+
+    detector.mark_processed(transaction)
+
+    stored_doc_ids = list(client.store)
+    assert stored_doc_ids == [build_firestore_fallback_doc_id(transaction)]
+    assert "/" not in stored_doc_ids[0]
 
 
 def test_gcloud_mark_processed_skips_write_in_dry_run(

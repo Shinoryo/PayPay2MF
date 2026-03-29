@@ -7,6 +7,7 @@ DuplicateDetector Protocol で共通インタフェースを定義する。
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from datetime import UTC, datetime, timedelta
@@ -96,7 +97,11 @@ def create_detector(config: AppConfig) -> DuplicateDetector:
         LocalDuplicateDetector または GCloudDuplicateDetector のインスタンス。
     """
     if config.duplicate_detection.backend == AppConstants.BACKEND_GCLOUD:
-        return GCloudDuplicateDetector(config)
+        return GCloudDuplicateDetector(
+            credentials_path=config.gcloud_credentials_path,
+            tolerance_seconds=config.duplicate_detection.tolerance_seconds,
+            dry_run=config.dry_run,
+        )
     return LocalDuplicateDetector(config)
 
 
@@ -133,6 +138,16 @@ def build_firestore_duplicate_payload(tx: Transaction) -> dict[str, str | int]:
     }
 
 
+def build_firestore_fallback_doc_id(tx: Transaction) -> str:
+    """transaction_id 欠損時に使う安全な Firestore document id を返す。"""
+    digest = hashlib.sha256(
+        f"{tx.date.isoformat()}|{tx.amount}|{tx.merchant}".encode(
+            AppConstants.DEFAULT_TEXT_ENCODING,
+        ),
+    ).hexdigest()
+    return f"fallback_{digest}"
+
+
 class LocalDuplicateDetector:
     """JSON ファイルを用いたローカル重複検知の実装。
 
@@ -156,6 +171,7 @@ class LocalDuplicateDetector:
             _KEY_FALLBACK: [],
         }
         self._tx_ids: set[str] = set()
+        self._fallback_index: dict[tuple[str, int], list[datetime]] = {}
         self._dirty = False
         self._load()
 
@@ -190,12 +206,14 @@ class LocalDuplicateDetector:
                 self._data[_KEY_TX_IDS].append(tx.transaction_id)
                 self._dirty = True
         else:
-            self._data[_KEY_FALLBACK].append(
-                {
-                    _KEY_DATETIME: tx.date.isoformat(),
-                    _KEY_AMOUNT: tx.amount,
-                    _KEY_MERCHANT: tx.merchant,
-                },
+            entry = {
+                _KEY_DATETIME: tx.date.isoformat(),
+                _KEY_AMOUNT: tx.amount,
+                _KEY_MERCHANT: tx.merchant,
+            }
+            self._data[_KEY_FALLBACK].append(entry)
+            self._fallback_index.setdefault((tx.merchant, tx.amount), []).append(
+                tx.date,
             )
             self._dirty = True
 
@@ -222,13 +240,9 @@ class LocalDuplicateDetector:
         Returns:
             重複と判定すれば True。
         """
-        for entry in self._data.get(_KEY_FALLBACK, []):
-            stored_dt = datetime.fromisoformat(entry[_KEY_DATETIME])
-            if (
-                entry[_KEY_AMOUNT] == tx.amount
-                and entry[_KEY_MERCHANT] == tx.merchant
-                and abs((tx.date - stored_dt).total_seconds()) <= self._tolerance
-            ):
+        fallback_dates = self._fallback_index.get((tx.merchant, tx.amount), [])
+        for stored_dt in fallback_dates:
+            if abs((tx.date - stored_dt).total_seconds()) <= self._tolerance:
                 return True
         return False
 
@@ -244,6 +258,9 @@ class LocalDuplicateDetector:
                 ) as f:
                     self._data = self._validate_loaded_data(json.load(f))
                 self._tx_ids = set(self._data[_KEY_TX_IDS])
+                self._fallback_index = self._build_fallback_index(
+                    self._data[_KEY_FALLBACK],
+                )
                 self._dirty = False
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
                 backup_path = self._backup_corrupted_store()
@@ -254,6 +271,19 @@ class LocalDuplicateDetector:
                 raise DuplicateHistoryError(msg) from exc
         else:
             self._tx_ids = set(self._data[_KEY_TX_IDS])
+            self._fallback_index = self._build_fallback_index(self._data[_KEY_FALLBACK])
+
+    def _build_fallback_index(
+        self,
+        fallback_entries: list[dict[str, str | int]],
+    ) -> dict[tuple[str, int], list[datetime]]:
+        index: dict[tuple[str, int], list[datetime]] = {}
+        for entry in fallback_entries:
+            key = (str(entry[_KEY_MERCHANT]), int(entry[_KEY_AMOUNT]))
+            index.setdefault(key, []).append(
+                datetime.fromisoformat(str(entry[_KEY_DATETIME]))
+            )
+        return index
 
     def _validate_loaded_data(self, loaded_data: object) -> dict:
         if not isinstance(loaded_data, dict):
@@ -326,14 +356,21 @@ class GCloudDuplicateDetector:
 
     _COLLECTION = "paypay_transactions"
 
-    def __init__(self, config: AppConfig) -> None:
+    def __init__(
+        self,
+        *,
+        credentials_path: Path,
+        tolerance_seconds: int,
+        dry_run: bool,
+    ) -> None:
         """GCloudDuplicateDetector を初期化する。
 
         Firestore クライアントをサービスアカウント認証情報で初期化する。
 
         Args:
-            config: アプリケーション設定。
-                gcloud_credentials_path が設定されていることを想定する。
+            credentials_path: サービスアカウント JSON のパス。
+            tolerance_seconds: fallback 重複判定の許容秒数。
+            dry_run: True の場合は Firestore 書き込みを抑止する。
 
         Raises:
             ImportError: google-cloud-firestore がインストールされていない場合。
@@ -351,11 +388,11 @@ class GCloudDuplicateDetector:
             raise ImportError(msg) from e
 
         creds = service_account.Credentials.from_service_account_file(
-            str(config.gcloud_credentials_path),
+            str(credentials_path),
         )
         self._client = _firestore.Client(credentials=creds)
-        self._dry_run = config.dry_run
-        self._tolerance = config.duplicate_detection.tolerance_seconds
+        self._dry_run = dry_run
+        self._tolerance = tolerance_seconds
 
     def is_duplicate(self, tx: Transaction) -> bool:
         """指定した取引が Firestore に処理済みとして登録済みかどうかを確認する。
@@ -402,13 +439,7 @@ class GCloudDuplicateDetector:
         if self._dry_run:
             return
 
-        if tx.transaction_id:
-            doc_id = tx.transaction_id
-        else:
-            doc_id = (
-                f"{tx.amount}_{tx.merchant}_"
-                f"{tx.date.strftime(AppConstants.DUPLICATE_KEY_DATE_FORMAT)}"
-            )
+        doc_id = tx.transaction_id or build_firestore_fallback_doc_id(tx)
         self._client.collection(self._COLLECTION).document(doc_id).set(
             build_firestore_duplicate_payload(tx)
         )

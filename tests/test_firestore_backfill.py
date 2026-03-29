@@ -59,6 +59,12 @@ def test_parse_args_accepts_dry_run_limit_and_config() -> None:
     assert args.config == config_path
 
 
+def test_parse_args_rejects_negative_limit() -> None:
+    """--limit は負数を受け付けない。"""
+    with pytest.raises(SystemExit):
+        firestore_backfill.parse_args(["--limit", "-1"])
+
+
 def test_backfill_skips_invalid_datetime_and_logs_warning() -> None:
     """不正 datetime は skip し、警告だけを残すことを確認する。"""
     valid_datetime = _build_datetime(0)

@@ -42,6 +42,7 @@ _MSG_DUPLICATE_TOLERANCE_TYPE = (
 _MSG_DUPLICATE_TOLERANCE_RANGE = (
     "duplicate_detection.tolerance_seconds には 0 以上の整数を指定してください: {value}"
 )
+_MSG_LIMIT_NON_NEGATIVE = "--limit には 0 以上の整数を指定してください。"
 _MSG_START = "Firestore date_bucket backfill を開始します"
 _MSG_SUMMARY = "走査 %d件 / 更新対象 %d件 / スキップ %d件"
 _MSG_SUMMARY_DRY_RUN = "dry-run 完了: 走査 %d件 / 更新予定 %d件 / スキップ %d件"
@@ -68,6 +69,14 @@ class _BackfillDetectorConfig:
     dry_run: bool = False
 
 
+def _parse_non_negative_int(raw_value: str) -> int:
+    """argparse 用の非負整数パーサー。"""
+    value = int(raw_value)
+    if value < 0:
+        raise argparse.ArgumentTypeError(_MSG_LIMIT_NON_NEGATIVE)
+    return value
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """CLI 引数を解釈する。"""
     parser = argparse.ArgumentParser(
@@ -86,7 +95,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--limit",
-        type=int,
+        type=_parse_non_negative_int,
         default=None,
         help="先頭から処理する最大件数。検証用です。",
     )
@@ -97,7 +106,11 @@ def _load_gcloud_detector(config_path: Path) -> GCloudDuplicateDetector:
     config = _load_backfill_config(config_path)
     if config.duplicate_detection.backend != AppConstants.BACKEND_GCLOUD:
         raise ValueError(_MSG_BACKEND_REQUIRED)
-    return GCloudDuplicateDetector(config)
+    return GCloudDuplicateDetector(
+        credentials_path=config.gcloud_credentials_path,
+        tolerance_seconds=config.duplicate_detection.tolerance_seconds,
+        dry_run=config.dry_run,
+    )
 
 
 def _load_backfill_config(config_path: Path) -> _BackfillDetectorConfig:
