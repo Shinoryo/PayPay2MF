@@ -103,6 +103,20 @@ _MSG_MAPPING_CATEGORY_EMPTY = "mapping_rules[{i}]: category が空です。"
 _MSG_MAPPING_MATCH_MODE_INVALID = (
     "mapping_rules[{i}]: match_mode が無効です: {mode!r} （有効値: {valids}）"
 )
+_MSG_MAPPING_PRIORITY_TYPE = (
+    "mapping_rules[{i}]: priority には整数を指定してください。"
+)
+_MSG_MAPPING_PRIORITY_RANGE = (
+    "mapping_rules[{i}]: priority には 0 以上の整数を指定してください: {value}"
+)
+
+_MSG_EXCLUDE_PREFIXES_TYPE = "exclude_prefixes は list で指定してください。"
+_MSG_EXCLUDE_PREFIXES_ITEM_TYPE = (
+    "exclude_prefixes[{i}] には文字列を指定してください。"
+)
+_MSG_EXCLUDE_PREFIXES_ITEM_EMPTY = (
+    "exclude_prefixes[{i}] は空文字を許可しません。"
+)
 
 _MSG_DUPLICATE_DETECTION_TYPE = "duplicate_detection は object で指定してください。"
 _MSG_DUPLICATE_BACKEND_INVALID = (
@@ -138,6 +152,9 @@ _MSG_PARSER_DATE_FORMATS_ITEM_EMPTY = (
 )
 
 _MSG_LOG_SETTINGS_TYPE = "log_settings は object で指定してください。"
+_MSG_LOG_LOGS_DIR_TYPE = (
+    "log_settings.logs_dir には文字列または null を指定してください。"
+)
 _MSG_LOG_MAX_LOG_COUNT_TYPE = "log_settings.max_log_count には整数を指定してください。"
 _MSG_LOG_MAX_LOG_COUNT_RANGE = (
     "log_settings.max_log_count には 0 以上の整数を指定してください: {value}"
@@ -185,7 +202,7 @@ CONFIG_ENV_VAR = "PAYPAY2MF_CONFIG"
 @dataclass(frozen=True, slots=True)
 class _StringListValidationMessages:
     list_type: str
-    empty_list: str
+    empty_list: str | None
     item_type: str
     item_empty: str
 
@@ -210,6 +227,12 @@ _PARSER_DATE_FORMATS_MESSAGES = _StringListValidationMessages(
     empty_list=_MSG_PARSER_DATE_FORMATS_EMPTY,
     item_type=_MSG_PARSER_DATE_FORMATS_ITEM_TYPE,
     item_empty=_MSG_PARSER_DATE_FORMATS_ITEM_EMPTY,
+)
+_EXCLUDE_PREFIXES_MESSAGES = _StringListValidationMessages(
+    list_type=_MSG_EXCLUDE_PREFIXES_TYPE,
+    empty_list=None,
+    item_type=_MSG_EXCLUDE_PREFIXES_ITEM_TYPE,
+    item_empty=_MSG_EXCLUDE_PREFIXES_ITEM_EMPTY,
 )
 
 
@@ -265,6 +288,7 @@ def load_config(path: Path) -> AppConfig:
     sections = _load_optional_sections(raw)
 
     _validate_required(raw)
+    _validate_top_level_optionals(raw)
     _validate_mapping_rules(sections.mapping_rules)
     _validate_duplicate_detection(sections.duplicate_detection)
     _validate_parser(sections.parser)
@@ -451,6 +475,32 @@ def _validate_mapping_rules(rules: list) -> None:
             errors.append(
                 _MSG_MAPPING_MATCH_MODE_INVALID.format(i=i, mode=mode, valids=valids),
             )
+        if _KEY_RULE_PRIORITY in rule:
+            _validate_non_negative_int(
+                rule.get(_KEY_RULE_PRIORITY),
+                type_message=_MSG_MAPPING_PRIORITY_TYPE.format(i=i),
+                range_message=_MSG_MAPPING_PRIORITY_RANGE.format(
+                    i=i,
+                    value="{value}",
+                ),
+                errors=errors,
+            )
+    if errors:
+        raise ValueError("\n".join(errors))
+
+
+def _validate_top_level_optionals(raw: dict) -> None:
+    """トップレベル任意項目の型を検証する。"""
+    errors: list[str] = []
+
+    exclude_prefixes = raw.get(_KEY_EXCLUDE_PREFIXES)
+    if exclude_prefixes is not None:
+        _validate_string_list(
+            exclude_prefixes,
+            messages=_EXCLUDE_PREFIXES_MESSAGES,
+            errors=errors,
+        )
+
     if errors:
         raise ValueError("\n".join(errors))
 
@@ -512,6 +562,10 @@ def _validate_log_settings(section: dict) -> None:
     """log_settings セクションを検証する。"""
     errors: list[str] = []
 
+    logs_dir = section.get(_KEY_LOG_LOGS_DIR)
+    if logs_dir is not None and not isinstance(logs_dir, str):
+        errors.append(_MSG_LOG_LOGS_DIR_TYPE)
+
     max_log_count = section.get(_KEY_LOG_MAX_LOG_COUNT)
     if max_log_count is not None:
         _validate_non_negative_int(
@@ -567,6 +621,8 @@ def _validate_string_list(
         errors.append(messages.list_type)
         return
     if not value:
+        if messages.empty_list is None:
+            return
         errors.append(messages.empty_list)
         return
     for i, item in enumerate(value):
@@ -670,6 +726,7 @@ def _build_config(
     )
 
     creds = _resolve_optional_path(raw.get(_KEY_GCLOUD_CREDENTIALS_PATH), config_dir)
+    exclude_prefixes_raw = raw.get(_KEY_EXCLUDE_PREFIXES)
     return AppConfig(
         chrome_user_data_dir=str(raw[_KEY_CHROME_USER_DATA_DIR]),
         chrome_profile=str(raw[_KEY_CHROME_PROFILE]),
@@ -677,8 +734,11 @@ def _build_config(
         input_csv=_resolve_path(raw[_KEY_INPUT_CSV], config_dir),
         mf_account=str(raw[_KEY_MF_ACCOUNT]),
         mapping_rules=mapping_rules,
-        exclude_prefixes=raw.get(_KEY_EXCLUDE_PREFIXES)
-        or list(AppConstants.DEFAULT_EXCLUDE_PREFIXES),
+        exclude_prefixes=(
+            list(AppConstants.DEFAULT_EXCLUDE_PREFIXES)
+            if exclude_prefixes_raw is None
+            else list(exclude_prefixes_raw)
+        ),
         gcloud_credentials_path=creds,
         duplicate_detection=dup,
         parser=parser,

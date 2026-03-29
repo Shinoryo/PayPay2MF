@@ -264,6 +264,54 @@ def test_logs_dir_is_resolved_relative_to_config(tmp_path: Path) -> None:
     assert config.log_settings.logs_dir == tmp_path / _LOGS_DIRNAME
 
 
+@pytest.mark.parametrize(
+    ("value", "pattern"),
+    [
+        pytest.param(
+            "PPCD_A_",
+            re.escape("exclude_prefixes は list で指定してください。"),
+            id="scalar-string",
+        ),
+        pytest.param(
+            [AppConstants.EXCLUDE_PREFIX_PAYPAY_CARD, 123],
+            re.escape("exclude_prefixes[1] には文字列を指定してください。"),
+            id="item-not-string",
+        ),
+        pytest.param(
+            [AppConstants.EXCLUDE_PREFIX_PAYPAY_CARD, ""],
+            re.escape("exclude_prefixes[1] は空文字を許可しません。"),
+            id="item-empty",
+        ),
+        pytest.param(
+            [AppConstants.EXCLUDE_PREFIX_PAYPAY_CARD, "   "],
+            re.escape("exclude_prefixes[1] は空文字を許可しません。"),
+            id="item-whitespace",
+        ),
+    ],
+)
+def test_invalid_exclude_prefixes_raises_value_error(
+    tmp_path: Path,
+    value: object,
+    pattern: str,
+) -> None:
+    """exclude_prefixes が list[str] 以外の場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["exclude_prefixes"] = value
+
+    with pytest.raises(ValueError, match=pattern):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_empty_exclude_prefixes_is_preserved(tmp_path: Path) -> None:
+    """exclude_prefixes に空 list を指定した場合、デフォルトに差し戻さずそのまま保持する。"""
+    data = _base_data(tmp_path)
+    data["exclude_prefixes"] = []
+
+    config = load_config(_write_config(tmp_path, data))
+
+    assert config.exclude_prefixes == []
+
+
 def test_gcloud_credentials_path_is_resolved_relative_to_config(tmp_path: Path) -> None:
     """gcloud_credentials_path は config.yml 基準の相対パスとして解決されることを確認する。"""
     data = _base_data(tmp_path)
@@ -336,6 +384,91 @@ def test_absolute_paths_are_preserved(tmp_path: Path) -> None:
     assert config.input_csv == tmp_path / _INPUT_CSV_FILENAME
     assert config.log_settings.logs_dir == logs_dir
     assert config.gcloud_credentials_path == credentials_file
+
+
+@pytest.mark.parametrize(
+    ("priority", "pattern"),
+    [
+        pytest.param(
+            "high",
+            re.escape("mapping_rules[0]: priority には整数を指定してください。"),
+            id="string",
+        ),
+        pytest.param(
+            True,
+            re.escape("mapping_rules[0]: priority には整数を指定してください。"),
+            id="bool",
+        ),
+        pytest.param(
+            None,
+            re.escape("mapping_rules[0]: priority には整数を指定してください。"),
+            id="null",
+        ),
+        pytest.param(
+            -1,
+            re.escape(
+                "mapping_rules[0]: priority には 0 以上の整数を指定してください: -1"
+            ),
+            id="negative",
+        ),
+    ],
+)
+def test_invalid_mapping_rule_priority_raises_value_error(
+    tmp_path: Path,
+    priority: object,
+    pattern: str,
+) -> None:
+    """mapping_rules[].priority が 0 以上の整数でない場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["mapping_rules"] = [
+        {
+            "keyword": "セブン",
+            "category": "食料品",
+            "priority": priority,
+        }
+    ]
+
+    with pytest.raises(ValueError, match=pattern):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_mapping_rule_priority_is_loaded_when_non_negative_int(tmp_path: Path) -> None:
+    """mapping_rules[].priority が 0 以上の整数なら設定に反映されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["mapping_rules"] = [
+        {
+            "keyword": "セブン",
+            "category": "食料品",
+            "priority": 10,
+        }
+    ]
+
+    config = load_config(_write_config(tmp_path, data))
+
+    assert config.mapping_rules[0].priority == 10
+
+
+@pytest.mark.parametrize(
+    "logs_dir",
+    [
+        pytest.param([], id="list"),
+        pytest.param(123, id="int"),
+        pytest.param(False, id="bool"),
+    ],
+)
+def test_invalid_logs_dir_type_raises_value_error(
+    tmp_path: Path,
+    logs_dir: object,
+) -> None:
+    """log_settings.logs_dir が string|null 以外の場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["log_settings"] = {"logs_dir": logs_dir}
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("log_settings.logs_dir には文字列または null を指定してください。"),
+    ):
+        load_config(_write_config(tmp_path, data))
 
 
 def test_missing_mf_categories_path_raises_value_error(tmp_path: Path) -> None:

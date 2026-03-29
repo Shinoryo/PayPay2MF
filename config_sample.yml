@@ -17,7 +17,7 @@ mapping_rules:
   - keyword: "セブン"
     category: "食料品"
     match_mode: "contains"
-    priority: 100
+    priority: 100        # 0 以上の整数のみ指定可
   - keyword: "ファミリーマート"
     category: "食料品"
     match_mode: "contains"
@@ -56,7 +56,7 @@ mapping_rules:
     priority: 100
 
 exclude_prefixes:
-  - "PPCD_A_"
+  - "PPCD_A_"          # list で指定。単一文字列は不可
 
 duplicate_detection:
   backend: "local"          # "local" または "gcloud"
@@ -70,7 +70,7 @@ parser:
     - "%Y/%m/%d %H:%M:%S"
 
 log_settings:
-  logs_dir: null            # null → デフォルト <tool_folder>\logs を使用
+  logs_dir: null            # string または null。null → デフォルト <tool_folder>\logs を使用
   max_log_count: null       # null = 無制限
   max_total_log_size_mb: null  # null = 無制限
 
