@@ -114,6 +114,31 @@ def test_setup_logger_reinitialization_closes_existing_file_handler(
     assert (logs_dir / "app_20250101_120001.log").exists()
 
 
+def test_setup_logger_keeps_active_log_when_max_count_is_zero(
+    tmp_path: Path,
+    app_config_factory,
+) -> None:
+    """max_log_count=0 でも実行中のログファイル削除を試みないことを確認する。"""
+    logs_dir = tmp_path / "custom-logs"
+    config = app_config_factory(tmp_path, logs_dir=logs_dir, input_csv_name="dummy.csv")
+    config.log_settings.max_log_count = 0
+
+    old_log = logs_dir / "app_old.log"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    old_log.write_text("old", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+
+    logger = setup_logger(config)
+    logger.info(_LOG_MESSAGE)
+
+    for handler in logger.handlers:
+        handler.flush()
+
+    log_files = list(logs_dir.glob("app_*.log"))
+    assert len(log_files) == 1
+    assert log_files[0].name != old_log.name
+    assert old_log.exists() is False
+
+
 def test_write_error_csv_uses_minimum_columns(
     tmp_path: Path,
     app_config_factory,

@@ -73,6 +73,8 @@ def setup_logger(config: AppConfig) -> logging.Logger:
     logger.setLevel(logging.DEBUG)
     _reset_logger_handlers(logger)
 
+    _rotate_logs(config, logs_dir)
+
     fh = logging.FileHandler(log_file, encoding=AppConstants.DEFAULT_TEXT_ENCODING)
     fh.setLevel(_FILE_LOG_LEVEL)
     fh.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_DATE_FORMAT))
@@ -82,8 +84,6 @@ def setup_logger(config: AppConfig) -> logging.Logger:
     ch.setLevel(_CONSOLE_LOG_LEVEL)
     ch.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_DATE_FORMAT))
     logger.addHandler(ch)
-
-    _rotate_logs(config, logs_dir)
 
     return logger
 
