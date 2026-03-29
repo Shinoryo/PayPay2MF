@@ -73,6 +73,7 @@ _DEFAULT_SCREENSHOT_ON_ERROR = False
 _MSG_CONFIG_NOT_FOUND = "config.yml が見つかりません: {path}"
 _MSG_CONFIG_ROOT_TYPE = "config.yml のルート要素は object で指定してください。"
 _MSG_CONFIG_YAML_INVALID = "config.yml の YAML 構文が不正です: {detail}"
+_MSG_UNKNOWN_KEYS = "{section} に未定義キーがあります: {keys}"
 _MSG_DRY_RUN_TYPE = "dry_run には true または false を指定してください。"
 _MSG_REQUIRED_STRING_TYPE = "{key} には文字列を指定してください。"
 
@@ -174,10 +175,16 @@ _MSG_ADVANCED_TYPE = "advanced は object で指定してください。"
 _MSG_ADV_SCREENSHOT_ON_ERROR_TYPE = (
     "advanced.screenshot_on_error には true または false を指定してください。"
 )
+_MSG_ADV_MF_CATEGORIES_PATH_TYPE = (
+    "advanced.mf_categories_path には文字列または null を指定してください。"
+)
 
 _MSG_GCLOUD_CREDS_REQUIRED = (
     'duplicate_detection.backend: "gcloud" の場合は '
     "gcloud_credentials_path の指定が必要です。"
+)
+_MSG_GCLOUD_CREDS_TYPE = (
+    "gcloud_credentials_path には文字列または null を指定してください。"
 )
 _MSG_GCLOUD_CREDS_NOT_EXIST = "gcloud_credentials_path のファイルが存在しません: {path}"
 _MSG_MF_CATEGORIES_NOT_EXIST = (
@@ -237,6 +244,56 @@ _EXCLUDE_PREFIXES_MESSAGES = _StringListValidationMessages(
     empty_list=None,
     item_type=_MSG_EXCLUDE_PREFIXES_ITEM_TYPE,
     item_empty=_MSG_EXCLUDE_PREFIXES_ITEM_EMPTY,
+)
+
+_ALLOWED_TOP_LEVEL_KEYS = frozenset(
+    {
+        _KEY_CHROME_USER_DATA_DIR,
+        _KEY_CHROME_PROFILE,
+        _KEY_DRY_RUN,
+        _KEY_INPUT_CSV,
+        _KEY_MF_ACCOUNT,
+        _KEY_MAPPING_RULES,
+        _KEY_EXCLUDE_PREFIXES,
+        _KEY_GCLOUD_CREDENTIALS_PATH,
+        _KEY_DUPLICATE_DETECTION,
+        _KEY_PARSER,
+        _KEY_LOG_SETTINGS,
+        _KEY_ADVANCED,
+    },
+)
+_ALLOWED_MAPPING_RULE_KEYS = frozenset(
+    {
+        _KEY_RULE_KEYWORD,
+        _KEY_RULE_CATEGORY,
+        _KEY_RULE_MATCH_MODE,
+        _KEY_RULE_PRIORITY,
+    },
+)
+_ALLOWED_DUPLICATE_DETECTION_KEYS = frozenset(
+    {
+        _KEY_DD_BACKEND,
+        _KEY_DD_TOLERANCE_SECONDS,
+    },
+)
+_ALLOWED_PARSER_KEYS = frozenset(
+    {
+        _KEY_PARSER_ENCODING_PRIORITY,
+        _KEY_PARSER_DATE_FORMATS,
+    },
+)
+_ALLOWED_LOG_SETTINGS_KEYS = frozenset(
+    {
+        _KEY_LOG_LOGS_DIR,
+        _KEY_LOG_MAX_LOG_COUNT,
+        _KEY_LOG_MAX_TOTAL_LOG_SIZE_MB,
+    },
+)
+_ALLOWED_ADVANCED_KEYS = frozenset(
+    {
+        _KEY_ADV_SCREENSHOT_ON_ERROR,
+        _KEY_ADV_MF_CATEGORIES_PATH,
+    },
 )
 
 
@@ -476,6 +533,12 @@ def _validate_mapping_rules(rules: list) -> None:
         if not isinstance(rule, dict):
             errors.append(_MSG_MAPPING_RULE_TYPE.format(i=i))
             continue
+        _append_unknown_key_errors(
+            rule,
+            allowed_keys=_ALLOWED_MAPPING_RULE_KEYS,
+            label=f"mapping_rules[{i}]",
+            errors=errors,
+        )
         keyword, _category = _validate_mapping_rule_text_fields(rule, i, errors)
         mode = rule.get(_KEY_RULE_MATCH_MODE, AppConstants.DEFAULT_MATCH_MODE)
         if mode not in AppConstants.VALID_MATCH_MODES:
@@ -541,9 +604,30 @@ def _validate_mapping_rule_regex(
         )
 
 
+def _append_unknown_key_errors(
+    section: dict,
+    *,
+    allowed_keys: frozenset[str],
+    label: str,
+    errors: list[str],
+) -> None:
+    """許可されていないキーを収集して errors に追加する。"""
+    unknown_keys = sorted(set(section) - allowed_keys)
+    if not unknown_keys:
+        return
+    errors.append(_MSG_UNKNOWN_KEYS.format(section=label, keys=", ".join(unknown_keys)))
+
+
 def _validate_top_level_optionals(raw: dict) -> None:
     """トップレベル任意項目の型を検証する。"""
     errors: list[str] = []
+
+    _append_unknown_key_errors(
+        raw,
+        allowed_keys=_ALLOWED_TOP_LEVEL_KEYS,
+        label="config.yml",
+        errors=errors,
+    )
 
     exclude_prefixes = raw.get(_KEY_EXCLUDE_PREFIXES)
     if exclude_prefixes is not None:
@@ -553,6 +637,13 @@ def _validate_top_level_optionals(raw: dict) -> None:
             errors=errors,
         )
 
+    gcloud_credentials_path = raw.get(_KEY_GCLOUD_CREDENTIALS_PATH)
+    if gcloud_credentials_path is not None and not isinstance(
+        gcloud_credentials_path,
+        str,
+    ):
+        errors.append(_MSG_GCLOUD_CREDS_TYPE)
+
     if errors:
         raise ValueError("\n".join(errors))
 
@@ -560,6 +651,13 @@ def _validate_top_level_optionals(raw: dict) -> None:
 def _validate_duplicate_detection(section: dict) -> None:
     """duplicate_detection セクションを検証する。"""
     errors: list[str] = []
+
+    _append_unknown_key_errors(
+        section,
+        allowed_keys=_ALLOWED_DUPLICATE_DETECTION_KEYS,
+        label=_KEY_DUPLICATE_DETECTION,
+        errors=errors,
+    )
 
     backend = section.get(_KEY_DD_BACKEND, AppConstants.DEFAULT_BACKEND)
     if backend not in {
@@ -590,6 +688,13 @@ def _validate_parser(section: dict) -> None:
     """parser セクションを検証する。"""
     errors: list[str] = []
 
+    _append_unknown_key_errors(
+        section,
+        allowed_keys=_ALLOWED_PARSER_KEYS,
+        label=_KEY_PARSER,
+        errors=errors,
+    )
+
     encoding_priority = section.get(_KEY_PARSER_ENCODING_PRIORITY)
     if encoding_priority is not None:
         _validate_string_list(
@@ -613,6 +718,13 @@ def _validate_parser(section: dict) -> None:
 def _validate_log_settings(section: dict) -> None:
     """log_settings セクションを検証する。"""
     errors: list[str] = []
+
+    _append_unknown_key_errors(
+        section,
+        allowed_keys=_ALLOWED_LOG_SETTINGS_KEYS,
+        label=_KEY_LOG_SETTINGS,
+        errors=errors,
+    )
 
     logs_dir = section.get(_KEY_LOG_LOGS_DIR)
     if logs_dir is not None and not isinstance(logs_dir, str):
@@ -642,9 +754,25 @@ def _validate_log_settings(section: dict) -> None:
 
 def _validate_advanced(section: dict) -> None:
     """advanced セクションを検証する。"""
+    errors: list[str] = []
+
+    _append_unknown_key_errors(
+        section,
+        allowed_keys=_ALLOWED_ADVANCED_KEYS,
+        label=_KEY_ADVANCED,
+        errors=errors,
+    )
+
     screenshot_on_error = section.get(_KEY_ADV_SCREENSHOT_ON_ERROR)
     if screenshot_on_error is not None and not isinstance(screenshot_on_error, bool):
-        raise ValueError(_MSG_ADV_SCREENSHOT_ON_ERROR_TYPE)
+        errors.append(_MSG_ADV_SCREENSHOT_ON_ERROR_TYPE)
+
+    mf_categories_path = section.get(_KEY_ADV_MF_CATEGORIES_PATH)
+    if mf_categories_path is not None and not isinstance(mf_categories_path, str):
+        errors.append(_MSG_ADV_MF_CATEGORIES_PATH_TYPE)
+
+    if errors:
+        raise ValueError("\n".join(errors))
 
 
 def _validate_non_negative_int(
@@ -706,6 +834,9 @@ def _validate_gcloud(
         return
 
     creds = credentials_raw
+
+    if creds is not None and not isinstance(creds, str):
+        raise ValueError(_MSG_GCLOUD_CREDS_TYPE)
 
     if not creds:
         raise ValueError(_MSG_GCLOUD_CREDS_REQUIRED)

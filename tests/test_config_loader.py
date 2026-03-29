@@ -128,6 +128,18 @@ def test_invalid_yaml_syntax_raises_value_error(tmp_path: Path) -> None:
         load_config(config_file)
 
 
+def test_unknown_top_level_key_raises_value_error(tmp_path: Path) -> None:
+    """config.yml 直下の未知キーが黙殺されずに ValueError になることを確認する。"""
+    data = _base_data(tmp_path)
+    data["unknown_key"] = "value"
+
+    with pytest.raises(
+        ValueError,
+        match=r"config\.yml に未定義キーがあります: unknown_key",
+    ):
+        load_config(_write_config(tmp_path, data))
+
+
 # TC-01-02: 必須項目欠落（chrome_user_data_dir）
 def test_missing_chrome_user_data_dir(tmp_path: Path) -> None:
     """TC-01-02: chrome_user_data_dir 欠落時に ValueError が送出されることを確認する。"""
@@ -358,6 +370,24 @@ def test_gcloud_credentials_path_is_resolved_relative_to_config(tmp_path: Path) 
     assert config.gcloud_credentials_path == credentials_file
 
 
+@pytest.mark.parametrize("value", [123, False, []], ids=["int", "bool", "list"])
+def test_gcloud_credentials_path_type_must_be_string_or_null(
+    tmp_path: Path,
+    value: object,
+) -> None:
+    """gcloud_credentials_path が string|null 以外の場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["gcloud_credentials_path"] = value
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "gcloud_credentials_path には文字列または null を指定してください。"
+        ),
+    ):
+        load_config(_write_config(tmp_path, data))
+
+
 def test_gcloud_backend_requires_credentials_path_when_missing(tmp_path: Path) -> None:
     """duplicate_detection.backend が gcloud の場合、gcloud_credentials_path 未指定で ValueError が送出されることを確認する。"""
     data = _base_data(tmp_path)
@@ -535,6 +565,24 @@ def test_missing_mf_categories_path_raises_value_error(tmp_path: Path) -> None:
         load_config(_write_config(tmp_path, data))
 
 
+@pytest.mark.parametrize("value", [123, False, []], ids=["int", "bool", "list"])
+def test_mf_categories_path_type_must_be_string_or_null(
+    tmp_path: Path,
+    value: object,
+) -> None:
+    """advanced.mf_categories_path が string|null 以外の場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["advanced"] = {"mf_categories_path": value}
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "advanced.mf_categories_path には文字列または null を指定してください。"
+        ),
+    ):
+        load_config(_write_config(tmp_path, data))
+
+
 # TC-01-09: 存在しない chrome_user_data_dir（本番実行）
 def test_nonexistent_chrome_user_data_dir_when_not_dry_run(tmp_path: Path) -> None:
     """TC-01-09: dry_run=False で存在しない chrome_user_data_dir を指定した場合に ValueError が送出されることを確認する。"""
@@ -698,6 +746,18 @@ def test_duplicate_detection_backend_must_be_valid_enum(tmp_path: Path) -> None:
         match=re.escape(
             "duplicate_detection.backend が無効です: 'typo' （有効値: gcloud, local）"
         ),
+    ):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_duplicate_detection_unknown_key_raises_value_error(tmp_path: Path) -> None:
+    """duplicate_detection の typo キーが黙殺されずに ValueError になることを確認する。"""
+    data = _base_data(tmp_path)
+    data["duplicate_detection"] = {"tolerence_seconds": 999}
+
+    with pytest.raises(
+        ValueError,
+        match=r"duplicate_detection に未定義キーがあります: tolerence_seconds",
     ):
         load_config(_write_config(tmp_path, data))
 
