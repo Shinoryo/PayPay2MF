@@ -207,8 +207,21 @@ def _rotate_logs(config: AppConfig, logs_dir: Path) -> None:
     max_size_mb = config.log_settings.max_total_log_size_mb
     if max_size_mb is not None:
         max_bytes = max_size_mb * _BYTES_PER_MB
-        while log_files:
-            total = sum(f.stat().st_size for f in log_files if f.exists())
-            if total <= max_bytes:
-                break
-            log_files.pop(0).unlink(missing_ok=True)
+        # Compute sizes once and maintain a rolling total while deleting oldest files.
+        existing_files = [f for f in log_files if f.exists()]
+        sizes: dict[Path, int] = {}
+        total = 0
+        for f in existing_files:
+            try:
+                s = f.stat().st_size
+            except Exception:
+                s = 0
+            sizes[f] = s
+            total += s
+
+        while existing_files and total > max_bytes:
+            oldest = existing_files.pop(0)
+            removed_size = sizes.pop(oldest, 0)
+            with suppress(Exception):
+                oldest.unlink(missing_ok=True)
+            total -= removed_size

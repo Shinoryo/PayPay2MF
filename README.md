@@ -13,15 +13,16 @@
 初回利用時は、まず以下の順で進めると全体像を把握しやすくなります。
 
 1. 依存関係をインストールする: `pip install -e .`
-2. `config_sample.yml` を元に、作業ディレクトリへ `config.yml` を作成する。
-3. `chrome_user_data_dir` / `chrome_profile` / `dry_run` / `input_csv` /
+2. Playwright 用ブラウザを初回セットアップする: `python -m playwright install chromium`
+3. `config_sample.yml` を元に、作業ディレクトリへ `config.yml` を作成する。
+4. `chrome_user_data_dir` / `chrome_profile` / `dry_run` / `input_csv` /
   `mf_account` の必須 5 項目を設定する。`mf_account` には MF の口座表示名と
   完全一致する値を指定する。
-4. まず `dry_run: true` で `paypay2mf` を実行し、CSV の読込結果と
+5. まず `dry_run: true` で `paypay2mf` を実行し、CSV の読込結果と
   件数サマリーを確認する。
-5. `logs_dir` 配下のログや `parse_error_*.csv` を確認し、問題がなければ
+6. `logs_dir` 配下のログや `parse_error_*.csv` を確認し、問題がなければ
   `dry_run: false` に変更する。
-6. Chrome を完全終了し、対象プロファイルで Money Forward ME に
+7. Chrome を完全終了し、対象プロファイルで Money Forward ME に
   ログイン済みであることを確認してから本番実行する。
 
 通常利用では smoke test の実行は必須ではありません。UI 契約の確認や DOM 変更調査が必要な場合のみ、後述の Playwright スモークテストを明示実行してください。
@@ -239,6 +240,19 @@ pip install -e .
 ```bash
 pip install -e ".[dev]"
 ```
+
+ローカルで品質ゲートを再現する場合は、以下を順に実行してください。
+
+```bash
+python -m pytest -q
+python -m ruff check .
+python -m ruff format --check .
+python -m pip_audit --skip-editable --ignore-vuln CVE-2026-4539
+```
+
+`pip-audit` は現時点で監査ツール側の依存に起因する `CVE-2026-4539`
+（`pygments`、修正版未提供）を検出するため、修正版が出るまで一時的に
+除外して実行します。
 
 Python 3.11 以上を前提とし、Self 型注釈は標準ライブラリの
 typing から利用しています。

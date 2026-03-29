@@ -18,8 +18,10 @@ gcloud = [
     "google-cloud-firestore>=2.13",
 ]
 dev = [
+    "pip-audit>=2.7",
     "pytest>=7.0",
     "pytest-mock>=3.0",
+    "ruff>=0.11",
 ]
 
 [project.scripts]

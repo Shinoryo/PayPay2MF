@@ -89,3 +89,24 @@ def test_runtime_import_uses_paypay2mf_namespace() -> None:
 
     assert package.__file__ is not None
     assert category_module.__file__ is not None
+
+
+def test_pyproject_dev_dependencies_include_quality_gates() -> None:
+    """dev extra に品質ゲート再現用ツールが含まれることを確認する。"""
+    pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+
+    pyproject = _load_pyproject(pyproject_path)
+    project = pyproject["project"]
+
+    assert isinstance(project, dict)
+    optional_dependencies = project["optional-dependencies"]
+    assert isinstance(optional_dependencies, dict)
+    dev_dependencies = optional_dependencies["dev"]
+    assert isinstance(dev_dependencies, list)
+
+    assert any(dependency.startswith("pytest>=") for dependency in dev_dependencies)
+    assert any(
+        dependency.startswith("pytest-mock>=") for dependency in dev_dependencies
+    )
+    assert any(dependency.startswith("ruff>=") for dependency in dev_dependencies)
+    assert any(dependency.startswith("pip-audit>=") for dependency in dev_dependencies)
