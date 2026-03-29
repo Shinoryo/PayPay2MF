@@ -21,17 +21,27 @@ from src.duplicate_detector import (
     DuplicateHistoryError,
     GCloudDuplicateDetector,
     LocalDuplicateDetector,
+    build_date_bucket,
     create_detector,
 )
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from src.models import AppConfig
+
 
 class _FakeFirestoreDocumentSnapshot:
-    def __init__(self, *, exists: bool, data: dict | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        exists: bool,
+        data: dict | None = None,
+        doc_id: str | None = None,
+    ) -> None:
         self.exists = exists
         self._data = data or {}
+        self.id = doc_id or AppConstants.EMPTY_STRING
 
     def to_dict(self) -> dict:
         return dict(self._data)
@@ -54,41 +64,66 @@ class _FakeFirestoreDocumentReference:
 
 
 class _FakeFirestoreQuery:
-    def __init__(self, store: dict[str, dict], filters: list[tuple[str, object]]) -> None:
+    def __init__(
+        self,
+        store: dict[str, dict],
+        filters: list[tuple[str, object]],
+        query_log: list[tuple[tuple[str, object], ...]],
+    ) -> None:
         self._store = store
         self._filters = filters
+        self._query_log = query_log
 
     def where(self, field: str, _operator: str, value: object) -> _FakeFirestoreQuery:
-        return _FakeFirestoreQuery(self._store, [*self._filters, (field, value)])
+        return _FakeFirestoreQuery(
+            self._store,
+            [*self._filters, (field, value)],
+            self._query_log,
+        )
 
     def stream(self) -> list[_FakeFirestoreDocumentSnapshot]:
+        self._query_log.append(tuple(self._filters))
         matches: list[_FakeFirestoreDocumentSnapshot] = []
-        for data in self._store.values():
+        for doc_id, data in self._store.items():
             if all(data.get(field) == value for field, value in self._filters):
                 matches.append(
-                    _FakeFirestoreDocumentSnapshot(exists=True, data=data)
+                    _FakeFirestoreDocumentSnapshot(
+                        exists=True,
+                        data=data,
+                        doc_id=doc_id,
+                    )
                 )
         return matches
 
 
 class _FakeFirestoreCollection:
-    def __init__(self, store: dict[str, dict]) -> None:
+    def __init__(
+        self,
+        store: dict[str, dict],
+        query_log: list[tuple[tuple[str, object], ...]],
+    ) -> None:
         self._store = store
+        self._query_log = query_log
 
     def document(self, doc_id: str) -> _FakeFirestoreDocumentReference:
         return _FakeFirestoreDocumentReference(self._store, doc_id)
 
     def where(self, field: str, _operator: str, value: object) -> _FakeFirestoreQuery:
-        return _FakeFirestoreQuery(self._store, [(field, value)])
+        return _FakeFirestoreQuery(
+            self._store,
+            [(field, value)],
+            self._query_log,
+        )
 
 
 class _FakeFirestoreClient:
     def __init__(self, *, credentials: object) -> None:
         self.credentials = credentials
         self.store: dict[str, dict] = {}
+        self.executed_queries: list[tuple[tuple[str, object], ...]] = []
 
     def collection(self, _name: str) -> _FakeFirestoreCollection:
-        return _FakeFirestoreCollection(self.store)
+        return _FakeFirestoreCollection(self.store, self.executed_queries)
 
 
 def _install_fake_gcloud_modules(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -121,7 +156,12 @@ def _install_fake_gcloud_modules(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _build_gcloud_config(tmp_path: Path, app_config_factory, *, dry_run: bool = False):
+def _build_gcloud_config(
+    tmp_path: Path,
+    app_config_factory,
+    *,
+    dry_run: bool = False,
+) -> AppConfig:
     config = app_config_factory(tmp_path, dry_run=dry_run, input_csv_name="dummy.csv")
     credentials_file = tmp_path / "service-account.json"
     credentials_file.write_text("{}", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
@@ -209,18 +249,18 @@ def test_local_mark_processed_buffers_writes_until_flush(
     """mark_processed はメモリ更新だけを行い、flush 時に一度だけ保存する。"""
     config = app_config_factory(tmp_path, input_csv_name="dummy.csv")
     detector = LocalDuplicateDetector(config)
-    save_mock = Mock(wraps=detector._save)
-    monkeypatch.setattr(detector, "_save", save_mock)
+    dump_mock = Mock(wraps=json.dump)
+    monkeypatch.setattr("src.duplicate_detector.json.dump", dump_mock)
 
     detector.mark_processed(transaction_factory(transaction_id="TX001"))
     detector.mark_processed(transaction_factory(transaction_id="TX002"))
 
-    assert save_mock.call_count == 0
+    assert dump_mock.call_count == 0
     assert (tmp_path / AppConstants.PROCESSED_FILENAME).exists() is False
 
     detector.flush()
 
-    assert save_mock.call_count == 1
+    assert dump_mock.call_count == 1
     stored = json.loads(
         (tmp_path / AppConstants.PROCESSED_FILENAME).read_text(
             encoding=AppConstants.DEFAULT_TEXT_ENCODING,
@@ -348,11 +388,17 @@ def test_create_detector_gcloud_raises_clear_import_error_when_dependency_missin
     config = _build_gcloud_config(tmp_path, app_config_factory)
     real_import = __import__
 
-    def _fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name.startswith("google.cloud") or name.startswith("google.oauth2"):
+    def _fake_import(
+        name,
+        globalns=None,
+        localns=None,
+        fromlist=(),
+        level=0,
+    ) -> object:
+        if name.startswith(("google.cloud", "google.oauth2")):
             msg = f"No module named '{name}'"
             raise ImportError(msg)
-        return real_import(name, globals, locals, fromlist, level)
+        return real_import(name, globalns, localns, fromlist, level)
 
     monkeypatch.setattr("builtins.__import__", _fake_import)
 
@@ -370,11 +416,12 @@ def test_gcloud_duplicate_by_transaction_id(
     _install_fake_gcloud_modules(monkeypatch)
     config = _build_gcloud_config(tmp_path, app_config_factory)
     detector = create_detector(config)
-    client = detector._client
+    client = detector.client
     client.store["TX001"] = {
         "datetime": datetime(2025, 1, 1, 12, 0, 0).isoformat(),  # noqa: DTZ001
         "amount": 100,
         "merchant": "テスト商店",
+        "date_bucket": build_date_bucket(datetime(2025, 1, 1, 12, 0, 0)),  # noqa: DTZ001
     }
 
     assert detector.is_duplicate(transaction_factory(transaction_id="TX001")) is True
@@ -391,12 +438,13 @@ def test_gcloud_duplicate_fallback_within_tolerance(
     _install_fake_gcloud_modules(monkeypatch)
     config = _build_gcloud_config(tmp_path, app_config_factory)
     detector = create_detector(config)
-    client = detector._client
+    client = detector.client
     base = datetime(2025, 1, 1, 12, 0, 0)  # noqa: DTZ001
     client.store["fallback-1"] = {
         "datetime": base.isoformat(),
         "amount": 300,
         "merchant": "テスト商店",
+        "date_bucket": build_date_bucket(base),
     }
 
     duplicate_tx = transaction_factory(
@@ -416,6 +464,72 @@ def test_gcloud_duplicate_fallback_within_tolerance(
     assert detector.is_duplicate(different_tx) is False
 
 
+def test_gcloud_duplicate_fallback_checks_adjacent_date_buckets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """分境界をまたぐ場合は前後の date_bucket も検索対象に含める。"""
+    _install_fake_gcloud_modules(monkeypatch)
+    config = _build_gcloud_config(tmp_path, app_config_factory)
+    config.duplicate_detection.tolerance_seconds = 30
+    detector = create_detector(config)
+    client = detector.client
+    stored_date = datetime(2025, 1, 1, 12, 0, 10)  # noqa: DTZ001
+    client.store["fallback-boundary"] = {
+        "datetime": stored_date.isoformat(),
+        "amount": 300,
+        "merchant": "テスト商店",
+        "date_bucket": build_date_bucket(stored_date),
+    }
+
+    duplicate_tx = transaction_factory(
+        transaction_id=None,
+        amount=300,
+        merchant="テスト商店",
+        date=datetime(2025, 1, 1, 11, 59, 50),  # noqa: DTZ001
+    )
+
+    assert detector.is_duplicate(duplicate_tx) is True
+    queried_buckets = [
+        filters[2][1]
+        for filters in client.executed_queries
+        if len(filters) == 3 and filters[2][0] == "date_bucket"
+    ]
+    assert queried_buckets == ["202501011159", "202501011200"]
+
+
+def test_gcloud_duplicate_fallback_rejects_outside_tolerance_even_with_bucket_match(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """date_bucket が一致しても tolerance 外なら重複と判定しない。"""
+    _install_fake_gcloud_modules(monkeypatch)
+    config = _build_gcloud_config(tmp_path, app_config_factory)
+    config.duplicate_detection.tolerance_seconds = 60
+    detector = create_detector(config)
+    client = detector.client
+    stored_date = datetime(2025, 1, 1, 11, 59, 0)  # noqa: DTZ001
+    client.store["fallback-outside"] = {
+        "datetime": stored_date.isoformat(),
+        "amount": 300,
+        "merchant": "テスト商店",
+        "date_bucket": build_date_bucket(stored_date),
+    }
+
+    non_duplicate_tx = transaction_factory(
+        transaction_id=None,
+        amount=300,
+        merchant="テスト商店",
+        date=datetime(2025, 1, 1, 12, 0, 1),  # noqa: DTZ001
+    )
+
+    assert detector.is_duplicate(non_duplicate_tx) is False
+
+
 def test_gcloud_mark_processed_writes_expected_payload(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -426,7 +540,7 @@ def test_gcloud_mark_processed_writes_expected_payload(
     _install_fake_gcloud_modules(monkeypatch)
     config = _build_gcloud_config(tmp_path, app_config_factory)
     detector = create_detector(config)
-    client = detector._client
+    client = detector.client
     transaction = transaction_factory(transaction_id="TX_SAVE", amount=920)
 
     detector.mark_processed(transaction)
@@ -436,6 +550,37 @@ def test_gcloud_mark_processed_writes_expected_payload(
             "datetime": transaction.date.isoformat(),
             "amount": 920,
             "merchant": transaction.merchant,
+            "date_bucket": build_date_bucket(transaction.date),
+        }
+    }
+
+
+def test_gcloud_mark_processed_without_transaction_id_writes_date_bucket_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """transaction_id がない場合も date_bucket を含む payload で保存する。"""
+    _install_fake_gcloud_modules(monkeypatch)
+    config = _build_gcloud_config(tmp_path, app_config_factory)
+    detector = create_detector(config)
+    client = detector.client
+    transaction = transaction_factory(
+        transaction_id=None,
+        amount=920,
+        merchant="テスト商店",
+        date=datetime(2025, 1, 1, 12, 34, 56),  # noqa: DTZ001
+    )
+
+    detector.mark_processed(transaction)
+
+    assert client.store == {
+        "920_テスト商店_20250101123456": {
+            "datetime": transaction.date.isoformat(),
+            "amount": 920,
+            "merchant": transaction.merchant,
+            "date_bucket": "202501011234",
         }
     }
 
@@ -450,7 +595,7 @@ def test_gcloud_mark_processed_skips_write_in_dry_run(
     _install_fake_gcloud_modules(monkeypatch)
     config = _build_gcloud_config(tmp_path, app_config_factory, dry_run=True)
     detector = create_detector(config)
-    client = detector._client
+    client = detector.client
 
     detector.mark_processed(transaction_factory(transaction_id="TX_SKIP"))
 

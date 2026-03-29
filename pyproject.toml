@@ -25,6 +25,7 @@ dev = [
 
 [project.scripts]
 paypay2mf = "main:main"
+paypay2mf-firestore-backfill = "firestore_backfill:main"
 
 [tool.setuptools.package-data]
 src = ["mf_categories.yml"]

@@ -24,9 +24,12 @@ _KEY_FALLBACK = "fallback_keys"
 _KEY_DATETIME = "datetime"
 _KEY_AMOUNT = "amount"
 _KEY_MERCHANT = "merchant"
+_KEY_DATE_BUCKET = "date_bucket"
 
 # Firestore のクエリ構築に使う定数。
 _FIRESTORE_EQUALS_OPERATOR = "=="
+_DATE_BUCKET_FORMAT = "%Y%m%d%H%M"
+_MSG_PROCESSED_SAVE_FAILED = "processed.json の保存に失敗しました"
 
 
 class DuplicateHistoryError(ValueError):
@@ -80,6 +83,39 @@ def create_detector(config: AppConfig) -> DuplicateDetector:
     if config.duplicate_detection.backend == AppConstants.BACKEND_GCLOUD:
         return GCloudDuplicateDetector(config)
     return LocalDuplicateDetector(config)
+
+
+def build_date_bucket(value: datetime) -> str:
+    """指定日時を分単位の date_bucket 文字列に変換する。"""
+    return value.replace(second=0, microsecond=0).strftime(_DATE_BUCKET_FORMAT)
+
+
+def list_date_bucket_candidates(
+    value: datetime,
+    tolerance_seconds: int,
+) -> list[str]:
+    """許容幅に含まれる date_bucket 候補を列挙する。"""
+    bounded_tolerance = max(tolerance_seconds, 0)
+    lower_bound = value - timedelta(seconds=bounded_tolerance)
+    upper_bound = value + timedelta(seconds=bounded_tolerance)
+    current_bucket = lower_bound.replace(second=0, microsecond=0)
+    last_bucket = upper_bound.replace(second=0, microsecond=0)
+
+    buckets: list[str] = []
+    while current_bucket <= last_bucket:
+        buckets.append(build_date_bucket(current_bucket))
+        current_bucket += timedelta(minutes=1)
+    return buckets
+
+
+def build_firestore_duplicate_payload(tx: Transaction) -> dict[str, str | int]:
+    """Firestore に保存する重複検知用 payload を組み立てる。"""
+    return {
+        _KEY_DATETIME: tx.date.isoformat(),
+        _KEY_AMOUNT: tx.amount,
+        _KEY_MERCHANT: tx.merchant,
+        _KEY_DATE_BUCKET: build_date_bucket(tx.date),
+    }
 
 
 class LocalDuplicateDetector:
@@ -154,9 +190,7 @@ class LocalDuplicateDetector:
         try:
             self._save()
         except OSError as exc:
-            raise DuplicateHistorySaveError(
-                "processed.json の保存に失敗しました"
-            ) from exc
+            raise DuplicateHistorySaveError(_MSG_PROCESSED_SAVE_FAILED) from exc
         self._dirty = False
 
     def _is_duplicate_fallback(self, tx: Transaction) -> bool:
@@ -281,19 +315,23 @@ class GCloudDuplicateDetector:
             )
             return doc.exists
 
-        # fallback: amount + merchant の一致 + datetime 許容幅
-        # NOTE T03: Firestore の複合インデックス（amount, merchant）が必要
-        query = (
-            self._client.collection(self._COLLECTION)
-            .where(_KEY_AMOUNT, _FIRESTORE_EQUALS_OPERATOR, tx.amount)
-            .where(_KEY_MERCHANT, _FIRESTORE_EQUALS_OPERATOR, tx.merchant)
-        )
-        for doc in query.stream():
-            data = doc.to_dict()
-            stored_dt = datetime.fromisoformat(data[_KEY_DATETIME])
-            delta = timedelta(seconds=self._tolerance)
-            if abs(tx.date - stored_dt) <= delta:
-                return True
+        # fallback: amount + merchant + date_bucket で候補を絞り込んだうえで
+        # datetime と tolerance_seconds で最終判定する。
+        # NOTE T03: Firestore の複合インデックス（amount, merchant, date_bucket）が必要
+        collection = self._client.collection(self._COLLECTION)
+        delta = timedelta(seconds=self._tolerance)
+
+        for date_bucket in list_date_bucket_candidates(tx.date, self._tolerance):
+            query = (
+                collection.where(_KEY_AMOUNT, _FIRESTORE_EQUALS_OPERATOR, tx.amount)
+                .where(_KEY_MERCHANT, _FIRESTORE_EQUALS_OPERATOR, tx.merchant)
+                .where(_KEY_DATE_BUCKET, _FIRESTORE_EQUALS_OPERATOR, date_bucket)
+            )
+            for doc in query.stream():
+                data = doc.to_dict()
+                stored_dt = datetime.fromisoformat(data[_KEY_DATETIME])
+                if abs(tx.date - stored_dt) <= delta:
+                    return True
         return False
 
     def mark_processed(self, tx: Transaction) -> None:
@@ -313,12 +351,21 @@ class GCloudDuplicateDetector:
                 f"{tx.date.strftime(AppConstants.DUPLICATE_KEY_DATE_FORMAT)}"
             )
         self._client.collection(self._COLLECTION).document(doc_id).set(
-            {
-                _KEY_DATETIME: tx.date.isoformat(),
-                _KEY_AMOUNT: tx.amount,
-                _KEY_MERCHANT: tx.merchant,
-            },
+            build_firestore_duplicate_payload(tx)
         )
+
+    @property
+    def client(self) -> object:
+        """Firestore クライアントを返す。"""
+        return self._client
+
+    def collection(self) -> object:
+        """重複履歴コレクション参照を返す。"""
+        return self._client.collection(self._COLLECTION)
+
+    def batch(self) -> object:
+        """Firestore への書き込みバッチを返す。"""
+        return self._client.batch()
 
     def flush(self) -> None:
         """Firestore バックエンドでは追加の flush は不要。"""

@@ -49,8 +49,9 @@
   `transaction_id` または `datetime` / `amount` / `merchant` の
   組み合わせが保存されます。`dry_run: true` では更新されません。
 - `duplicate_detection.backend: "gcloud"` では、Firestore に
-  `transaction_id` または `datetime` / `amount` / `merchant` を
-  重複判定用に保存します。利用前に保存項目を許容できることを
+  `transaction_id` を document id として、または `datetime` /
+  `amount` / `merchant` / `date_bucket` を重複判定用フィールドとして
+  保存します。利用前に保存項目を許容できることを
   確認してください。
 - ログや CSV、スクリーンショット、認証情報 JSON は共有フォルダやクラウド同期先に置かず、ローカル保管を前提に運用してください。
 
@@ -61,7 +62,7 @@
 | F01 | CSV取り込み | Shift_JIS / UTF-8 の文字コードを自動判定し、カンマやダブルクォートを含む項目にも対応 |
 | F02 | CSVパーシング | 全13列の抽出、金額の数値化、複合支払いの合算、入出金判定、海外取引時のメモ追記 |
 | F03 | 除外ルール | `exclude_prefixes` に合致する取引番号の行を処理対象から除外する |
-| F04 | 重複検知 | 取引番号を優先し、欠損時は日時＋金額＋取引先でローカルまたは Google Cloud Firestore と照合 |
+| F04 | 重複検知 | 取引番号を優先し、欠損時は日時＋金額＋取引先を使ってローカルまたは Google Cloud Firestore と照合し、Firestore では date_bucket で候補を事前に絞り込む |
 | F05 | MFへの自動登録 | Playwright で Chrome を制御し、MF の手入力フォームに1件ずつ登録する |
 | F06 | マッピング設定 | キーワードベースのカテゴリマッピングを `config.yml` で定義・編集可能 |
 | F07 | 実行前チェック | Chrome が起動中の場合は処理を中断し、ユーザーに終了を促す |
@@ -409,17 +410,44 @@ gcloud_credentials_path: "./secrets/paypay2mf-credentials.json"
 
 ### 6. Firestore 複合インデックスの作成（フォールバック検索用）
 
-取引番号が欠損している場合のフォールバック検索では、`amount + merchant` の複合クエリで候補を絞り込み、
-取得した候補に対して `datetime` と `tolerance_seconds` を用いた許容幅判定を行います。  
+取引番号が欠損している場合のフォールバック検索では、`amount + merchant + date_bucket` の複合クエリで候補を絞り込み、
+取得した候補に対して `datetime` と `tolerance_seconds` を用いた
+許容幅判定を行います。date_bucket は取引日時を分単位に正規化した
+補助フィールドです。  
 初回実行時にインデックスエラーが発生した場合は、Firestore コンソールで以下の複合インデックスを作成してください。
 
-| コレクション | フィールド 1 | フィールド 2 |
-| ---- | ---- | ---- |
-| `paypay_transactions` | `amount` (昇順) | `merchant` (昇順) |
+| コレクション | フィールド 1 | フィールド 2 | フィールド 3 |
+| ---- | ---- | ---- | ---- |
+| `paypay_transactions` | `amount` (昇順) | `merchant` (昇順) | `date_bucket` (昇順) |
+
+### 7. 既存 Firestore データの backfill
+
+この変更以降は、Firestore の既存ドキュメントにも `date_bucket` が必要です。切り替え前に一度だけ backfill を実行してください。
+
+```bash
+# まず更新予定件数だけ確認
+paypay2mf-firestore-backfill --dry-run
+
+# 問題なければ反映
+paypay2mf-firestore-backfill
+```
+
+`--config` で `config.yml` のパスを指定できます。検証用に
+`--limit 100` のような上限指定も可能です。
+backfill は `duplicate_detection.backend: "gcloud"` の設定を前提に、
+`datetime` から `date_bucket` を算出して補完します。
+
+### 8. 切り替え順序
+
+1. Firestore に `amount` / `merchant` / `date_bucket` の複合インデックスを作成する。
+2. `paypay2mf-firestore-backfill --dry-run` で更新予定件数を確認する。
+3. `paypay2mf-firestore-backfill` を実行し、`date_bucket` を backfill する。
+4. `pytest -q tests/test_duplicate_detector.py` で関連テストを確認する。
+5. アプリ本体を実行して、transaction_id がない既知データで重複判定を確認する。
 
 > 注意: `duplicate_detection.backend: "gcloud"` を使用する場合、
 > Firestore には `transaction_id` がある取引はその値、
-> `transaction_id` がない取引は `datetime` / `amount` / `merchant` を重複判定用に保存します。
+> `transaction_id` がない取引は `datetime` / `amount` / `merchant` / `date_bucket` を重複判定用に保存します。
 
 ## ライセンス
 
