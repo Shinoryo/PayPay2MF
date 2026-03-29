@@ -7,9 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-from typing_extensions import Self
+from typing import TYPE_CHECKING, Self
 
 from src.constants import AppConstants
 from src.mf_category_map import load_mf_category_map

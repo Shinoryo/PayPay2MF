@@ -5,13 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "paypay2mf"
 version = "0.1.0"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
     "playwright>=1.40",
     "psutil>=5.9",
     "PyYAML>=6.0",
-    "typing_extensions>=4.0",
 ]
 
 [project.optional-dependencies]
@@ -69,7 +68,7 @@ exclude = [
 ]
 line-length = 88
 indent-width = 4
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["ALL"]

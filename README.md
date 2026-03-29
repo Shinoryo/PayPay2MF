@@ -237,8 +237,8 @@ pip install -e .
 pip install -e ".[dev]"
 ```
 
-Python 3.10 互換の型注釈として Self を利用しているため、
-typing_extensions は runtime dependency に含まれます。
+Python 3.11 以上を前提とし、Self 型注釈は標準ライブラリの
+typing から利用しています。
 直接 import している third-party package は、転移依存に頼らず
 pyproject.toml の dependencies または optional-dependencies に
 明示的に定義します。
@@ -248,10 +248,10 @@ pyproject.toml の dependencies または optional-dependencies に
 | 項目 | 内容 |
 | ---- | ---- |
 | OS | Windows 11 |
-| Python | 3.10 以上 |
+| Python | 3.11 以上 |
 | ブラウザ | Google Chrome（最新版） |
 | Playwright ブラウザ | `playwright install chromium` 実行済み |
-| Python ライブラリ | playwright / psutil / PyYAML / typing_extensions / google-cloud-firestore（任意） |
+| Python ライブラリ | playwright / psutil / PyYAML / google-cloud-firestore（任意） |
 
 ## 処理詳細
 
@@ -462,7 +462,6 @@ backfill は `duplicate_detection.backend: "gcloud"` の設定を前提に、
 | playwright | 1.58.0 | Apache-2.0 |
 | psutil | 7.2.2 | BSD-3-Clause |
 | PyYAML | 6.0.3 | MIT |
-| typing_extensions | 4.15.0 | PSF-2.0 |
 | google-cloud-firestore | 任意 | Apache License 2.0 |
 
 ## 開発詳細
@@ -470,14 +469,14 @@ backfill は `duplicate_detection.backend: "gcloud"` の設定を前提に、
 ### 開発環境
 
 - VS Code 最新版
-- Python 3.10 以上
+- Python 3.11 以上
 
 ### 依存関係管理方針
 
 - 直接 import する third-party package は、pyproject.toml の
   dependencies または optional-dependencies に必ず明示する。
-- Python 3.10 互換維持のため、[src/mf_registrar.py](src/mf_registrar.py)
-  の Self 型注釈は typing_extensions を使用する。
+- Python 3.11 以上を前提とし、[src/mf_registrar.py](src/mf_registrar.py)
+  の Self 型注釈は標準ライブラリの typing を使用する。
 - optional dependency は [src/duplicate_detector.py](src/duplicate_detector.py)
   のように遅延 import と案内メッセージを組み合わせ、
   未導入環境でも基本機能が動作するようにする。
@@ -530,7 +529,7 @@ python -m pytest -q -m smoke_test tests/test_mf_smoke.py
 | ---- | ---- |
 | OS | Windows 11 |
 | ブラウザ | Google Chrome（最新版） |
-| Python | 3.10 以上 |
+| Python | 3.11 以上 |
 
 ## 改訂履歴
 
