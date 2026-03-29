@@ -8,6 +8,52 @@
 - **目的**：`config.yml` に PayPay CSV のパスを設定するだけで、Money Forward ME への
   登録を自動化し、入力ミスと作業時間を削減する。
 
+### 最短手順
+
+初回利用時は、まず以下の順で進めると全体像を把握しやすくなります。
+
+1. 依存関係をインストールする: `pip install -e .`
+2. `config_sample.yml` を元に、ツールフォルダ直下へ `config.yml` を作成する。
+3. `chrome_user_data_dir` / `chrome_profile` / `dry_run` / `input_csv` /
+  `mf_account` の必須 5 項目を設定する。
+4. まず `dry_run: true` で `python main.py` を実行し、CSV の読込結果と
+  件数サマリーを確認する。
+5. `logs_dir` 配下のログや `parse_error_*.csv` を確認し、問題がなければ
+  `dry_run: false` に変更する。
+6. Chrome を完全終了し、対象プロファイルで Money Forward ME に
+  ログイン済みであることを確認してから本番実行する。
+
+通常利用では smoke test の実行は必須ではありません。UI 契約の確認や DOM 変更調査が必要な場合のみ、後述の Playwright スモークテストを明示実行してください。
+
+### パス指定の基準
+
+- `input_csv`、`log_settings.logs_dir`、`advanced.mf_categories_path`、
+  `gcloud_credentials_path` に相対パスを指定した場合は、
+  実行時のカレントディレクトリではなく
+  `config.yml` の配置ディレクトリ基準で解決されます。
+- `log_settings.logs_dir` を `null` または未指定にした場合のみ、既定値として `<tool_folder>\logs` を使用します。
+- `gcloud_credentials_path` は
+  `duplicate_detection.backend: "gcloud"` を明示した場合だけ使われます。
+  この項目だけを設定しても backend は自動で切り替わりません。
+- `chrome_user_data_dir` は実マシンの Chrome プロファイルを指すため、通常はローカル環境の絶対パスを指定してください。
+
+### 保存される情報と運用上の注意
+
+- `logs_dir` 配下には app ログ、`parse_error_*.csv`、`error_*.csv`、
+  必要時の `screenshot_*.png`、ローカル重複履歴の `processed.json` が
+  保存されます。
+- app ログは件数サマリー中心で、個別取引の日付・金額・加盟店・
+  transaction_id を通常は出力しません。ただし CSV、
+  スクリーンショット、`processed.json` は機微情報を含みます。
+- `duplicate_detection.backend: "local"` では、`processed.json` に
+  `transaction_id` または `datetime` / `amount` / `merchant` の
+  組み合わせが保存されます。`dry_run: true` では更新されません。
+- `duplicate_detection.backend: "gcloud"` では、Firestore に
+  `transaction_id` または `datetime` / `amount` / `merchant` を
+  重複判定用に保存します。利用前に保存項目を許容できることを
+  確認してください。
+- ログや CSV、スクリーンショット、認証情報 JSON は共有フォルダやクラウド同期先に置かず、ローカル保管を前提に運用してください。
+
 ### 機能一覧
 
 | No | 機能名 | 概要 |
@@ -36,7 +82,7 @@
 | エンコーディング | UTF-8（BOM なし） |
 | 内容概要 | ツール全体の動作設定 |
 
-スキーマの詳細は「設定ファイル YAMLスキーマ仕様書.md」を参照。
+スキーマの詳細は「設定ファイル仕様書.md」を参照。
 
 #### 必須項目（5項目。未記載の場合は起動エラー）
 
@@ -58,7 +104,7 @@ mf_account: "PayPay残高"
 
 `input_csv`、`log_settings.logs_dir`、`advanced.mf_categories_path`、
 `gcloud_credentials_path` に相対パスを指定した場合は、
-`config.yml` の配置ディレクトリ基準で解決されます。
+実行時のカレントディレクトリではなく `config.yml` の配置ディレクトリ基準で解決されます。
 
 ### 入力CSVファイル（PayPay 利用明細）
 
@@ -123,7 +169,7 @@ mf_account: "PayPay残高"
 | 配置場所 | `log_settings.logs_dir` |
 | 出力条件 | `advanced.screenshot_on_error: true` を明示した場合のみ、エラー発生時 |
 
-> 注意: logs 配下のログ、CSV、PNG は機微情報を含む可能性があります。共有フォルダやクラウド同期先に置かず、不要になったら削除してください。
+> 注意: 保存物の全体像と運用上の注意は、上部の「保存される情報と運用上の注意」を参照してください。
 
 ### タイムゾーンに関する注意
 
@@ -345,8 +391,8 @@ pip install google-cloud-firestore
 
 1. 作成したサービスアカウントをクリック → 「キー」タブ
 2. 「キーを追加」 → 「新しいキーを作成」 → 「JSON」 → 「作成」
-3. ダウンロードされた JSON ファイルを安全な場所に保存
-   （例: `C:\Users\yourname\paypay2mf-credentials.json`）
+3. ダウンロードされた JSON ファイルを安全なローカル場所に保存
+  （例: `secrets/paypay2mf-credentials.json` を `config.yml` と同じフォルダ配下に配置）
 
 ### 5. config.yml の設定
 
@@ -355,10 +401,11 @@ duplicate_detection:
   backend: "gcloud"
   tolerance_seconds: 60
 
-gcloud_credentials_path: "C:\\Users\\yourname\\paypay2mf-credentials.json"
+gcloud_credentials_path: "./secrets/paypay2mf-credentials.json"
 ```
 
 `gcloud_credentials_path` も絶対パスに加えて `config.yml` 基準の相対パスを指定できます。
+この項目だけを設定しても backend は切り替わらないため、`duplicate_detection.backend: "gcloud"` を必ず併記してください。
 
 ### 6. Firestore 複合インデックスの作成（フォールバック検索用）
 
@@ -438,13 +485,16 @@ PowerShell 例:
 
 ```powershell
 $env:PAYPAY2MF_RUN_SMOKE_TEST = "1"
-$env:PAYPAY2MF_SMOKE_CHROME_USER_DATA_DIR = "C:\Users\yourname\AppData\Local\Google\Chrome\User Data"
-$env:PAYPAY2MF_SMOKE_CHROME_PROFILE = "Default"
-$env:PAYPAY2MF_SMOKE_MF_ACCOUNT = "PayPay残高"
+$env:PAYPAY2MF_SMOKE_CHROME_USER_DATA_DIR = "<Chrome User Data Dir>"
+$env:PAYPAY2MF_SMOKE_CHROME_PROFILE = "<Chrome Profile>"
+$env:PAYPAY2MF_SMOKE_MF_ACCOUNT = "<MF Account Name>"
+# 任意: スモークテストの出力先を固定したい場合のみ設定
+$env:PAYPAY2MF_SMOKE_LOGS_DIR = "<Optional Smoke Logs Dir>"
 python -m pytest -q -m smoke_test tests/test_mf_smoke.py
 ```
 
 このスモークテストは、Money Forward の入出金ページへ遷移し、手入力モーダルが開けることだけを確認します。実データの送信や保存は行いません。
+通常利用時の事前確認は `dry_run: true` の本体実行で十分です。smoke test は UI 契約の確認用途に限定して使ってください。
 
 ### 検証環境
 
@@ -458,4 +508,5 @@ python -m pytest -q -m smoke_test tests/test_mf_smoke.py
 
 | バージョン | 日付 | 内容 |
 | ----- | ---------- | -------------- |
+| 0.2 | 2026-03-29 | 初回利用者向けの最短手順、`config.yml` 基準の相対パス方針、保存される情報と運用上の注意、smoke test の実行前提を現行実装に合わせて整理。 |
 | 0.1 | 2026-03-28 | 初版作成 |
