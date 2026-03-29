@@ -370,7 +370,7 @@ def test_gcloud_duplicate_by_transaction_id(
     _install_fake_gcloud_modules(monkeypatch)
     config = _build_gcloud_config(tmp_path, app_config_factory)
     detector = create_detector(config)
-    client = getattr(detector, "_client")
+    client = detector._client
     client.store["TX001"] = {
         "datetime": datetime(2025, 1, 1, 12, 0, 0).isoformat(),  # noqa: DTZ001
         "amount": 100,
@@ -391,7 +391,7 @@ def test_gcloud_duplicate_fallback_within_tolerance(
     _install_fake_gcloud_modules(monkeypatch)
     config = _build_gcloud_config(tmp_path, app_config_factory)
     detector = create_detector(config)
-    client = getattr(detector, "_client")
+    client = detector._client
     base = datetime(2025, 1, 1, 12, 0, 0)  # noqa: DTZ001
     client.store["fallback-1"] = {
         "datetime": base.isoformat(),
@@ -426,7 +426,7 @@ def test_gcloud_mark_processed_writes_expected_payload(
     _install_fake_gcloud_modules(monkeypatch)
     config = _build_gcloud_config(tmp_path, app_config_factory)
     detector = create_detector(config)
-    client = getattr(detector, "_client")
+    client = detector._client
     transaction = transaction_factory(transaction_id="TX_SAVE", amount=920)
 
     detector.mark_processed(transaction)
@@ -450,7 +450,7 @@ def test_gcloud_mark_processed_skips_write_in_dry_run(
     _install_fake_gcloud_modules(monkeypatch)
     config = _build_gcloud_config(tmp_path, app_config_factory, dry_run=True)
     detector = create_detector(config)
-    client = getattr(detector, "_client")
+    client = detector._client
 
     detector.mark_processed(transaction_factory(transaction_id="TX_SKIP"))
 
