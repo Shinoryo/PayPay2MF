@@ -70,6 +70,7 @@ class AppConstants:
 
     # UI 操作に使う固定値。
     LOCATOR_STATE_VISIBLE = "visible"
+    LOCATOR_STATE_HIDDEN = "hidden"
     KEY_ESCAPE = "Escape"
 
     # 文字列処理に使う共通記号。

@@ -31,14 +31,22 @@ _AMOUNT_INPUT_VALUE = "920"
 _DEFAULT_MEMO = "支払い"
 _DEFAULT_MERCHANT = "モスのネット注文"
 _DEFAULT_TRANSACTION_ID = "TX001"
+_SUBMIT_TIMEOUT_MESSAGE = "submit timeout"
 
 pytestmark = pytest.mark.ui_contract
 
 
 class _FakeLocator:
-    def __init__(self, selector: str, actions: list[tuple]) -> None:
+    def __init__(
+        self,
+        selector: str,
+        actions: list[tuple],
+        *,
+        wait_failures: dict[tuple[str, str], Exception] | None = None,
+    ) -> None:
         self._selector = selector
         self._actions = actions
+        self._wait_failures = wait_failures or {}
         self.first = self
 
     def click(self) -> None:
@@ -55,19 +63,33 @@ class _FakeLocator:
 
     def locator(self, selector: str) -> _FakeLocator:
         self._actions.append(("locator", self._selector, selector))
-        return _FakeLocator(f"{self._selector} >> {selector}", self._actions)
+        return _FakeLocator(
+            f"{self._selector} >> {selector}",
+            self._actions,
+            wait_failures=self._wait_failures,
+        )
 
     def select_option(self, **kwargs: str) -> None:
         self._actions.append(("select_option", self._selector, kwargs))
 
     def wait_for(self, **kwargs: str | int) -> None:
         self._actions.append(("wait_for", self._selector, kwargs))
+        state = kwargs.get("state")
+        failure = self._wait_failures.get((self._selector, str(state)))
+        if failure is not None:
+            raise failure
 
 
 class _FakePage:
-    def __init__(self, *, option_value: str | None = _DEFAULT_OPTION_VALUE) -> None:
+    def __init__(
+        self,
+        *,
+        option_value: str | None = _DEFAULT_OPTION_VALUE,
+        wait_failures: dict[tuple[str, str], Exception] | None = None,
+    ) -> None:
         self.actions: list[tuple] = []
         self._option_value = option_value
+        self._wait_failures = wait_failures or {}
 
     def click(self, selector: str) -> None:
         self.actions.append(("page_click", selector))
@@ -81,7 +103,11 @@ class _FakePage:
 
     def locator(self, selector: str) -> _FakeLocator:
         self.actions.append(("page_locator", selector))
-        return _FakeLocator(selector, self.actions)
+        return _FakeLocator(
+            selector,
+            self.actions,
+            wait_failures=self._wait_failures,
+        )
 
     def wait_for_selector(self, selector: str, timeout: int) -> None:
         self.actions.append(("wait_for_selector", selector, timeout))
@@ -155,6 +181,52 @@ def test_register_transaction_uses_selector_contract() -> None:
     assert (
         "locator_click",
         f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.SUBMIT_BUTTON}",
+    ) in page.actions
+    assert (
+        "wait_for",
+        mf_selectors.MANUAL_FORM_MODAL,
+        {
+            "state": AppConstants.LOCATOR_STATE_HIDDEN,
+            "timeout": mf_selectors.SUBMIT_TIMEOUT_MS,
+        },
+    ) in page.actions
+    assert (
+        "page_locator",
+        mf_selectors.CLOSE_BUTTON,
+    ) not in page.actions
+
+
+def test_register_transaction_raises_when_submit_does_not_close_modal() -> None:
+    """TC-08-01: submit 後にモーダルが閉じなければ例外を送出することを確認する。"""
+    page = _FakePage(
+        wait_failures={
+            (
+                mf_selectors.MANUAL_FORM_MODAL,
+                AppConstants.LOCATOR_STATE_HIDDEN,
+            ): TimeoutError(_SUBMIT_TIMEOUT_MESSAGE),
+        },
+    )
+    form_page = MFManualFormPage(
+        page,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    with pytest.raises(TimeoutError, match=_SUBMIT_TIMEOUT_MESSAGE):
+        form_page.register_transaction(_make_tx())
+
+    assert (
+        "locator_click",
+        f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.SUBMIT_BUTTON}",
+    ) in page.actions
+    assert (
+        "wait_for",
+        mf_selectors.MANUAL_FORM_MODAL,
+        {
+            "state": AppConstants.LOCATOR_STATE_HIDDEN,
+            "timeout": mf_selectors.SUBMIT_TIMEOUT_MS,
+        },
     ) in page.actions
 
 

@@ -92,11 +92,10 @@ class MFManualFormPage:
         modal.locator(mf_selectors.MEMO_INPUT).fill(tx.memo)
         modal.locator(mf_selectors.SUBMIT_BUTTON).click()
 
-        self._page.locator(mf_selectors.CLOSE_BUTTON).wait_for(
-            state=AppConstants.LOCATOR_STATE_VISIBLE,
+        modal.wait_for(
+            state=AppConstants.LOCATOR_STATE_HIDDEN,
             timeout=mf_selectors.SUBMIT_TIMEOUT_MS,
         )
-        self._page.locator(mf_selectors.CLOSE_BUTTON).click()
 
     def _select_account(self, modal: Locator) -> None:
         option_value: str | None = self._page.evaluate(
