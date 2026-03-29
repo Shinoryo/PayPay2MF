@@ -256,6 +256,31 @@ def test_gcloud_credentials_path_is_resolved_relative_to_config(tmp_path: Path) 
     assert config.gcloud_credentials_path == credentials_file
 
 
+def test_gcloud_backend_requires_credentials_path_when_missing(tmp_path: Path) -> None:
+    """duplicate_detection.backend が gcloud の場合、gcloud_credentials_path 未指定で ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["duplicate_detection"] = {"backend": AppConstants.BACKEND_GCLOUD}
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape('duplicate_detection.backend: "gcloud" の場合は gcloud_credentials_path の指定が必要です。'),
+    ):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_gcloud_backend_requires_credentials_path_when_null(tmp_path: Path) -> None:
+    """duplicate_detection.backend が gcloud の場合、gcloud_credentials_path が null でも ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["duplicate_detection"] = {"backend": AppConstants.BACKEND_GCLOUD}
+    data["gcloud_credentials_path"] = None
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape('duplicate_detection.backend: "gcloud" の場合は gcloud_credentials_path の指定が必要です。'),
+    ):
+        load_config(_write_config(tmp_path, data))
+
+
 def test_missing_relative_gcloud_credentials_path_raises_value_error(
     tmp_path: Path,
 ) -> None:
