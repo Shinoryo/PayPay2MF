@@ -50,7 +50,7 @@ ACCOUNT_OPTION_LOOKUP_SCRIPT = """(name) => {
     return null;
 }"""
 
-SUBMIT_OUTCOME_SCRIPT = """({ modalSelector, successSelectors, errorSelectors }) => {
+SUBMIT_OUTCOME_SCRIPT = """({ modalSelector, errorSelectors }) => {
     const isVisible = (element) => {
         if (!element) return false;
         const style = window.getComputedStyle(element);
@@ -86,15 +86,6 @@ SUBMIT_OUTCOME_SCRIPT = """({ modalSelector, successSelectors, errorSelectors })
             status: 'error',
             selector: errorMatch.selector,
             text: errorMatch.text,
-        };
-    }
-
-    const successMatch = firstVisible(successSelectors, document);
-    if (successMatch) {
-        return {
-            status: 'success',
-            selector: successMatch.selector,
-            text: successMatch.text,
         };
     }
 

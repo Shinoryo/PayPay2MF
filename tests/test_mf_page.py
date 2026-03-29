@@ -234,7 +234,6 @@ def test_register_transaction_uses_selector_contract() -> None:
     _, _, wait_arg, wait_timeout = wait_for_function_calls[0]
     assert wait_arg == {
         "modalSelector": mf_selectors.MANUAL_FORM_MODAL,
-        "successSelectors": list(mf_selectors.SUBMIT_SUCCESS_FEEDBACK_SELECTORS),
         "errorSelectors": list(mf_selectors.SUBMIT_ERROR_FEEDBACK_SELECTORS),
     }
     assert wait_timeout == mf_selectors.SUBMIT_TIMEOUT_MS
@@ -250,6 +249,25 @@ def test_register_transaction_uses_selector_contract() -> None:
         "page_locator",
         mf_selectors.CLOSE_BUTTON,
     ) not in page.actions
+
+
+def test_register_transaction_wait_does_not_depend_on_global_success_feedback() -> None:
+    """submit 判定はページ全体の success 要素ではなく modal close/error に依存する。"""
+    page = _FakePage(submit_outcome={"status": "closed"})
+    form_page = MFManualFormPage(
+        page,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    form_page.register_transaction(_make_tx())
+
+    wait_for_function_call = next(
+        action for action in page.actions if action[0] == "wait_for_function"
+    )
+    _, _, wait_arg, _ = wait_for_function_call
+    assert "successSelectors" not in wait_arg
 
 
 def test_register_transaction_raises_when_submit_does_not_close_modal() -> None:

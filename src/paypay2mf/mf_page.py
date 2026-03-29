@@ -101,9 +101,6 @@ class MFManualFormPage:
             mf_selectors.SUBMIT_OUTCOME_SCRIPT,
             {
                 "modalSelector": mf_selectors.MANUAL_FORM_MODAL,
-                "successSelectors": list(
-                    mf_selectors.SUBMIT_SUCCESS_FEEDBACK_SELECTORS
-                ),
                 "errorSelectors": list(mf_selectors.SUBMIT_ERROR_FEEDBACK_SELECTORS),
             },
             timeout=mf_selectors.SUBMIT_TIMEOUT_MS,
