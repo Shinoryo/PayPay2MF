@@ -7,12 +7,21 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from paypay2mf.constants import AppConstants
 
 if TYPE_CHECKING:
     from paypay2mf.models import MappingRule, Transaction
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedRule:
+    category: str
+    keyword: str
+    match_mode: str
+    compiled_pattern: re.Pattern[str] | None = None
 
 
 def apply_exclude(
@@ -60,19 +69,36 @@ def apply_mapping(
     Returns:
         カテゴリが更新された Transaction のリスト。
     """
-    sorted_rules = sorted(rules, key=lambda r: r.priority, reverse=True)
+    prepared_rules = _prepare_rules(rules)
 
     result: list[Transaction] = []
     for tx in records:
-        tx.category = _match_category(tx.merchant, sorted_rules)
+        tx.category = _match_category(tx.merchant, prepared_rules)
         result.append(tx)
 
     return result
 
 
+def _prepare_rules(rules: list[MappingRule]) -> list[_PreparedRule]:
+    prepared: list[_PreparedRule] = []
+    for rule in sorted(rules, key=lambda r: r.priority, reverse=True):
+        compiled_pattern = None
+        if rule.match_mode == AppConstants.MATCH_MODE_REGEX:
+            compiled_pattern = re.compile(rule.keyword)
+        prepared.append(
+            _PreparedRule(
+                category=rule.category,
+                keyword=rule.keyword,
+                match_mode=rule.match_mode,
+                compiled_pattern=compiled_pattern,
+            )
+        )
+    return prepared
+
+
 def _match_category(
     merchant: str,
-    sorted_rules: list[MappingRule],
+    prepared_rules: list[_PreparedRule],
 ) -> str:
     """merchant に対してルールを評価し、最初にマッチしたカテゴリ名を返す。
 
@@ -83,13 +109,13 @@ def _match_category(
     Returns:
         マッチしたカテゴリ名。マッチしない場合は "未分類"。
     """
-    for rule in sorted_rules:
+    for rule in prepared_rules:
         if _matches(merchant, rule):
             return rule.category
     return AppConstants.DEFAULT_CATEGORY
 
 
-def _matches(merchant: str, rule: MappingRule) -> bool:
+def _matches(merchant: str, rule: _PreparedRule) -> bool:
     """単一のルールが merchant にマッチするか判定する。
 
     Args:
@@ -104,5 +130,5 @@ def _matches(merchant: str, rule: MappingRule) -> bool:
     if rule.match_mode == AppConstants.MATCH_MODE_STARTS_WITH:
         return merchant.startswith(rule.keyword)
     if rule.match_mode == AppConstants.MATCH_MODE_REGEX:
-        return bool(re.search(rule.keyword, merchant))
+        return bool(rule.compiled_pattern and rule.compiled_pattern.search(merchant))
     return False

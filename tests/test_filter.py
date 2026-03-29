@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from unittest.mock import Mock
 
 from paypay2mf.constants import AppConstants
 from paypay2mf.filter import apply_exclude, apply_mapping
@@ -143,6 +144,26 @@ def test_mapping_regex() -> None:
     ]
     result = apply_mapping(txs, rules)
     assert result[0].category == _SUBSCRIPTION
+
+
+def test_mapping_regex_compiles_each_rule_once(monkeypatch) -> None:
+    """regex ルールは apply_mapping ごとに 1 回だけ compile されることを確認する。"""
+    compile_mock = Mock(wraps=__import__("re").compile)
+    monkeypatch.setattr("paypay2mf.filter.re.compile", compile_mock)
+
+    txs = [_make_tx(merchant="Google - GOOGLE PLAY JAPAN")]
+    rules = [
+        MappingRule(
+            keyword=r"Google.*PLAY",
+            category=_SUBSCRIPTION,
+            match_mode=AppConstants.MATCH_MODE_REGEX,
+        ),
+    ]
+
+    result = apply_mapping(txs, rules)
+
+    assert result[0].category == _SUBSCRIPTION
+    compile_mock.assert_called_once_with(r"Google.*PLAY")
 
 
 # マッピング: priority（高いほど優先）
