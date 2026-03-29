@@ -1,4 +1,4 @@
-﻿"""mf_category_map モジュールのテスト。
+"""mf_category_map モジュールのテスト。
 
 対応テストケース:
     TC-07-00A: カテゴリ対応表 override 確認

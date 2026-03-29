@@ -1,4 +1,4 @@
-﻿"""mf_registrar モジュールのテスト。
+"""mf_registrar モジュールのテスト。
 
 対応テストレイヤー:
     ui_contract: Fake Page を使った registrar の副作用契約

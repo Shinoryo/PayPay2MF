@@ -1,4 +1,4 @@
-﻿"""PayPay→MoneyForward 自動登録ツールのデータモデル定義。
+"""PayPay→MoneyForward 自動登録ツールのデータモデル定義。
 
 CSV パース結果・設定ファイル内容を格納する dataclass 群を提供する。
 """

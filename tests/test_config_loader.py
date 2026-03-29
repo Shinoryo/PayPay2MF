@@ -1,4 +1,4 @@
-﻿"""config_loader モジュールのテスト。
+"""config_loader モジュールのテスト。
 
 対応テストケース:
     TC-01-01: 正常な設定ファイルの読み込み
@@ -54,7 +54,8 @@ def _write_config(tmp_path: Path, data: dict) -> Path:
     """
     config_file = tmp_path / _CONFIG_FILENAME
     config_file.write_text(
-        yaml.dump(data, allow_unicode=True), encoding=_YAML_ENCODING,
+        yaml.dump(data, allow_unicode=True),
+        encoding=_YAML_ENCODING,
     )
     return config_file
 
@@ -147,6 +148,34 @@ def test_missing_mf_account(tmp_path: Path) -> None:
         load_config(cfg_path)
 
 
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        pytest.param("chrome_user_data_dir", "", id="chrome_user_data_dir-empty"),
+        pytest.param("chrome_profile", "", id="chrome_profile-empty"),
+        pytest.param("input_csv", "", id="input_csv-empty"),
+        pytest.param("mf_account", "", id="mf_account-empty"),
+        pytest.param(
+            "chrome_user_data_dir", "   ", id="chrome_user_data_dir-whitespace"
+        ),
+        pytest.param("chrome_profile", "   ", id="chrome_profile-whitespace"),
+        pytest.param("input_csv", "   ", id="input_csv-whitespace"),
+        pytest.param("mf_account", "   ", id="mf_account-whitespace"),
+    ],
+)
+def test_blank_required_string_value_raises_value_error(
+    tmp_path: Path,
+    key: str,
+    value: str,
+) -> None:
+    """必須文字列項目が空文字または空白のみの場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data[key] = value
+
+    with pytest.raises(ValueError, match=key):
+        load_config(_write_config(tmp_path, data))
+
+
 # TC-01-07: logs_dir 未指定でデフォルト値補完
 def test_defaults_applied(tmp_path: Path) -> None:
     """TC-01-07: 省略可能項目のデフォルト値が正しく補完されることを確認する。"""
@@ -155,7 +184,9 @@ def test_defaults_applied(tmp_path: Path) -> None:
     config = load_config(cfg_path)
     assert config.log_settings.logs_dir is None
     assert config.duplicate_detection.backend == AppConstants.DEFAULT_BACKEND
-    assert config.parser.encoding_priority == list(AppConstants.DEFAULT_ENCODING_PRIORITY)
+    assert config.parser.encoding_priority == list(
+        AppConstants.DEFAULT_ENCODING_PRIORITY
+    )
     assert config.advanced.screenshot_on_error is False
     assert config.advanced.mf_categories_path is None
 
@@ -164,7 +195,9 @@ def test_mf_categories_path_is_resolved_relative_to_config(tmp_path: Path) -> No
     """advanced.mf_categories_path は config.yml 基準の相対パスとして解決されることを確認する。"""
     data = _base_data(tmp_path)
     categories_file = tmp_path / _CUSTOM_CATEGORIES_FILENAME
-    categories_file.write_text("middle_to_large:\n  食料品: 食費\n", encoding=_YAML_ENCODING)
+    categories_file.write_text(
+        "middle_to_large:\n  食料品: 食費\n", encoding=_YAML_ENCODING
+    )
     data["advanced"] = {"mf_categories_path": _CUSTOM_CATEGORIES_FILENAME}
 
     config = load_config(_write_config(tmp_path, data))

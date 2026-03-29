@@ -1,4 +1,4 @@
-﻿"""log_manager モジュールのテスト。
+"""log_manager モジュールのテスト。
 
 対応テストケース:
     TC-01-08: logs_dir 指定時のログ出力先
@@ -60,7 +60,9 @@ def test_write_error_csv_uses_minimum_columns(
         app_config_factory(tmp_path, input_csv_name="dummy.csv"),
     )
 
-    with out_path.open(encoding=AppConstants.ENCODING_UTF8_SIG, newline=AppConstants.EMPTY_STRING) as f:
+    with out_path.open(
+        encoding=AppConstants.ENCODING_UTF8_SIG, newline=AppConstants.EMPTY_STRING
+    ) as f:
         reader = csv.DictReader(f)
         rows = list(reader)
 
@@ -98,7 +100,9 @@ def test_write_parse_error_csv_uses_minimum_columns(
         app_config_factory(tmp_path, input_csv_name="dummy.csv"),
     )
 
-    with out_path.open(encoding=AppConstants.ENCODING_UTF8_SIG, newline=AppConstants.EMPTY_STRING) as f:
+    with out_path.open(
+        encoding=AppConstants.ENCODING_UTF8_SIG, newline=AppConstants.EMPTY_STRING
+    ) as f:
         reader = csv.DictReader(f)
         rows = list(reader)
 

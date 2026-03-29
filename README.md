@@ -125,6 +125,16 @@ mf_account: "PayPay残高"
 
 > 注意: logs 配下のログ、CSV、PNG は機微情報を含む可能性があります。共有フォルダやクラウド同期先に置かず、不要になったら削除してください。
 
+### タイムゾーンに関する注意
+
+- PayPay CSV に含まれる `取引日` は、CSV に記載された値をそのまま扱い、
+  アプリ内でタイムゾーン変換は行わない。
+- `duplicate_detection.backend: "local"` で `processed.json` が破損していた場合、
+  退避ファイル名 `processed.corrupted_YYYYMMDD_HHMMSS_ffffff.json` の
+  タイムスタンプは UTC で付与する。
+- ログや `parse_error_*.csv`、`error_*.csv` など通常の出力ファイル名は、
+  実行環境のローカル時刻を用いる。
+
 ## 実行方法
 
 ### 前提条件

@@ -1,4 +1,4 @@
-﻿"""Money Forward 手入力フォームの Page Object。"""
+"""Money Forward 手入力フォームの Page Object。"""
 
 from __future__ import annotations
 

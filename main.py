@@ -1,4 +1,4 @@
-﻿"""PayPay→MoneyForward 自動登録ツールのエントリーポイント。
+"""PayPay→MoneyForward 自動登録ツールのエントリーポイント。
 
 config.yml を読み込んで CSV パースから MF 登録までのメインフローを実行する。
 """
@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from src.chrome_check import is_chrome_running
 from src.config_loader import load_config
 from src.csv_parser import parse_csv
-from src.duplicate_detector import create_detector
+from src.duplicate_detector import DuplicateHistoryError, create_detector
 from src.filter import apply_exclude, apply_mapping
 from src.log_manager import setup_logger, write_error_csv, write_parse_error_csv
 from src.mf_registrar import MFRegistrar
@@ -42,6 +42,7 @@ _LOG_MSG_PARSE_ERROR_CSV_SENSITIVE = (
 _LOG_MSG_CSV_READ_FAILED = "CSV 読み込みに失敗しました"
 _LOG_MSG_CSV_READ_COMPLETE = "CSV 読み込み完了: 正常 %d件 / 解析失敗 %d件"
 _LOG_MSG_EXCLUDED_COUNT = "除外: %d件"
+_LOG_MSG_DUPLICATE_HISTORY_FAILED = "重複履歴ファイルの読み込みに失敗しました: %s"
 _LOG_MSG_DUPLICATE_SKIP_COUNT = "重複スキップ: %d件"
 _LOG_MSG_TO_PROCESS_COUNT = "処理対象: %d件"
 _LOG_MSG_DRY_RUN_COMPLETE = "ドライラン完了: 登録対象 %d件"
@@ -120,7 +121,12 @@ def build_transactions(
 
     mapped = apply_mapping(passed, config.mapping_rules)
 
-    detector = create_detector(config)
+    try:
+        detector = create_detector(config)
+    except DuplicateHistoryError as exc:
+        logger.exception(_LOG_MSG_DUPLICATE_HISTORY_FAILED, str(exc))
+        sys.exit(1)
+
     to_process: list[Transaction] = []
     skip_count = 0
 

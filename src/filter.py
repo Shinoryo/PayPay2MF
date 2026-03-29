@@ -1,4 +1,4 @@
-﻿"""除外フィルタとカテゴリマッピングの適用。
+"""除外フィルタとカテゴリマッピングの適用。
 
 取引番号プレフィックスによる除外と、キーワードマッチングによる
 カテゴリ自動割り当て機能を提供する。
@@ -71,7 +71,8 @@ def apply_mapping(
 
 
 def _match_category(
-    merchant: str, sorted_rules: list[MappingRule],
+    merchant: str,
+    sorted_rules: list[MappingRule],
 ) -> str:
     """merchant に対してルールを評価し、最初にマッチしたカテゴリ名を返す。
 

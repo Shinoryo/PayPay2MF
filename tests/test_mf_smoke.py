@@ -1,4 +1,4 @@
-﻿"""Money Forward UI 契約のスモークテスト。
+"""Money Forward UI 契約のスモークテスト。
 
 対応テストケース:
     TC-07-00: Playwright スモークテスト（手入力モーダル起動確認）

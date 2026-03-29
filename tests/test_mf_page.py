@@ -1,4 +1,4 @@
-﻿"""mf_page モジュールのテスト。
+"""mf_page モジュールのテスト。
 
 対応テストレイヤー:
     ui_contract: Fake Page を使った UI 操作契約の検証

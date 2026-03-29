@@ -1,4 +1,4 @@
-﻿"""Money Forward カテゴリマップの読み込み。"""
+"""Money Forward カテゴリマップの読み込み。"""
 
 from __future__ import annotations
 
@@ -28,9 +28,7 @@ _MSG_CATEGORY_MAP_ENTRY_INVALID = (
 def load_mf_category_map(path: Path | None = None) -> dict[str, str]:
     """Money Forward カテゴリマップを読み込む。"""
     resolved_path = (
-        path.resolve()
-        if path is not None
-        else _DEFAULT_MF_CATEGORIES_PATH.resolve()
+        path.resolve() if path is not None else _DEFAULT_MF_CATEGORIES_PATH.resolve()
     )
     return dict(_load_mf_category_map(resolved_path))
 

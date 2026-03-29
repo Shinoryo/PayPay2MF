@@ -51,8 +51,7 @@ def test_pyproject_declares_typing_extensions_runtime_dependency() -> None:
     dependencies = _read_project_dependencies(pyproject_path)
 
     assert any(
-        dependency.startswith("typing_extensions>=")
-        for dependency in dependencies
+        dependency.startswith("typing_extensions>=") for dependency in dependencies
     )
 
 

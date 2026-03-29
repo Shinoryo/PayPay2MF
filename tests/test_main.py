@@ -1,4 +1,4 @@
-﻿"""main モジュールのテスト。
+"""main モジュールのテスト。
 
 対応テストレイヤー:
     integration_flow: main フローのオーケストレーション、終了経路、副作用
@@ -24,7 +24,7 @@ import pytest
 
 import main as app_main
 from src.constants import AppConstants
-from src.duplicate_detector import LocalDuplicateDetector
+from src.duplicate_detector import DuplicateHistoryError, LocalDuplicateDetector
 
 pytestmark = pytest.mark.integration_flow
 
@@ -34,9 +34,7 @@ _MSG_CSV_READ_FAILED = "CSV 読み込みに失敗しました"
 _MSG_DRY_RUN_COMPLETE = "ドライラン完了: 登録対象 %d件"
 _MSG_APP_EXIT = "アプリケーションを終了します"
 _MSG_REGISTRATION_BOOT_FAILED = "Chrome の起動またはMFへの遷移に失敗しました"
-_MSG_CHROME_RUNNING = (
-    "Chrome が起動中です。Chrome を終了してから再実行してください。"
-)
+_MSG_CHROME_RUNNING = "Chrome が起動中です。Chrome を終了してから再実行してください。"
 _MSG_CHROME_STOPPED = "Chrome 稼働チェック: 停止済み"
 
 if TYPE_CHECKING:
@@ -179,6 +177,38 @@ def test_build_transactions_exits_when_parse_csv_raises(
 
     assert exc_info.value.code == 1
     logger.exception.assert_called_once_with(_MSG_CSV_READ_FAILED)
+
+
+def test_build_transactions_exits_when_duplicate_history_is_corrupted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """重複履歴ファイルが破損している場合は明示エラーで終了することを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+    transaction = transaction_factory(transaction_id="TX001", merchant="merchant-TX001")
+
+    monkeypatch.setattr(
+        app_main,
+        "parse_csv",
+        Mock(return_value=([transaction], [])),
+    )
+    monkeypatch.setattr(
+        app_main,
+        "create_detector",
+        Mock(side_effect=DuplicateHistoryError("processed.json が破損しています")),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_main.build_transactions(config, logger)
+
+    assert exc_info.value.code == 1
+    logger.exception.assert_called_once_with(
+        "重複履歴ファイルの読み込みに失敗しました: %s",
+        "processed.json が破損しています",
+    )
 
 
 def test_run_dry_run_logs_completion() -> None:

@@ -1,4 +1,4 @@
-﻿"""Money Forward UI 自動化で使用するセレクタ定義。"""
+"""Money Forward UI 自動化で使用するセレクタ定義。"""
 
 from __future__ import annotations
 

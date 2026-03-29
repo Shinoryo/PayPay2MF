@@ -1,4 +1,4 @@
-﻿"""pytest 共通設定。
+"""pytest 共通設定。
 
 共通 factory fixture と smoke_test の実行制御を提供する。
 """
@@ -44,10 +44,14 @@ TransactionFactory = Callable[..., Transaction]
 ParseFailureFactory = Callable[..., ParseFailure]
 
 
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
     """明示実行でない smoke_test を自動 skip する。"""
     run_smoke = os.getenv(_RUN_SMOKE_ENV) == _SMOKE_ENABLED_VALUE
-    smoke_selected = _SMOKE_MARK_NAME in (config.option.markexpr or AppConstants.EMPTY_STRING)
+    smoke_selected = _SMOKE_MARK_NAME in (
+        config.option.markexpr or AppConstants.EMPTY_STRING
+    )
     if run_smoke and smoke_selected:
         return
 

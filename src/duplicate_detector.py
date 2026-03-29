@@ -1,4 +1,4 @@
-﻿"""重複取引の検知と管理。
+"""重複取引の検知と管理。
 
 LocalDuplicateDetectorおよび
 GCloudDuplicateDetectorを提供する。
@@ -8,7 +8,8 @@ DuplicateDetector Protocol で共通インタフェースを定義する。
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -28,12 +29,17 @@ _KEY_MERCHANT = "merchant"
 _FIRESTORE_EQUALS_OPERATOR = "=="
 
 
+class DuplicateHistoryError(ValueError):
+    """重複履歴ファイルの読込失敗を表す例外。"""
+
+
 @runtime_checkable
 class DuplicateDetector(Protocol):
     """重複検知の共通インタフェース。
 
     このプロトコルを実装するクラスは is_duplicate と mark_processed を持つ。
     """
+
     def is_duplicate(self, tx: Transaction) -> bool:
         """指定した取引が処理済みかどうかを確認する。
 
@@ -74,6 +80,7 @@ class LocalDuplicateDetector:
     処理済み取引の情報を ``<logs_dir>/processed.json`` に保存する。
     インスタンス生成時に既存のファイルを自動で読み込む。
     """
+
     def __init__(self, config: AppConfig) -> None:
         """初期化する。
 
@@ -146,8 +153,7 @@ class LocalDuplicateDetector:
             if (
                 entry[_KEY_AMOUNT] == tx.amount
                 and entry[_KEY_MERCHANT] == tx.merchant
-                and abs((tx.date - stored_dt).total_seconds())
-                <= self._tolerance
+                and abs((tx.date - stored_dt).total_seconds()) <= self._tolerance
             ):
                 return True
         return False
@@ -158,14 +164,41 @@ class LocalDuplicateDetector:
         ファイルが存在しない場合は空の状態のままにする。
         """
         if self._store_path.exists():
-            with self._store_path.open(encoding=AppConstants.DEFAULT_TEXT_ENCODING) as f:
-                self._data = json.load(f)
+            try:
+                with self._store_path.open(
+                    encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+                ) as f:
+                    self._data = json.load(f)
+            except json.JSONDecodeError as exc:
+                backup_path = self._backup_corrupted_store()
+                msg = (
+                    "processed.json が破損しているため読み込めません。"
+                    f"退避先: {backup_path}"
+                )
+                raise DuplicateHistoryError(msg) from exc
 
     def _save(self) -> None:
         """処理済みデータを JSON ファイルに書き出す。"""
         self._store_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._store_path.open("w", encoding=AppConstants.DEFAULT_TEXT_ENCODING) as f:
-            json.dump(self._data, f, ensure_ascii=False, indent=2)
+        temp_path = self._store_path.with_name(f"{self._store_path.name}.tmp")
+        try:
+            with temp_path.open("w", encoding=AppConstants.DEFAULT_TEXT_ENCODING) as f:
+                json.dump(self._data, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            temp_path.replace(self._store_path)
+        except Exception:
+            if temp_path.exists():
+                temp_path.unlink(missing_ok=True)
+            raise
+
+    def _backup_corrupted_store(self) -> Path:
+        timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+        backup_path = self._store_path.with_name(
+            f"{self._store_path.stem}.corrupted_{timestamp}{self._store_path.suffix}",
+        )
+        self._store_path.replace(backup_path)
+        return backup_path
 
 
 class GCloudDuplicateDetector:

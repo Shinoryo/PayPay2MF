@@ -124,9 +124,7 @@ def test_parse_incoming_payment() -> None:
         _make_config(FIXTURE_DIR / _INPUT_CSV_FILENAME),
     )
     assert failures == []
-    giftee = next(
-        t for t in txs if t.transaction_id == _GIFTEE_TRANSACTION_ID
-    )
+    giftee = next(t for t in txs if t.transaction_id == _GIFTEE_TRANSACTION_ID)
     assert giftee.amount == 120
     assert giftee.direction == AppConstants.DIRECTION_IN
     assert giftee.merchant == _GIFTEE_MERCHANT
@@ -185,9 +183,7 @@ def test_foreign_transaction_memo() -> None:
         _make_config(FIXTURE_DIR / _INPUT_CSV_FILENAME),
     )
     assert failures == []
-    google = next(
-        t for t in txs if t.transaction_id == _GOOGLE_TRANSACTION_ID
-    )
+    google = next(t for t in txs if t.transaction_id == _GOOGLE_TRANSACTION_ID)
     assert _FOREIGN_MEMO_MARKER in google.memo
     assert _JPY_CURRENCY in google.memo
 

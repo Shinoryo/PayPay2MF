@@ -1,4 +1,4 @@
-﻿"""ロガーセットアップ・エラー CSV 書き込み・ログローテーション。
+"""ロガーセットアップ・エラー CSV 書き込み・ログローテーション。
 
 アプリケーション実行ログの生成・ローテーション、
 エラー内容の CSV 出力機能を提供する。
@@ -64,7 +64,9 @@ def setup_logger(config: AppConfig) -> logging.Logger:
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime(AppConstants.TIMESTAMP_FORMAT)  # noqa: DTZ005
-    log_file = logs_dir / f"{_LOG_FILE_PREFIX}{timestamp}{AppConstants.LOG_FILE_EXTENSION}"
+    log_file = (
+        logs_dir / f"{_LOG_FILE_PREFIX}{timestamp}{AppConstants.LOG_FILE_EXTENSION}"
+    )
 
     logger = logging.getLogger(_LOGGER_NAME)
     logger.setLevel(logging.DEBUG)
@@ -86,7 +88,8 @@ def setup_logger(config: AppConfig) -> logging.Logger:
 
 
 def write_error_csv(
-    records: list[str], config: AppConfig,
+    records: list[str],
+    config: AppConfig,
 ) -> Path:
     """登録失敗メッセージを最小限の CSV として書き出す。
 
@@ -122,7 +125,8 @@ def write_error_csv(
 
 
 def write_parse_error_csv(
-    records: list[ParseFailure], config: AppConfig,
+    records: list[ParseFailure],
+    config: AppConfig,
 ) -> Path:
     """CSV 解析失敗を最小限の情報で CSV に書き出す。"""
     logs_dir = _resolve_logs_dir(config)
@@ -130,8 +134,7 @@ def write_parse_error_csv(
 
     timestamp = datetime.now().strftime(AppConstants.TIMESTAMP_FORMAT)  # noqa: DTZ005
     out_path = (
-        logs_dir
-        / f"{_PARSE_ERROR_CSV_PREFIX}{timestamp}{AppConstants.CSV_EXTENSION}"
+        logs_dir / f"{_PARSE_ERROR_CSV_PREFIX}{timestamp}{AppConstants.CSV_EXTENSION}"
     )
 
     with out_path.open(
@@ -181,7 +184,8 @@ def _rotate_logs(config: AppConfig, logs_dir: Path) -> None:
         logs_dir: ログディレクトリの Path。
     """
     log_files = sorted(
-        logs_dir.glob(_LOG_GLOB_PATTERN), key=os.path.getmtime,
+        logs_dir.glob(_LOG_GLOB_PATTERN),
+        key=os.path.getmtime,
     )
 
     max_count = config.log_settings.max_log_count
@@ -193,9 +197,7 @@ def _rotate_logs(config: AppConfig, logs_dir: Path) -> None:
     if max_size_mb is not None:
         max_bytes = max_size_mb * _BYTES_PER_MB
         while log_files:
-            total = sum(
-                f.stat().st_size for f in log_files if f.exists()
-            )
+            total = sum(f.stat().st_size for f in log_files if f.exists())
             if total <= max_bytes:
                 break
             log_files.pop(0).unlink(missing_ok=True)

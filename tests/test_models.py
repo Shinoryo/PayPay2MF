@@ -1,4 +1,4 @@
-﻿"""models モジュールの既定値テスト。
+"""models モジュールの既定値テスト。
 
 共通テストデータ生成の基礎整合性を確認する。
 """
@@ -36,7 +36,9 @@ def test_dataclass_defaults_match_app_constants(
 ) -> None:
     """dataclass の既定値が AppConstants と整合することを確認する。"""
 
-    mapping_rule = MappingRule(keyword=_DEFAULT_KEYWORD, category=_DEFAULT_RULE_CATEGORY)
+    mapping_rule = MappingRule(
+        keyword=_DEFAULT_KEYWORD, category=_DEFAULT_RULE_CATEGORY
+    )
     transaction = Transaction(
         date=datetime(2025, 1, 1, 12, 0, 0),  # noqa: DTZ001
         amount=100,
@@ -47,7 +49,9 @@ def test_dataclass_defaults_match_app_constants(
     )
     duplicate_detection = DuplicateDetectionConfig()
     parser = ParserConfig()
-    config = app_config_factory(tmp_path, dry_run=True, input_csv_name=_INPUT_CSV_FILENAME)
+    config = app_config_factory(
+        tmp_path, dry_run=True, input_csv_name=_INPUT_CSV_FILENAME
+    )
 
     assert mapping_rule.match_mode == AppConstants.DEFAULT_MATCH_MODE
     assert transaction.category == AppConstants.DEFAULT_CATEGORY

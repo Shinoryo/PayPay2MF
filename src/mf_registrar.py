@@ -1,4 +1,4 @@
-﻿"""MoneyForward ME への手動フォーム登録を Playwright で自動化するモジュール。
+"""MoneyForward ME への手動フォーム登録を Playwright で自動化するモジュール。
 
 Chrome プロフィールを継承して起動し、MF 手動入力フォームへ自動入力する。
 実証セレクターは TODO T01 としてプレースホルダーが入っている。
@@ -44,6 +44,7 @@ class MFRegistrar:
     ``with`` 文で使用し、Chrome 起動から登録完了までを管理する。
     登録常にブラウザを安全にクローズする。
     """
+
     def __init__(self, config: AppConfig, logger: logging.Logger) -> None:
         """MFRegistrar を初期化する。
 
@@ -82,9 +83,7 @@ class MFRegistrar:
             ],
         )
         self._page = (
-            self._context.pages[0]
-            if self._context.pages
-            else self._context.new_page()
+            self._context.pages[0] if self._context.pages else self._context.new_page()
         )
         self._logger.info(_LOG_MSG_CHROME_STARTED)
 

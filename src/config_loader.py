@@ -1,4 +1,4 @@
-﻿"""設定ファイルの読み込みと検証。
+"""設定ファイルの読み込みと検証。
 
 YAML 形式の設定ファイルを読み込み、必須項目・型・パスを検証して
 AppConfig インスタンスに変換する。
@@ -112,6 +112,13 @@ _REQUIRED_KEYS: dict[str, str] = {
     _KEY_MF_ACCOUNT: _MSG_REQUIRED_MF_ACCOUNT,
 }
 
+_REQUIRED_STRING_KEYS = {
+    _KEY_CHROME_USER_DATA_DIR,
+    _KEY_CHROME_PROFILE,
+    _KEY_INPUT_CSV,
+    _KEY_MF_ACCOUNT,
+}
+
 
 def load_config(path: Path) -> AppConfig:
     """YAML 設定ファイルを読み込み、検証済みの AppConfig を返す。
@@ -154,7 +161,11 @@ def _validate_required(raw: dict) -> None:
     """
     errors: list[str] = []
     for key, msg in _REQUIRED_KEYS.items():
-        if raw.get(key) is None:
+        value = raw.get(key)
+        if value is None:
+            errors.append(msg)
+            continue
+        if key in _REQUIRED_STRING_KEYS and not str(value).strip():
             errors.append(msg)
     dry_run_val = raw.get(_KEY_DRY_RUN)
     if dry_run_val is not None and not isinstance(dry_run_val, bool):
@@ -191,7 +202,9 @@ def _validate_paths(
             if not profile_dir.exists():
                 errors.append(_MSG_CHROME_PROFILE_NOT_EXIST.format(path=profile_dir))
         else:
-            errors.append(_MSG_CHROME_USER_DATA_DIR_NOT_EXIST.format(path=user_data_dir))
+            errors.append(
+                _MSG_CHROME_USER_DATA_DIR_NOT_EXIST.format(path=user_data_dir)
+            )
 
     input_csv = _resolve_path(raw[_KEY_INPUT_CSV], config_dir)
     if not input_csv.exists():
@@ -298,7 +311,8 @@ def _build_config(raw: dict, *, config_dir: Path) -> AppConfig:
     dup = DuplicateDetectionConfig(
         backend=dd_raw.get(_KEY_DD_BACKEND, AppConstants.DEFAULT_BACKEND),
         tolerance_seconds=dd_raw.get(
-            _KEY_DD_TOLERANCE_SECONDS, _DEFAULT_TOLERANCE_SECONDS,
+            _KEY_DD_TOLERANCE_SECONDS,
+            _DEFAULT_TOLERANCE_SECONDS,
         ),
     )
 
@@ -325,7 +339,8 @@ def _build_config(raw: dict, *, config_dir: Path) -> AppConfig:
     adv_raw = raw.get(_KEY_ADVANCED) or {}
     advanced = AdvancedConfig(
         screenshot_on_error=adv_raw.get(
-            _KEY_ADV_SCREENSHOT_ON_ERROR, _DEFAULT_SCREENSHOT_ON_ERROR,
+            _KEY_ADV_SCREENSHOT_ON_ERROR,
+            _DEFAULT_SCREENSHOT_ON_ERROR,
         ),
         mf_categories_path=_resolve_optional_path(
             adv_raw.get(_KEY_ADV_MF_CATEGORIES_PATH),

@@ -1,4 +1,4 @@
-﻿"""PayPay CSV ファイルのパース処理。
+"""PayPay CSV ファイルのパース処理。
 
 PayPay の利用明細 CSV を読み込み、Transaction オブジェクトのリストに変換する。
 """
@@ -67,7 +67,8 @@ CsvRow = tuple[int, dict[str, str | None]]
 
 
 def parse_csv(
-    path: Path, config: AppConfig,
+    path: Path,
+    config: AppConfig,
 ) -> tuple[list[Transaction], list[ParseFailure]]:
     """PayPay CSV ファイルをパースして結果と解析失敗を返す。
 
@@ -225,7 +226,8 @@ def _merge_compound(rows: list[CsvRow]) -> list[CsvRow]:
 
 
 def _to_transactions(
-    rows: list[CsvRow], date_formats: list[str],
+    rows: list[CsvRow],
+    date_formats: list[str],
 ) -> tuple[list[Transaction], list[ParseFailure]]:
     """行番号付きの行辞書リストを Transaction と ParseFailure に分離する。"""
     transactions: list[Transaction] = []
@@ -242,7 +244,9 @@ def _to_transactions(
 
 
 def _parse_row(
-    row_index: int, row: dict[str, str | None], date_formats: list[str],
+    row_index: int,
+    row: dict[str, str | None],
+    date_formats: list[str],
 ) -> tuple[Transaction | None, ParseFailure | None]:
     """単一行を Transaction または ParseFailure に変換する。"""
     try:
@@ -252,7 +256,8 @@ def _parse_row(
 
 
 def _to_transaction(
-    row: dict, date_formats: list[str],
+    row: dict,
+    date_formats: list[str],
 ) -> Transaction:
     """行辞書を Transaction オブジェクトに変換する。
 
@@ -306,7 +311,7 @@ def _try_strptime(s: str, fmt: str) -> datetime | None:
         パース成功なら datetime、失敗なら None。
     """
     try:
-        return datetime.strptime(s, fmt) # noqa: DTZ007
+        return datetime.strptime(s, fmt)  # noqa: DTZ007
     except ValueError:
         return None
 
@@ -346,7 +351,9 @@ def _get_required_value(row: dict[str, str | None], key: str) -> str:
 
 
 def _build_parse_failure(
-    row_index: int, row: dict[str, str | None], exc: Exception,
+    row_index: int,
+    row: dict[str, str | None],
+    exc: Exception,
 ) -> ParseFailure:
     """例外内容から ParseFailure を生成する。"""
     normalized_row = {
