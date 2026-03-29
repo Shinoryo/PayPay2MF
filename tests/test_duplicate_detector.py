@@ -848,6 +848,34 @@ def test_gcloud_duplicate_fallback_rejects_outside_tolerance_even_with_bucket_ma
     assert detector.is_duplicate(non_duplicate_tx) is False
 
 
+def test_gcloud_duplicate_fallback_raises_explicit_error_for_invalid_datetime_doc(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """不正な Firestore datetime を含む候補文書は明示エラーに正規化する。"""
+    _install_fake_gcloud_modules(monkeypatch)
+    config = _build_gcloud_config(tmp_path, app_config_factory)
+    detector = create_detector(config)
+    client = detector.client
+    tx = transaction_factory(
+        transaction_id=None,
+        amount=300,
+        merchant="テスト商店",
+        date=datetime(2025, 1, 1, 12, 0, 0),  # noqa: DTZ001
+    )
+    client.store["bad-doc"] = {
+        "datetime": "not-a-datetime",
+        "amount": 300,
+        "merchant": "テスト商店",
+        "date_bucket": build_date_bucket(tx.date),
+    }
+
+    with pytest.raises(DuplicateHistoryError, match=r"paypay_transactions/bad-doc"):
+        detector.is_duplicate(tx)
+
+
 def test_gcloud_mark_processed_writes_expected_payload(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

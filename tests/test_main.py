@@ -295,6 +295,56 @@ def test_build_transactions_exits_when_gcloud_dependency_is_missing(
     )
 
 
+def test_build_transactions_exits_when_gcloud_duplicate_history_doc_is_invalid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """重複判定中に GCloud 履歴文書異常が起きた場合も明示エラーで終了する。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+    transaction = transaction_factory(
+        transaction_id="TX001",
+        merchant="merchant-TX001",
+    )
+    history_error_message = (
+        "Firestore の重複履歴 datetime が不正です: paypay_transactions/bad-doc"
+    )
+    mark_processed_error = "mark_processed should not be called"
+    flush_error = "flush should not be called"
+
+    class _BrokenDetector:
+        def is_duplicate(self, _tx: Transaction) -> bool:
+            raise DuplicateHistoryError(history_error_message)
+
+        def mark_processed(self, _tx: Transaction) -> None:
+            raise AssertionError(mark_processed_error)
+
+        def flush(self) -> None:
+            raise AssertionError(flush_error)
+
+    monkeypatch.setattr(
+        app_main,
+        "parse_csv",
+        Mock(return_value=([transaction], [])),
+    )
+    monkeypatch.setattr(
+        app_main,
+        "create_detector",
+        Mock(return_value=_BrokenDetector()),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_main.build_transactions(config, logger)
+
+    assert exc_info.value.code == 1
+    logger.exception.assert_called_once_with(
+        "重複履歴ファイルの読み込みに失敗しました: %s",
+        history_error_message,
+    )
+
+
 def test_run_dry_run_logs_completion() -> None:
     """TC-05-01: dry_run 用 helper が終了ログを出すことを確認する。"""
     logger = Mock(spec=logging.Logger)

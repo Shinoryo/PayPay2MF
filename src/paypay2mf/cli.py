@@ -160,7 +160,13 @@ def build_transactions(
     skip_count = 0
 
     for tx in mapped:
-        if detector.is_duplicate(tx):
+        try:
+            is_duplicate = detector.is_duplicate(tx)
+        except DuplicateHistoryError as exc:
+            logger.exception(_LOG_MSG_DUPLICATE_HISTORY_FAILED, str(exc))
+            sys.exit(1)
+
+        if is_duplicate:
             skip_count += 1
             continue
         to_process.append(tx)

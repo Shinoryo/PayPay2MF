@@ -148,6 +148,24 @@ def build_firestore_fallback_doc_id(tx: Transaction) -> str:
     return f"fallback_{digest}"
 
 
+def _parse_firestore_datetime(data: object, doc_id: str) -> datetime:
+    """Firestore 文書の datetime を検証し、異常を履歴エラーへ正規化する。"""
+    if not isinstance(data, dict):
+        msg = f"Firestore の重複履歴文書が不正です: paypay_transactions/{doc_id}"
+        raise DuplicateHistoryError(msg)
+
+    datetime_raw = data.get(_KEY_DATETIME)
+    if not isinstance(datetime_raw, str) or not datetime_raw.strip():
+        msg = f"Firestore の重複履歴 datetime が不正です: paypay_transactions/{doc_id}"
+        raise DuplicateHistoryError(msg)
+
+    try:
+        return datetime.fromisoformat(datetime_raw)
+    except ValueError as exc:
+        msg = f"Firestore の重複履歴 datetime が不正です: paypay_transactions/{doc_id}"
+        raise DuplicateHistoryError(msg) from exc
+
+
 class LocalDuplicateDetector:
     """JSON ファイルを用いたローカル重複検知の実装。
 
@@ -424,9 +442,17 @@ class GCloudDuplicateDetector:
                 .where(_KEY_DATE_BUCKET, _FIRESTORE_EQUALS_OPERATOR, date_bucket)
             )
             for doc in query.stream():
-                data = doc.to_dict()
-                stored_dt = datetime.fromisoformat(data[_KEY_DATETIME])
-                if abs(tx.date - stored_dt) <= delta:
+                stored_dt = _parse_firestore_datetime(doc.to_dict(), doc.id)
+                try:
+                    within_tolerance = abs(tx.date - stored_dt) <= delta
+                except TypeError as exc:
+                    msg = (
+                        "Firestore の重複履歴 datetime の"
+                        "タイムゾーン形式が一致しません: "
+                        f"paypay_transactions/{doc.id}"
+                    )
+                    raise DuplicateHistoryError(msg) from exc
+                if within_tolerance:
                     return True
         return False
 
