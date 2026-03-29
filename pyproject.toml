@@ -10,6 +10,7 @@ dependencies = [
     "playwright>=1.40",
     "psutil>=5.9",
     "PyYAML>=6.0",
+    "typing_extensions>=4.0",
 ]
 
 [project.optional-dependencies]

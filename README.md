@@ -160,15 +160,35 @@ paypay2mf.exe
 
 事前に Playwright 用ブラウザのセットアップが完了している環境で実行してください。
 
+## 依存関係の導入
+
+通常利用では、プロジェクトルートで pyproject.toml に定義された依存関係をまとめてインストールしてください。
+
+```bash
+pip install -e .
+```
+
+開発用テストも含める場合は、以下を使用してください。
+
+```bash
+pip install -e ".[dev]"
+```
+
+Python 3.10 互換の型注釈として Self を利用しているため、
+typing_extensions は runtime dependency に含まれます。
+直接 import している third-party package は、転移依存に頼らず
+pyproject.toml の dependencies または optional-dependencies に
+明示的に定義します。
+
 ## 想定実行環境
 
 | 項目 | 内容 |
 | ---- | ---- |
 | OS | Windows 11 |
-| Python | 3.9 以上 |
+| Python | 3.10 以上 |
 | ブラウザ | Google Chrome（最新版） |
 | Playwright ブラウザ | `playwright install chromium` 実行済み |
-| Python ライブラリ | playwright / pandas / PyYAML / google-cloud-firestore（任意） |
+| Python ライブラリ | playwright / psutil / PyYAML / typing_extensions / google-cloud-firestore（任意） |
 
 ## 処理詳細
 
@@ -341,30 +361,46 @@ gcloud_credentials_path: "C:\\Users\\yourname\\paypay2mf-credentials.json"
 
 | ライブラリ名 | バージョン | ライセンス |
 | ---- | ---- | ---- |
-| playwright | 最新版 | Apache License 2.0 |
-| pandas | 最新版 | BSD 3-Clause |
-| PyYAML | 最新版 | MIT |
-| google-cloud-firestore | 最新版（任意） | Apache License 2.0 |
+| playwright | 1.58.0 | Apache-2.0 |
+| psutil | 7.2.2 | BSD-3-Clause |
+| PyYAML | 6.0.3 | MIT |
+| typing_extensions | 4.15.0 | PSF-2.0 |
+| google-cloud-firestore | 任意 | Apache License 2.0 |
 
 ## 開発詳細
 
 ### 開発環境
 
 - VS Code 最新版
-- Python 3.9 以上
+- Python 3.10 以上
+
+### 依存関係管理方針
+
+- 直接 import する third-party package は、pyproject.toml の
+  dependencies または optional-dependencies に必ず明示する。
+- Python 3.10 互換維持のため、[src/mf_registrar.py](src/mf_registrar.py)
+  の Self 型注釈は typing_extensions を使用する。
+- optional dependency は [src/duplicate_detector.py](src/duplicate_detector.py)
+  のように遅延 import と案内メッセージを組み合わせ、
+  未導入環境でも基本機能が動作するようにする。
 
 ### UI 自動化の保守方針
 
 - Money Forward の DOM セレクタ契約は [src/mf_selectors.py](src/mf_selectors.py) に集約する。
 - 手入力モーダルの UI 操作は
   [src/mf_page.py](src/mf_page.py) の `MFManualFormPage` にまとめる。
-- Money Forward のカテゴリ対応表は同梱の [src/mf_categories.yml](src/mf_categories.yml) を既定とし、必要時のみ `config.yml` の `advanced.mf_categories_path` で差し替える。
+- Money Forward のカテゴリ対応表は
+  [src/mf_categories.yml](src/mf_categories.yml) を既定とし、
+  必要時のみ `config.yml` の `advanced.mf_categories_path` で差し替える。
 - 独自カテゴリ YAML のひな形として [mf_categories_sample.yml](mf_categories_sample.yml) を同梱している。差し替え時はこの形式をベースに編集する。
 - [src/mf_registrar.py](src/mf_registrar.py) はブラウザ起動と
   コンテキスト管理に専念させる。
 - DOM 変更対応時は、まず selector 定義と Page Object を確認し、registrar 本体へ直接セレクタを増やさない。
 
-`advanced.mf_categories_path` に相対パスを指定した場合は `config.yml` の配置ディレクトリ基準で解決されます。差し替え先 YAML は `middle_to_large:` をルートに持ち、中項目名から大項目名への対応を定義してください。
+`advanced.mf_categories_path` に相対パスを指定した場合は
+`config.yml` の配置ディレクトリ基準で解決されます。
+差し替え先 YAML は `middle_to_large:` をルートに持ち、
+中項目名から大項目名への対応を定義してください。
 指定時は完全置換になるため、必要な中項目をサンプルから削らずに調整してください。
 
 ### Playwright スモークテスト
@@ -389,7 +425,7 @@ c:/Git/PayPay2MF/.venv/Scripts/python.exe -m pytest -m smoke_test tests/test_mf_
 | ---- | ---- |
 | OS | Windows 11 |
 | ブラウザ | Google Chrome（最新版） |
-| Python | 3.9 以上 |
+| Python | 3.10 以上 |
 
 ## 改訂履歴
 
