@@ -54,3 +54,17 @@ def test_pyproject_declares_mit_license_and_license_file() -> None:
     assert project["license"] == "MIT"
     assert setuptools["license-files"] == ["LICENSE"]
     assert (repo_root / "LICENSE").exists()
+
+
+def test_pyproject_packages_console_script_modules_for_regular_install() -> None:
+    """通常の wheel install でも console script の参照先モジュールが同梱されることを確認する。"""
+    pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+
+    pyproject = _load_pyproject(pyproject_path)
+    tool = pyproject["tool"]
+
+    assert isinstance(tool, dict)
+    setuptools = tool["setuptools"]
+    assert isinstance(setuptools, dict)
+    assert setuptools["packages"] == ["src"]
+    assert setuptools["py-modules"] == ["main", "firestore_backfill"]

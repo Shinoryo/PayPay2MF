@@ -13,7 +13,7 @@
 初回利用時は、まず以下の順で進めると全体像を把握しやすくなります。
 
 1. 依存関係をインストールする: `pip install -e .`
-2. `config_sample.yml` を元に、ツールフォルダ直下へ `config.yml` を作成する。
+2. `config_sample.yml` を元に、作業ディレクトリへ `config.yml` を作成する。
 3. `chrome_user_data_dir` / `chrome_profile` / `dry_run` / `input_csv` /
   `mf_account` の必須 5 項目を設定する。
 4. まず `dry_run: true` で `python main.py` を実行し、CSV の読込結果と
@@ -27,6 +27,8 @@
 
 ### パス指定の基準
 
+- 起動時の `config.yml` は、`--config` > 環境変数 `PAYPAY2MF_CONFIG` >
+  カレントディレクトリ > モジュール同居 の順に探索されます。
 - `input_csv`、`log_settings.logs_dir`、`advanced.mf_categories_path`、
   `gcloud_credentials_path` に相対パスを指定した場合は、
   実行時のカレントディレクトリではなく
@@ -68,7 +70,7 @@
 | F07 | 実行前チェック | Chrome が起動中の場合は処理を中断し、ユーザーに終了を促す |
 | F08 | ドライランモード | ブラウザを使用せず、CSV の解析結果と変換結果の診断出力のみを行う |
 | F09 | ログ出力 | 実行ログ、エラー CSV、スクリーンショットを `log_settings` の設定に従って出力 |
-| F10 | 設定ファイル | ツールフォルダ直下の `config.yml` で動作設定を一元管理する |
+| F10 | 設定ファイル | `--config` / 環境変数 / カレントディレクトリ / モジュール同居の順で `config.yml` を解決し、動作設定を一元管理する |
 | F11 | エラーハンドリング | 操作失敗時はスクリーンショットとログを保存し、ユーザーに再実行のための情報を提示 |
 
 ## 入力
@@ -78,7 +80,7 @@
 | 項目 | 内容 |
 | ---- | ---- |
 | ファイル名 | `config.yml` |
-| 配置場所 | ツールフォルダ直下 |
+| 配置場所 | 任意。`--config` 未指定時は `PAYPAY2MF_CONFIG`、カレントディレクトリ、モジュール同居の順で探索 |
 | 形式 | YAML 1.2 |
 | エンコーディング | UTF-8（BOM なし） |
 | 内容概要 | ツール全体の動作設定 |
@@ -188,7 +190,7 @@ mf_account: "PayPay残高"
 
 ### 前提条件
 
-1. `config.yml` をツールフォルダ直下に配置し、必須5項目を設定する。
+1. `config.yml` を作業ディレクトリに配置するか、`--config` または `PAYPAY2MF_CONFIG` で参照先を指定し、必須5項目を設定する。
 2. Chrome が完全終了していること（本番実行時のみ）。
 3. 本番実行時は、使用する Chrome プロファイルで Money Forward ME にログイン済みであること。
 
@@ -432,7 +434,8 @@ paypay2mf-firestore-backfill --dry-run
 paypay2mf-firestore-backfill
 ```
 
-`--config` で `config.yml` のパスを指定できます。検証用に
+既定では `PAYPAY2MF_CONFIG`、カレントディレクトリ、モジュール同居の順に
+`config.yml` を探索します。`--config` で明示指定も可能です。検証用に
 `--limit 100` のような上限指定も可能です。
 backfill は `duplicate_detection.backend: "gcloud"` の設定を前提に、
 `datetime` から `date_bucket` を算出して補完します。

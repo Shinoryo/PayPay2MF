@@ -6,6 +6,8 @@ AppConfig インスタンスに変換する。
 
 from __future__ import annotations
 
+import os
+from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
@@ -171,6 +173,32 @@ _REQUIRED_STRING_KEYS = {
     _KEY_INPUT_CSV,
     _KEY_MF_ACCOUNT,
 }
+
+CONFIG_FILENAME = "config.yml"
+CONFIG_ENV_VAR = "PAYPAY2MF_CONFIG"
+
+
+def resolve_config_path(
+    config_path: Path | None,
+    *,
+    module_dir: Path,
+    current_dir: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> Path:
+    """起動時の config.yml パスを優先順に解決する。"""
+    if config_path is not None:
+        return config_path
+
+    environment = os.environ if env is None else env
+    env_config_path = environment.get(CONFIG_ENV_VAR)
+    if env_config_path is not None and env_config_path.strip():
+        return Path(env_config_path)
+
+    cwd_config_path = (current_dir or Path.cwd()) / CONFIG_FILENAME
+    if cwd_config_path.exists():
+        return cwd_config_path
+
+    return module_dir / CONFIG_FILENAME
 
 
 def load_config(path: Path) -> AppConfig:

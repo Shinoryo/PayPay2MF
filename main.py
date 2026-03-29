@@ -5,13 +5,14 @@ config.yml を読み込んで CSV パースから MF 登録までのメインフ
 
 from __future__ import annotations
 
+import argparse
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.chrome_check import is_chrome_running
-from src.config_loader import load_config
+from src.config_loader import CONFIG_ENV_VAR, load_config, resolve_config_path
 from src.csv_parser import parse_csv
 from src.duplicate_detector import (
     DuplicateHistoryError,
@@ -30,8 +31,11 @@ if TYPE_CHECKING:
 
 
 # 設定読み込みと標準出力に使う定数。
-_CONFIG_FILENAME = "config.yml"
 _STDERR_CONFIG_LOAD_FAILED = "[ERROR] 設定ファイルの読み込みに失敗しました:\n{}"
+_CLI_HELP_CONFIG = (
+    "config.yml のパス。省略時は --config > 環境変数 "
+    f"{CONFIG_ENV_VAR} > カレントディレクトリ > モジュール同居の順に探索します。"
+)
 
 # 実行フローのログ文言に使う定数。
 _LOG_MSG_CHROME_RUNNING = (
@@ -81,6 +85,20 @@ class PreparedTransactions:
 class RegistrationResult:
     success_count: int
     failed_records: list[str]
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """CLI 引数を解釈する。"""
+    parser = argparse.ArgumentParser(
+        description="PayPay CSV を読み込み Money Forward ME へ登録します。",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help=_CLI_HELP_CONFIG,
+    )
+    return parser.parse_args(argv)
 
 
 def ensure_chrome_stopped(config: AppConfig, logger: logging.Logger) -> None:
@@ -245,7 +263,7 @@ def log_summary(
         logger.warning(_LOG_MSG_ERROR_CSV_SENSITIVE)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """アプリケーションのメイン処理を実行する。
 
     処理フロー:
@@ -258,7 +276,11 @@ def main() -> None:
         7. MF 登録（dry_run の場合は診断ログを出力）
         8. サマリーログ出力・エラー CSV 書き出し
     """
-    config_path = Path(__file__).parent / _CONFIG_FILENAME
+    args = parse_args(argv)
+    config_path = resolve_config_path(
+        args.config,
+        module_dir=Path(__file__).parent,
+    )
 
     try:
         config = load_config(config_path)

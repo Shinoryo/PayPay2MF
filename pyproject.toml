@@ -30,6 +30,8 @@ paypay2mf-firestore-backfill = "firestore_backfill:main"
 src = ["mf_categories.yml"]
 
 [tool.setuptools]
+packages = ["src"]
+py-modules = ["main", "firestore_backfill"]
 license-files = ["LICENSE"]
 
 [tool.pytest.ini_options]

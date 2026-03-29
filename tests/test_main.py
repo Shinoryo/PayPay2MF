@@ -417,7 +417,7 @@ def test_main_exits_when_config_load_fails(
     monkeypatch.setattr(app_main, "setup_logger", Mock())
 
     with pytest.raises(SystemExit) as exc_info:
-        app_main.main()
+        app_main.main([])
 
     assert exc_info.value.code == 1
     captured = capsys.readouterr()
@@ -455,7 +455,7 @@ def test_main_dry_run_skips_browser_startup(
     run_registration_mock = Mock()
     monkeypatch.setattr(app_main, "run_registration", run_registration_mock)
 
-    app_main.main()
+    app_main.main([])
 
     ensure_mock.assert_called_once_with(config, logger)
     build_mock.assert_called_once_with(config, logger)
@@ -478,11 +478,163 @@ def test_main_dry_run_does_not_persist_processed_history(
     monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
     monkeypatch.setattr(app_main, "parse_csv", Mock(return_value=([transaction], [])))
 
-    app_main.main()
+    app_main.main([])
 
     processed_file = tmp_path / AppConstants.PROCESSED_FILENAME
     assert processed_file.exists() is False
     assert LocalDuplicateDetector(config).is_duplicate(transaction) is False
+
+
+def test_main_uses_cli_config_path_before_env_and_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    """--config 指定が他の探索経路より優先されることを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+    cli_config = tmp_path / "cli.yml"
+    env_config = tmp_path / "env.yml"
+    cwd_dir = tmp_path / "cwd"
+    cwd_dir.mkdir()
+    (cwd_dir / "config.yml").write_text("", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+
+    monkeypatch.chdir(cwd_dir)
+    monkeypatch.setenv("PAYPAY2MF_CONFIG", str(env_config))
+    monkeypatch.setattr(app_main, "load_config", Mock(return_value=config))
+    monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
+    monkeypatch.setattr(app_main, "ensure_chrome_stopped", Mock())
+    monkeypatch.setattr(
+        app_main,
+        "build_transactions",
+        Mock(
+            return_value=app_main.PreparedTransactions(
+                detector=_FakeDetector(),
+                to_process=[],
+                excluded_count=0,
+                skip_count=0,
+            )
+        ),
+    )
+    monkeypatch.setattr(app_main, "run_dry_run", Mock())
+
+    app_main.main(["--config", str(cli_config)])
+
+    app_main.load_config.assert_called_once_with(cli_config)
+
+
+def test_main_uses_env_config_path_when_cli_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    """CLI 未指定時は PAYPAY2MF_CONFIG を優先することを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+    env_config = tmp_path / "env.yml"
+    cwd_dir = tmp_path / "cwd"
+    cwd_dir.mkdir()
+    (cwd_dir / "config.yml").write_text("", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+
+    monkeypatch.chdir(cwd_dir)
+    monkeypatch.setenv("PAYPAY2MF_CONFIG", str(env_config))
+    monkeypatch.setattr(app_main, "load_config", Mock(return_value=config))
+    monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
+    monkeypatch.setattr(app_main, "ensure_chrome_stopped", Mock())
+    monkeypatch.setattr(
+        app_main,
+        "build_transactions",
+        Mock(
+            return_value=app_main.PreparedTransactions(
+                detector=_FakeDetector(),
+                to_process=[],
+                excluded_count=0,
+                skip_count=0,
+            )
+        ),
+    )
+    monkeypatch.setattr(app_main, "run_dry_run", Mock())
+
+    app_main.main([])
+
+    app_main.load_config.assert_called_once_with(env_config)
+
+
+def test_main_uses_cwd_config_path_when_cli_and_env_are_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    """CLI と環境変数が未指定なら cwd の config.yml を使うことを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+    cwd_dir = tmp_path / "cwd"
+    cwd_dir.mkdir()
+    cwd_config = cwd_dir / "config.yml"
+    cwd_config.write_text("", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+
+    monkeypatch.chdir(cwd_dir)
+    monkeypatch.delenv("PAYPAY2MF_CONFIG", raising=False)
+    monkeypatch.setattr(app_main, "load_config", Mock(return_value=config))
+    monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
+    monkeypatch.setattr(app_main, "ensure_chrome_stopped", Mock())
+    monkeypatch.setattr(
+        app_main,
+        "build_transactions",
+        Mock(
+            return_value=app_main.PreparedTransactions(
+                detector=_FakeDetector(),
+                to_process=[],
+                excluded_count=0,
+                skip_count=0,
+            )
+        ),
+    )
+    monkeypatch.setattr(app_main, "run_dry_run", Mock())
+
+    app_main.main([])
+
+    app_main.load_config.assert_called_once_with(cwd_config)
+
+
+def test_main_falls_back_to_module_config_path_when_cwd_config_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    """cwd に config.yml が無い場合はモジュール同居へフォールバックすることを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+    cwd_dir = tmp_path / "cwd"
+    module_dir = tmp_path / "module"
+    cwd_dir.mkdir()
+    module_dir.mkdir()
+    module_config = module_dir / "config.yml"
+    module_config.write_text("", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+
+    monkeypatch.chdir(cwd_dir)
+    monkeypatch.delenv("PAYPAY2MF_CONFIG", raising=False)
+    monkeypatch.setattr(app_main, "__file__", str(module_dir / "main.py"))
+    monkeypatch.setattr(app_main, "load_config", Mock(return_value=config))
+    monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
+    monkeypatch.setattr(app_main, "ensure_chrome_stopped", Mock())
+    monkeypatch.setattr(
+        app_main,
+        "build_transactions",
+        Mock(
+            return_value=app_main.PreparedTransactions(
+                detector=_FakeDetector(),
+                to_process=[],
+                excluded_count=0,
+                skip_count=0,
+            )
+        ),
+    )
+    monkeypatch.setattr(app_main, "run_dry_run", Mock())
+
+    app_main.main([])
+
+    app_main.load_config.assert_called_once_with(module_config)
 
 
 def test_ensure_chrome_stopped_exits_when_chrome_is_running(
