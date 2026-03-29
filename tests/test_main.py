@@ -24,7 +24,11 @@ import pytest
 
 import main as app_main
 from src.constants import AppConstants
-from src.duplicate_detector import DuplicateHistoryError, LocalDuplicateDetector
+from src.duplicate_detector import (
+    DuplicateHistoryError,
+    DuplicateHistorySaveError,
+    LocalDuplicateDetector,
+)
 
 pytestmark = pytest.mark.integration_flow
 
@@ -34,6 +38,7 @@ _MSG_CSV_READ_FAILED = "CSV 読み込みに失敗しました"
 _MSG_DRY_RUN_COMPLETE = "ドライラン完了: 登録対象 %d件"
 _MSG_APP_EXIT = "アプリケーションを終了します"
 _MSG_REGISTRATION_BOOT_FAILED = "Chrome の起動またはMFへの遷移に失敗しました"
+_MSG_DUPLICATE_HISTORY_SAVE_FAILED = "重複履歴ファイルの保存に失敗しました: %s"
 _MSG_CHROME_RUNNING = "Chrome が起動中です。Chrome を終了してから再実行してください。"
 _MSG_CHROME_STOPPED = "Chrome 稼働チェック: 停止済み"
 
@@ -44,9 +49,15 @@ if TYPE_CHECKING:
 
 
 class _FakeDetector:
-    def __init__(self, duplicate_results: list[bool] | None = None) -> None:
+    def __init__(
+        self,
+        duplicate_results: list[bool] | None = None,
+        *,
+        flush_side_effect: Exception | None = None,
+    ) -> None:
         self._duplicate_results = list(duplicate_results or [])
         self.mark_processed = Mock()
+        self.flush = Mock(side_effect=flush_side_effect)
 
     def is_duplicate(self, _tx: Transaction) -> bool:
         if not self._duplicate_results:
@@ -248,6 +259,7 @@ def test_run_registration_continues_after_item_failure(
     assert result.success_count == 1
     assert result.failed_records == ["failed: TX002"]
     assert detector.mark_processed.call_count == 1
+    detector.flush.assert_called_once_with()
     detector.mark_processed.assert_called_once()
     logger.exception.assert_called_once()
     registrar_factory.assert_called_once_with(config, logger)
@@ -279,7 +291,80 @@ def test_run_registration_exits_when_registrar_boot_fails(
         )
 
     assert exc_info.value.code == 1
+    detector.flush.assert_called_once_with()
     logger.exception.assert_called_once_with(_MSG_REGISTRATION_BOOT_FAILED)
+
+
+def test_run_registration_flushes_after_success_even_when_context_exit_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """登録後に想定外例外で終了しても成功分の flush を試みることを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=False, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+    detector = _FakeDetector()
+    registrar = _FakeRegistrar()
+
+    class _BrokenRegistrarContext:
+        def __enter__(self) -> _FakeRegistrar:
+            return registrar
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            raise RuntimeError("context exit failed")
+
+    monkeypatch.setattr(
+        app_main,
+        "MFRegistrar",
+        Mock(return_value=_BrokenRegistrarContext()),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_main.run_registration(
+            config,
+            logger,
+            detector,
+            [transaction_factory(transaction_id="TX001", merchant="merchant-TX001")],
+        )
+
+    assert exc_info.value.code == 1
+    detector.mark_processed.assert_called_once()
+    detector.flush.assert_called_once_with()
+    logger.exception.assert_called_once_with(_MSG_REGISTRATION_BOOT_FAILED)
+
+
+def test_run_registration_exits_when_duplicate_history_flush_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """flush 失敗時は全体失敗として終了することを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=False, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+    detector = _FakeDetector(
+        flush_side_effect=DuplicateHistorySaveError("processed.json の保存に失敗しました"),
+    )
+    registrar = _FakeRegistrar()
+    registrar_factory = Mock(return_value=nullcontext(registrar))
+    monkeypatch.setattr(app_main, "MFRegistrar", registrar_factory)
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_main.run_registration(
+            config,
+            logger,
+            detector,
+            [transaction_factory(transaction_id="TX001", merchant="merchant-TX001")],
+        )
+
+    assert exc_info.value.code == 1
+    detector.mark_processed.assert_called_once()
+    detector.flush.assert_called_once_with()
+    logger.exception.assert_called_once_with(
+        _MSG_DUPLICATE_HISTORY_SAVE_FAILED,
+        "processed.json の保存に失敗しました",
+    )
 
 
 def test_main_exits_when_config_load_fails(

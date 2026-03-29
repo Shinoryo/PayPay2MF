@@ -33,11 +33,15 @@ class DuplicateHistoryError(ValueError):
     """重複履歴ファイルの読込失敗を表す例外。"""
 
 
+class DuplicateHistorySaveError(OSError):
+    """重複履歴ファイルの保存失敗を表す例外。"""
+
+
 @runtime_checkable
 class DuplicateDetector(Protocol):
     """重複検知の共通インタフェース。
 
-    このプロトコルを実装するクラスは is_duplicate と mark_processed を持つ。
+    このプロトコルを実装するクラスは is_duplicate、mark_processed、flush を持つ。
     """
 
     def is_duplicate(self, tx: Transaction) -> bool:
@@ -57,6 +61,10 @@ class DuplicateDetector(Protocol):
         Args:
             tx: マーク対象の Transaction。
         """
+        ...
+
+    def flush(self) -> None:
+        """保留中の処理済みデータを永続化する。"""
         ...
 
 
@@ -96,6 +104,7 @@ class LocalDuplicateDetector:
             _KEY_TX_IDS: [],
             _KEY_FALLBACK: [],
         }
+        self._dirty = False
         self._load()
 
     def is_duplicate(self, tx: Transaction) -> bool:
@@ -115,7 +124,7 @@ class LocalDuplicateDetector:
         return self._is_duplicate_fallback(tx)
 
     def mark_processed(self, tx: Transaction) -> None:
-        """指定した取引を処理済みとしてマークし、JSON に保存する。
+        """指定した取引を処理済みとしてマークする。
 
         Args:
             tx: マーク対象の Transaction。
@@ -126,6 +135,7 @@ class LocalDuplicateDetector:
         if tx.transaction_id:
             if tx.transaction_id not in self._data[_KEY_TX_IDS]:
                 self._data[_KEY_TX_IDS].append(tx.transaction_id)
+                self._dirty = True
         else:
             self._data[_KEY_FALLBACK].append(
                 {
@@ -134,7 +144,20 @@ class LocalDuplicateDetector:
                     _KEY_MERCHANT: tx.merchant,
                 },
             )
-        self._save()
+            self._dirty = True
+
+    def flush(self) -> None:
+        """保留中の処理済みデータを JSON ファイルへ書き出す。"""
+        if self._dry_run or not self._dirty:
+            return
+
+        try:
+            self._save()
+        except OSError as exc:
+            raise DuplicateHistorySaveError(
+                "processed.json の保存に失敗しました"
+            ) from exc
+        self._dirty = False
 
     def _is_duplicate_fallback(self, tx: Transaction) -> bool:
         """取引番号欠損時のフォールバック重複判定。
@@ -169,6 +192,7 @@ class LocalDuplicateDetector:
                     encoding=AppConstants.DEFAULT_TEXT_ENCODING,
                 ) as f:
                     self._data = json.load(f)
+                self._dirty = False
             except json.JSONDecodeError as exc:
                 backup_path = self._backup_corrupted_store()
                 msg = (
@@ -295,6 +319,9 @@ class GCloudDuplicateDetector:
                 _KEY_MERCHANT: tx.merchant,
             },
         )
+
+    def flush(self) -> None:
+        """Firestore バックエンドでは追加の flush は不要。"""
 
 
 def _get_store_path(config: AppConfig) -> Path:

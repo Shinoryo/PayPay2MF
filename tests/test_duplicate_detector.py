@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 import pytest
 
@@ -87,10 +88,40 @@ def test_local_persistence(
     detector1 = LocalDuplicateDetector(config)
     tx = transaction_factory(transaction_id="TX_PERSIST")
     detector1.mark_processed(tx)
+    detector1.flush()
 
     # 新しいインスタンスで読み込み → 重複として検知
     detector2 = LocalDuplicateDetector(config)
     assert detector2.is_duplicate(tx) is True
+
+
+def test_local_mark_processed_buffers_writes_until_flush(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """mark_processed はメモリ更新だけを行い、flush 時に一度だけ保存する。"""
+    config = app_config_factory(tmp_path, input_csv_name="dummy.csv")
+    detector = LocalDuplicateDetector(config)
+    save_mock = Mock(wraps=detector._save)
+    monkeypatch.setattr(detector, "_save", save_mock)
+
+    detector.mark_processed(transaction_factory(transaction_id="TX001"))
+    detector.mark_processed(transaction_factory(transaction_id="TX002"))
+
+    assert save_mock.call_count == 0
+    assert (tmp_path / AppConstants.PROCESSED_FILENAME).exists() is False
+
+    detector.flush()
+
+    assert save_mock.call_count == 1
+    stored = json.loads(
+        (tmp_path / AppConstants.PROCESSED_FILENAME).read_text(
+            encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+        )
+    )
+    assert stored["transaction_ids"] == ["TX001", "TX002"]
 
 
 def test_local_corrupted_history_is_backed_up_and_raises_explicit_error(
@@ -129,6 +160,7 @@ def test_local_dry_run_does_not_persist(
     detector1 = LocalDuplicateDetector(config)
     tx = transaction_factory(transaction_id="TX_DRY_RUN")
     detector1.mark_processed(tx)
+    detector1.flush()
 
     assert detector1.is_duplicate(tx) is False
 
@@ -147,6 +179,7 @@ def test_local_save_writes_valid_json_without_leaving_temp_file(
     detector = LocalDuplicateDetector(config)
 
     detector.mark_processed(transaction_factory(transaction_id="TX_JSON"))
+    detector.flush()
 
     processed_file = tmp_path / AppConstants.PROCESSED_FILENAME
     stored = json.loads(
