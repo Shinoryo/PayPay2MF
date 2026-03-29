@@ -38,7 +38,7 @@ def test_load_mf_category_map_rejects_invalid_root(tmp_path: Path) -> None:
     invalid_file = tmp_path / "invalid.yml"
     invalid_file.write_text("middle_to_large: []\n", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="middle_to_large"):
+    with pytest.raises(TypeError, match="middle_to_large"):
         load_mf_category_map(invalid_file)
 
 

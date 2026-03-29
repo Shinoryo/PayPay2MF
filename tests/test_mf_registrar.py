@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
+import pathlib
 import re
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
@@ -18,14 +18,19 @@ class _FakePage:
         self.screenshot_paths: list[str] = []
 
     def click(self, _selector: str) -> None:
-        raise RuntimeError("selector timeout")
+        msg = "selector timeout"
+        raise RuntimeError(msg)
 
     def screenshot(self, path: str) -> None:
         self.screenshot_paths.append(path)
-        Path(path).write_text("stub", encoding="utf-8")
+        pathlib.Path(path).write_text("stub", encoding="utf-8")
 
 
-def _make_config(tmp_path: Path, *, screenshot_on_error: bool) -> AppConfig:
+def _make_config(
+    tmp_path: pathlib.Path,
+    *,
+    screenshot_on_error: bool,
+) -> AppConfig:
     csv_file = tmp_path / "dummy.csv"
     csv_file.write_text("", encoding="utf-8")
     return AppConfig(
@@ -50,14 +55,16 @@ def _make_tx() -> Transaction:
     )
 
 
-def test_register_does_not_save_screenshot_when_opted_out(tmp_path: Path) -> None:
+def test_register_does_not_save_screenshot_when_opted_out(
+    tmp_path: pathlib.Path,
+) -> None:
     """screenshot_on_error=False では例外時も PNG を保存しないことを確認する。"""
     registrar = MFRegistrar(
         _make_config(tmp_path, screenshot_on_error=False),
         logging.getLogger("test-mf-registrar-optout"),
     )
     fake_page = _FakePage()
-    registrar._page = fake_page
+    object.__setattr__(registrar, "_page", fake_page)
 
     with pytest.raises(RuntimeError, match="selector timeout"):
         registrar.register(_make_tx())
@@ -65,20 +72,22 @@ def test_register_does_not_save_screenshot_when_opted_out(tmp_path: Path) -> Non
     assert fake_page.screenshot_paths == []
 
 
-def test_register_saves_redacted_screenshot_name_when_opted_in(tmp_path: Path) -> None:
+def test_register_saves_redacted_screenshot_name_when_opted_in(
+    tmp_path: pathlib.Path,
+) -> None:
     """screenshot_on_error=True の場合だけ PNG が保存され、ファイル名に加盟店名を含まないことを確認する。"""
     registrar = MFRegistrar(
         _make_config(tmp_path, screenshot_on_error=True),
         logging.getLogger("test-mf-registrar-optin"),
     )
     fake_page = _FakePage()
-    registrar._page = fake_page
+    object.__setattr__(registrar, "_page", fake_page)
 
     with pytest.raises(RuntimeError, match="selector timeout"):
         registrar.register(_make_tx())
 
     assert len(fake_page.screenshot_paths) == 1
-    screenshot_name = Path(fake_page.screenshot_paths[0]).name
+    screenshot_name = pathlib.Path(fake_page.screenshot_paths[0]).name
     assert re.fullmatch(r"screenshot_\d{8}_\d{6}\.png", screenshot_name)
     assert "Secret" not in screenshot_name
-    assert Path(fake_page.screenshot_paths[0]).exists()
+    assert pathlib.Path(fake_page.screenshot_paths[0]).exists()

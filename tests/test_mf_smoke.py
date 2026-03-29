@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import pytest
 
 from src.mf_registrar import MFRegistrar
-from src.models import AppConfig
+
+if TYPE_CHECKING:
+    from src.models import AppConfig
 
 
 @pytest.mark.smoke_test

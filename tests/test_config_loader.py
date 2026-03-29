@@ -158,7 +158,7 @@ def test_missing_mf_categories_path_raises_value_error(tmp_path: Path) -> None:
     data = _base_data(tmp_path)
     data["advanced"] = {"mf_categories_path": "missing_categories.yml"}
 
-    with pytest.raises(ValueError, match="advanced.mf_categories_path"):
+    with pytest.raises(ValueError, match=r"advanced\.mf_categories_path"):
         load_config(_write_config(tmp_path, data))
 
 

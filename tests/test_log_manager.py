@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import csv
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from src.log_manager import write_error_csv, write_parse_error_csv
 from src.models import AppConfig, LogSettings, ParseFailure
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _make_config(tmp_path: Path) -> AppConfig:

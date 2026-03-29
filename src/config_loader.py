@@ -146,7 +146,11 @@ def load_config(path: Path) -> AppConfig:
         raw: dict = yaml.safe_load(f) or {}
 
     _validate_required(raw)
-    _validate_paths(raw, skip_chrome_validation=raw[_KEY_DRY_RUN], config_dir=path.parent)
+    _validate_paths(
+        raw,
+        skip_chrome_validation=raw[_KEY_DRY_RUN],
+        config_dir=path.parent,
+    )
     _validate_mapping_rules(raw.get("mapping_rules") or [])
     _validate_gcloud(raw)
     return _build_config(raw, config_dir=path.parent)
@@ -172,7 +176,12 @@ def _validate_required(raw: dict) -> None:
         raise ValueError("\n".join(errors))
 
 
-def _validate_paths(raw: dict, *, skip_chrome_validation: bool, config_dir: Path) -> None:
+def _validate_paths(
+    raw: dict,
+    *,
+    skip_chrome_validation: bool,
+    config_dir: Path,
+) -> None:
     """パス関連の項目を検証する。
 
     Args:

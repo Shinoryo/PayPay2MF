@@ -16,13 +16,18 @@ _MSG_CATEGORY_MAP_ROOT_INVALID = (
 )
 _MSG_CATEGORY_MAP_EMPTY = "MF カテゴリマップが空です: {path}"
 _MSG_CATEGORY_MAP_ENTRY_INVALID = (
-    "MF カテゴリマップには空でない文字列のキーと値を指定してください: {key!r} -> {value!r}"
+    "MF カテゴリマップには空でない文字列のキーと値を"
+    "指定してください: {key!r} -> {value!r}"
 )
 
 
 def load_mf_category_map(path: Path | None = None) -> dict[str, str]:
     """Money Forward カテゴリマップを読み込む。"""
-    resolved_path = path.resolve() if path is not None else _DEFAULT_MF_CATEGORIES_PATH.resolve()
+    resolved_path = (
+        path.resolve()
+        if path is not None
+        else _DEFAULT_MF_CATEGORIES_PATH.resolve()
+    )
     return dict(_load_mf_category_map(resolved_path))
 
 
@@ -36,11 +41,16 @@ def _load_mf_category_map(path: Path) -> dict[str, str]:
 
     mapping = raw.get(_ROOT_KEY)
     if not isinstance(mapping, dict):
-        raise ValueError(_MSG_CATEGORY_MAP_ROOT_INVALID.format(path=path))
+        raise TypeError(_MSG_CATEGORY_MAP_ROOT_INVALID.format(path=path))
 
     normalized: dict[str, str] = {}
     for key, value in mapping.items():
-        if not isinstance(key, str) or not key or not isinstance(value, str) or not value:
+        if (
+            not isinstance(key, str)
+            or not key
+            or not isinstance(value, str)
+            or not value
+        ):
             raise ValueError(
                 _MSG_CATEGORY_MAP_ENTRY_INVALID.format(key=key, value=value),
             )
