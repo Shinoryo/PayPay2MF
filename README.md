@@ -219,14 +219,6 @@ paypay2mf
 Chrome を指定の `chrome_user_data_dir` / `chrome_profile` で起動し、
 MF の手入力フォームに1件ずつ自動登録します。
 
-### EXE 配布版
-
-```bat
-paypay2mf.exe
-```
-
-事前に Playwright 用ブラウザのセットアップが完了している環境で実行してください。
-
 ## 依存関係の導入
 
 通常利用では、プロジェクトルートで pyproject.toml に定義された依存関係をまとめてインストールしてください。
