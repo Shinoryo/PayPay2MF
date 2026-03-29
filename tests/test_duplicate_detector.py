@@ -432,7 +432,9 @@ def test_local_reload_rebuilds_transaction_id_lookup_from_json_list(
 
     detector = LocalDuplicateDetector(config)
 
-    assert detector.is_duplicate(transaction_factory(transaction_id="TX_RELOAD")) is True
+    assert (
+        detector.is_duplicate(transaction_factory(transaction_id="TX_RELOAD")) is True
+    )
 
 
 def test_local_mark_processed_does_not_duplicate_stored_transaction_ids(

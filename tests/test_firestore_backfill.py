@@ -1,9 +1,9 @@
-﻿"""firestore_backfill モジュールのテスト。"""
+"""firestore_backfill モジュールのテスト。"""
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -21,16 +21,16 @@ class _FakeBackfillDetector:
         self.client.store.update({doc_id: dict(data) for doc_id, data in store.items()})
         self.batch_call_count = 0
 
-    def collection(self):
+    def collection(self) -> object:
         return self.client.collection("paypay_transactions")
 
-    def batch(self):
+    def batch(self) -> object:
         self.batch_call_count += 1
         return self.client.batch()
 
 
 def _build_datetime(minutes: int) -> datetime:
-    return datetime(2025, 3, 28, 12, 0, 30) + timedelta(minutes=minutes)
+    return datetime(2025, 3, 28, 12, 0, 30, tzinfo=UTC) + timedelta(minutes=minutes)
 
 
 @pytest.fixture
@@ -82,7 +82,9 @@ def test_backfill_skips_invalid_datetime_and_logs_warning() -> None:
         skipped_count=3,
     )
     assert [len(commit) for commit in detector.client.batch_commits] == [1]
-    assert detector.client.store["valid"]["date_bucket"] == build_date_bucket(valid_datetime)
+    assert detector.client.store["valid"]["date_bucket"] == build_date_bucket(
+        valid_datetime
+    )
     assert [call.args[1] for call in logger.warning.call_args_list] == [
         "blank",
         "whitespace",
@@ -196,11 +198,14 @@ def test_main_uses_cli_config_path_before_env_and_cwd(
     monkeypatch.chdir(cwd_dir)
     monkeypatch.setenv("PAYPAY2MF_CONFIG", str(env_config))
     monkeypatch.setattr(firestore_backfill.logging, "basicConfig", Mock())
-    monkeypatch.setattr(firestore_backfill.logging, "getLogger", Mock(return_value=logger))
+    monkeypatch.setattr(
+        firestore_backfill.logging, "getLogger", Mock(return_value=logger)
+    )
+    load_gcloud_detector_mock = Mock(return_value=object())
     monkeypatch.setattr(
         firestore_backfill,
         "_load_gcloud_detector",
-        Mock(return_value=object()),
+        load_gcloud_detector_mock,
     )
     monkeypatch.setattr(
         firestore_backfill,
@@ -210,7 +215,7 @@ def test_main_uses_cli_config_path_before_env_and_cwd(
 
     firestore_backfill.main(["--config", str(cli_config)])
 
-    firestore_backfill._load_gcloud_detector.assert_called_once_with(cli_config)
+    load_gcloud_detector_mock.assert_called_once_with(cli_config)
 
 
 def test_main_uses_env_config_path_when_cli_is_missing(
@@ -228,11 +233,14 @@ def test_main_uses_env_config_path_when_cli_is_missing(
     monkeypatch.chdir(cwd_dir)
     monkeypatch.setenv("PAYPAY2MF_CONFIG", str(env_config))
     monkeypatch.setattr(firestore_backfill.logging, "basicConfig", Mock())
-    monkeypatch.setattr(firestore_backfill.logging, "getLogger", Mock(return_value=logger))
+    monkeypatch.setattr(
+        firestore_backfill.logging, "getLogger", Mock(return_value=logger)
+    )
+    load_gcloud_detector_mock = Mock(return_value=object())
     monkeypatch.setattr(
         firestore_backfill,
         "_load_gcloud_detector",
-        Mock(return_value=object()),
+        load_gcloud_detector_mock,
     )
     monkeypatch.setattr(
         firestore_backfill,
@@ -242,7 +250,7 @@ def test_main_uses_env_config_path_when_cli_is_missing(
 
     firestore_backfill.main([])
 
-    firestore_backfill._load_gcloud_detector.assert_called_once_with(env_config)
+    load_gcloud_detector_mock.assert_called_once_with(env_config)
 
 
 def test_main_uses_cwd_config_path_when_cli_and_env_are_missing(
@@ -260,11 +268,14 @@ def test_main_uses_cwd_config_path_when_cli_and_env_are_missing(
     monkeypatch.chdir(cwd_dir)
     monkeypatch.delenv("PAYPAY2MF_CONFIG", raising=False)
     monkeypatch.setattr(firestore_backfill.logging, "basicConfig", Mock())
-    monkeypatch.setattr(firestore_backfill.logging, "getLogger", Mock(return_value=logger))
+    monkeypatch.setattr(
+        firestore_backfill.logging, "getLogger", Mock(return_value=logger)
+    )
+    load_gcloud_detector_mock = Mock(return_value=object())
     monkeypatch.setattr(
         firestore_backfill,
         "_load_gcloud_detector",
-        Mock(return_value=object()),
+        load_gcloud_detector_mock,
     )
     monkeypatch.setattr(
         firestore_backfill,
@@ -274,7 +285,7 @@ def test_main_uses_cwd_config_path_when_cli_and_env_are_missing(
 
     firestore_backfill.main([])
 
-    firestore_backfill._load_gcloud_detector.assert_called_once_with(cwd_config)
+    load_gcloud_detector_mock.assert_called_once_with(cwd_config)
 
 
 def test_main_falls_back_to_module_config_path_when_cwd_config_is_missing(
@@ -293,13 +304,18 @@ def test_main_falls_back_to_module_config_path_when_cwd_config_is_missing(
 
     monkeypatch.chdir(cwd_dir)
     monkeypatch.delenv("PAYPAY2MF_CONFIG", raising=False)
-    monkeypatch.setattr(firestore_backfill, "__file__", str(module_dir / "firestore_backfill.py"))
+    monkeypatch.setattr(
+        firestore_backfill, "__file__", str(module_dir / "firestore_backfill.py")
+    )
     monkeypatch.setattr(firestore_backfill.logging, "basicConfig", Mock())
-    monkeypatch.setattr(firestore_backfill.logging, "getLogger", Mock(return_value=logger))
+    monkeypatch.setattr(
+        firestore_backfill.logging, "getLogger", Mock(return_value=logger)
+    )
+    load_gcloud_detector_mock = Mock(return_value=object())
     monkeypatch.setattr(
         firestore_backfill,
         "_load_gcloud_detector",
-        Mock(return_value=object()),
+        load_gcloud_detector_mock,
     )
     monkeypatch.setattr(
         firestore_backfill,
@@ -309,4 +325,4 @@ def test_main_falls_back_to_module_config_path_when_cwd_config_is_missing(
 
     firestore_backfill.main([])
 
-    firestore_backfill._load_gcloud_detector.assert_called_once_with(module_config)
+    load_gcloud_detector_mock.assert_called_once_with(module_config)

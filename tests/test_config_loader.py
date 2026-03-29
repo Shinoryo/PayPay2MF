@@ -112,7 +112,10 @@ def test_invalid_yaml_root_type_raises_value_error(
     root_value: object,
 ) -> None:
     """YAML ルートが object 以外の場合に ValueError が送出されることを確認する。"""
-    with pytest.raises(ValueError, match="config.yml のルート要素は object"):
+    with pytest.raises(
+        ValueError,
+        match=re.escape("config.yml のルート要素は object"),
+    ):
         load_config(_write_config(tmp_path, root_value))
 
 
@@ -281,7 +284,9 @@ def test_gcloud_backend_requires_credentials_path_when_missing(tmp_path: Path) -
 
     with pytest.raises(
         ValueError,
-        match=re.escape('duplicate_detection.backend: "gcloud" の場合は gcloud_credentials_path の指定が必要です。'),
+        match=re.escape(
+            'duplicate_detection.backend: "gcloud" の場合は gcloud_credentials_path の指定が必要です。'
+        ),
     ):
         load_config(_write_config(tmp_path, data))
 
@@ -294,7 +299,9 @@ def test_gcloud_backend_requires_credentials_path_when_null(tmp_path: Path) -> N
 
     with pytest.raises(
         ValueError,
-        match=re.escape('duplicate_detection.backend: "gcloud" の場合は gcloud_credentials_path の指定が必要です。'),
+        match=re.escape(
+            'duplicate_detection.backend: "gcloud" の場合は gcloud_credentials_path の指定が必要です。'
+        ),
     ):
         load_config(_write_config(tmp_path, data))
 
@@ -666,5 +673,8 @@ def test_advanced_screenshot_on_error_must_be_bool(tmp_path: Path) -> None:
     data = _base_data(tmp_path)
     data["advanced"] = {"screenshot_on_error": "yes"}
 
-    with pytest.raises(ValueError, match="advanced.screenshot_on_error"):
+    with pytest.raises(
+        ValueError,
+        match=re.escape("advanced.screenshot_on_error"),
+    ):
         load_config(_write_config(tmp_path, data))

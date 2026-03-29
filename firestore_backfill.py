@@ -1,4 +1,4 @@
-﻿"""Firestore の重複履歴へ date_bucket を backfill するユーティリティ。"""
+"""Firestore の重複履歴へ date_bucket を backfill するユーティリティ。"""
 
 from __future__ import annotations
 

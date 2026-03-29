@@ -7,8 +7,9 @@ AppConfig インスタンスに変換する。
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 
@@ -21,6 +22,9 @@ from src.models import (
     MappingRule,
     ParserConfig,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 # 設定ファイル キー名 トップレベル
 _KEY_CHROME_USER_DATA_DIR = "chrome_user_data_dir"
@@ -178,6 +182,37 @@ CONFIG_FILENAME = "config.yml"
 CONFIG_ENV_VAR = "PAYPAY2MF_CONFIG"
 
 
+@dataclass(frozen=True, slots=True)
+class _StringListValidationMessages:
+    list_type: str
+    empty_list: str
+    item_type: str
+    item_empty: str
+
+
+@dataclass(frozen=True, slots=True)
+class _ConfigSections:
+    mapping_rules: list
+    duplicate_detection: dict
+    parser: dict
+    log_settings: dict
+    advanced: dict
+
+
+_PARSER_ENCODING_PRIORITY_MESSAGES = _StringListValidationMessages(
+    list_type=_MSG_PARSER_ENCODING_PRIORITY_TYPE,
+    empty_list=_MSG_PARSER_ENCODING_PRIORITY_EMPTY,
+    item_type=_MSG_PARSER_ENCODING_PRIORITY_ITEM_TYPE,
+    item_empty=_MSG_PARSER_ENCODING_PRIORITY_ITEM_EMPTY,
+)
+_PARSER_DATE_FORMATS_MESSAGES = _StringListValidationMessages(
+    list_type=_MSG_PARSER_DATE_FORMATS_TYPE,
+    empty_list=_MSG_PARSER_DATE_FORMATS_EMPTY,
+    item_type=_MSG_PARSER_DATE_FORMATS_ITEM_TYPE,
+    item_empty=_MSG_PARSER_DATE_FORMATS_ITEM_EMPTY,
+)
+
+
 def resolve_config_path(
     config_path: Path | None,
     *,
@@ -227,50 +262,60 @@ def load_config(path: Path) -> AppConfig:
     else:
         raise ValueError(_MSG_CONFIG_ROOT_TYPE)
 
-    mapping_rules = _get_optional_list_section(
-        raw,
-        _KEY_MAPPING_RULES,
-        _MSG_MAPPING_RULES_TYPE,
-    )
-    duplicate_detection = _get_optional_dict_section(
-        raw,
-        _KEY_DUPLICATE_DETECTION,
-        _MSG_DUPLICATE_DETECTION_TYPE,
-    )
-    parser = _get_optional_dict_section(raw, _KEY_PARSER, _MSG_PARSER_TYPE)
-    log_settings = _get_optional_dict_section(
-        raw,
-        _KEY_LOG_SETTINGS,
-        _MSG_LOG_SETTINGS_TYPE,
-    )
-    advanced = _get_optional_dict_section(raw, _KEY_ADVANCED, _MSG_ADVANCED_TYPE)
+    sections = _load_optional_sections(raw)
 
     _validate_required(raw)
-    _validate_mapping_rules(mapping_rules)
-    _validate_duplicate_detection(duplicate_detection)
-    _validate_parser(parser)
-    _validate_log_settings(log_settings)
-    _validate_advanced(advanced)
+    _validate_mapping_rules(sections.mapping_rules)
+    _validate_duplicate_detection(sections.duplicate_detection)
+    _validate_parser(sections.parser)
+    _validate_log_settings(sections.log_settings)
+    _validate_advanced(sections.advanced)
     _validate_paths(
         raw,
         skip_chrome_validation=raw[_KEY_DRY_RUN],
         config_dir=path.parent,
-        advanced_raw=advanced,
+        advanced_raw=sections.advanced,
     )
     _validate_gcloud(
-        duplicate_detection,
+        sections.duplicate_detection,
         raw.get(_KEY_GCLOUD_CREDENTIALS_PATH),
         config_dir=path.parent,
     )
     return _build_config(
         raw,
         config_dir=path.parent,
-        mapping_rules_raw=mapping_rules,
-        duplicate_detection_raw=duplicate_detection,
-        parser_raw=parser,
-        log_settings_raw=log_settings,
-        advanced_raw=advanced,
+        sections=sections,
     )
+
+
+def _load_optional_sections(raw: dict) -> _ConfigSections:
+    """任意セクションを取得し、公開 API 向けに ValueError へ正規化する。"""
+    try:
+        return _ConfigSections(
+            mapping_rules=_get_optional_list_section(
+                raw,
+                _KEY_MAPPING_RULES,
+                _MSG_MAPPING_RULES_TYPE,
+            ),
+            duplicate_detection=_get_optional_dict_section(
+                raw,
+                _KEY_DUPLICATE_DETECTION,
+                _MSG_DUPLICATE_DETECTION_TYPE,
+            ),
+            parser=_get_optional_dict_section(raw, _KEY_PARSER, _MSG_PARSER_TYPE),
+            log_settings=_get_optional_dict_section(
+                raw,
+                _KEY_LOG_SETTINGS,
+                _MSG_LOG_SETTINGS_TYPE,
+            ),
+            advanced=_get_optional_dict_section(
+                raw,
+                _KEY_ADVANCED,
+                _MSG_ADVANCED_TYPE,
+            ),
+        )
+    except TypeError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _get_optional_dict_section(raw: dict, key: str, error_message: str) -> dict:
@@ -279,7 +324,7 @@ def _get_optional_dict_section(raw: dict, key: str, error_message: str) -> dict:
     if value is None:
         return {}
     if not isinstance(value, dict):
-        raise ValueError(error_message)
+        raise TypeError(error_message)
     return value
 
 
@@ -289,7 +334,7 @@ def _get_optional_list_section(raw: dict, key: str, error_message: str) -> list:
     if value is None:
         return []
     if not isinstance(value, list):
-        raise ValueError(error_message)
+        raise TypeError(error_message)
     return value
 
 
@@ -447,10 +492,7 @@ def _validate_parser(section: dict) -> None:
     if encoding_priority is not None:
         _validate_string_list(
             encoding_priority,
-            list_type_message=_MSG_PARSER_ENCODING_PRIORITY_TYPE,
-            empty_list_message=_MSG_PARSER_ENCODING_PRIORITY_EMPTY,
-            item_type_message=_MSG_PARSER_ENCODING_PRIORITY_ITEM_TYPE,
-            item_empty_message=_MSG_PARSER_ENCODING_PRIORITY_ITEM_EMPTY,
+            messages=_PARSER_ENCODING_PRIORITY_MESSAGES,
             errors=errors,
         )
 
@@ -458,10 +500,7 @@ def _validate_parser(section: dict) -> None:
     if date_formats is not None:
         _validate_string_list(
             date_formats,
-            list_type_message=_MSG_PARSER_DATE_FORMATS_TYPE,
-            empty_list_message=_MSG_PARSER_DATE_FORMATS_EMPTY,
-            item_type_message=_MSG_PARSER_DATE_FORMATS_ITEM_TYPE,
-            item_empty_message=_MSG_PARSER_DATE_FORMATS_ITEM_EMPTY,
+            messages=_PARSER_DATE_FORMATS_MESSAGES,
             errors=errors,
         )
 
@@ -520,25 +559,22 @@ def _validate_non_negative_int(
 def _validate_string_list(
     value: object,
     *,
-    list_type_message: str,
-    empty_list_message: str,
-    item_type_message: str,
-    item_empty_message: str,
+    messages: _StringListValidationMessages,
     errors: list[str],
 ) -> None:
     """文字列 list の型と各要素を検証する。"""
     if not isinstance(value, list):
-        errors.append(list_type_message)
+        errors.append(messages.list_type)
         return
     if not value:
-        errors.append(empty_list_message)
+        errors.append(messages.empty_list)
         return
     for i, item in enumerate(value):
         if not isinstance(item, str):
-            errors.append(item_type_message.format(i=i))
+            errors.append(messages.item_type.format(i=i))
             continue
         if not item.strip():
-            errors.append(item_empty_message.format(i=i))
+            errors.append(messages.item_empty.format(i=i))
 
 
 def _validate_gcloud(
@@ -572,11 +608,7 @@ def _build_config(
     raw: dict,
     *,
     config_dir: Path,
-    mapping_rules_raw: list,
-    duplicate_detection_raw: dict,
-    parser_raw: dict,
-    log_settings_raw: dict,
-    advanced_raw: dict,
+    sections: _ConfigSections,
 ) -> AppConfig:
     """検証済みの辞書から AppConfig を構築する。
 
@@ -594,45 +626,45 @@ def _build_config(
             match_mode=r.get(_KEY_RULE_MATCH_MODE, AppConstants.DEFAULT_MATCH_MODE),
             priority=r.get(_KEY_RULE_PRIORITY, _DEFAULT_PRIORITY),
         )
-        for r in mapping_rules_raw
+        for r in sections.mapping_rules
     ]
 
     dup = DuplicateDetectionConfig(
-        backend=duplicate_detection_raw.get(
+        backend=sections.duplicate_detection.get(
             _KEY_DD_BACKEND,
             AppConstants.DEFAULT_BACKEND,
         ),
-        tolerance_seconds=duplicate_detection_raw.get(
+        tolerance_seconds=sections.duplicate_detection.get(
             _KEY_DD_TOLERANCE_SECONDS,
             _DEFAULT_TOLERANCE_SECONDS,
         ),
     )
 
     parser = ParserConfig(
-        encoding_priority=parser_raw.get(
+        encoding_priority=sections.parser.get(
             _KEY_PARSER_ENCODING_PRIORITY,
             list(AppConstants.DEFAULT_ENCODING_PRIORITY),
         ),
-        date_formats=parser_raw.get(
+        date_formats=sections.parser.get(
             _KEY_PARSER_DATE_FORMATS,
             list(AppConstants.DEFAULT_DATE_FORMATS),
         ),
     )
 
-    logs_dir_raw = log_settings_raw.get(_KEY_LOG_LOGS_DIR)
+    logs_dir_raw = sections.log_settings.get(_KEY_LOG_LOGS_DIR)
     log_settings = LogSettings(
         logs_dir=_resolve_optional_path(logs_dir_raw, config_dir),
-        max_log_count=log_settings_raw.get(_KEY_LOG_MAX_LOG_COUNT),
-        max_total_log_size_mb=log_settings_raw.get(_KEY_LOG_MAX_TOTAL_LOG_SIZE_MB),
+        max_log_count=sections.log_settings.get(_KEY_LOG_MAX_LOG_COUNT),
+        max_total_log_size_mb=sections.log_settings.get(_KEY_LOG_MAX_TOTAL_LOG_SIZE_MB),
     )
 
     advanced = AdvancedConfig(
-        screenshot_on_error=advanced_raw.get(
+        screenshot_on_error=sections.advanced.get(
             _KEY_ADV_SCREENSHOT_ON_ERROR,
             _DEFAULT_SCREENSHOT_ON_ERROR,
         ),
         mf_categories_path=_resolve_optional_path(
-            advanced_raw.get(_KEY_ADV_MF_CATEGORIES_PATH),
+            sections.advanced.get(_KEY_ADV_MF_CATEGORIES_PATH),
             config_dir,
         ),
     )

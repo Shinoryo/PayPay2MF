@@ -38,6 +38,7 @@ _MSG_CSV_READ_FAILED = "CSV 読み込みに失敗しました"
 _MSG_DRY_RUN_COMPLETE = "ドライラン完了: 登録対象 %d件"
 _MSG_APP_EXIT = "アプリケーションを終了します"
 _MSG_REGISTRATION_BOOT_FAILED = "Chrome の起動またはMFへの遷移に失敗しました"
+_MSG_CONTEXT_EXIT_FAILED = "context exit failed"
 _MSG_DUPLICATE_HISTORY_SAVE_FAILED = "重複履歴ファイルの保存に失敗しました: %s"
 _MSG_CHROME_RUNNING = "Chrome が起動中です。Chrome を終了してから再実行してください。"
 _MSG_CHROME_STOPPED = "Chrome 稼働チェック: 停止済み"
@@ -349,7 +350,8 @@ def test_run_registration_flushes_after_success_even_when_context_exit_fails(
             return registrar
 
         def __exit__(self, exc_type, exc, tb) -> bool:
-            raise RuntimeError("context exit failed")
+            message = _MSG_CONTEXT_EXIT_FAILED
+            raise RuntimeError(message)
 
     monkeypatch.setattr(
         app_main,
@@ -381,7 +383,9 @@ def test_run_registration_exits_when_duplicate_history_flush_fails(
     config = app_config_factory(tmp_path, dry_run=False, input_csv_text="header\n")
     logger = Mock(spec=logging.Logger)
     detector = _FakeDetector(
-        flush_side_effect=DuplicateHistorySaveError("processed.json の保存に失敗しました"),
+        flush_side_effect=DuplicateHistorySaveError(
+            "processed.json の保存に失敗しました"
+        ),
     )
     registrar = _FakeRegistrar()
     registrar_factory = Mock(return_value=nullcontext(registrar))
