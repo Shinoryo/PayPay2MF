@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -140,6 +140,7 @@ class LocalDuplicateDetector:
             _KEY_TX_IDS: [],
             _KEY_FALLBACK: [],
         }
+        self._tx_ids: set[str] = set()
         self._dirty = False
         self._load()
 
@@ -156,7 +157,7 @@ class LocalDuplicateDetector:
             処理済みと判定すれば True。
         """
         if tx.transaction_id:
-            return tx.transaction_id in self._data[_KEY_TX_IDS]
+            return tx.transaction_id in self._tx_ids
         return self._is_duplicate_fallback(tx)
 
     def mark_processed(self, tx: Transaction) -> None:
@@ -169,7 +170,8 @@ class LocalDuplicateDetector:
             return
 
         if tx.transaction_id:
-            if tx.transaction_id not in self._data[_KEY_TX_IDS]:
+            if tx.transaction_id not in self._tx_ids:
+                self._tx_ids.add(tx.transaction_id)
                 self._data[_KEY_TX_IDS].append(tx.transaction_id)
                 self._dirty = True
         else:
@@ -226,6 +228,9 @@ class LocalDuplicateDetector:
                     encoding=AppConstants.DEFAULT_TEXT_ENCODING,
                 ) as f:
                     self._data = json.load(f)
+                self._data.setdefault(_KEY_TX_IDS, [])
+                self._data.setdefault(_KEY_FALLBACK, [])
+                self._tx_ids = set(self._data[_KEY_TX_IDS])
                 self._dirty = False
             except json.JSONDecodeError as exc:
                 backup_path = self._backup_corrupted_store()
@@ -234,6 +239,8 @@ class LocalDuplicateDetector:
                     f"退避先: {backup_path}"
                 )
                 raise DuplicateHistoryError(msg) from exc
+        else:
+            self._tx_ids = set(self._data[_KEY_TX_IDS])
 
     def _save(self) -> None:
         """処理済みデータを JSON ファイルに書き出す。"""
@@ -251,7 +258,7 @@ class LocalDuplicateDetector:
             raise
 
     def _backup_corrupted_store(self) -> Path:
-        timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S_%f")
         backup_path = self._store_path.with_name(
             f"{self._store_path.stem}.corrupted_{timestamp}{self._store_path.suffix}",
         )

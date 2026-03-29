@@ -255,6 +255,8 @@ def test_local_mark_processed_buffers_writes_until_flush(
     detector.mark_processed(transaction_factory(transaction_id="TX001"))
     detector.mark_processed(transaction_factory(transaction_id="TX002"))
 
+    assert detector.is_duplicate(transaction_factory(transaction_id="TX001")) is True
+    assert detector.is_duplicate(transaction_factory(transaction_id="TX002")) is True
     assert dump_mock.call_count == 0
     assert (tmp_path / AppConstants.PROCESSED_FILENAME).exists() is False
 
@@ -332,6 +334,53 @@ def test_local_save_writes_valid_json_without_leaving_temp_file(
     )
     assert stored["transaction_ids"] == ["TX_JSON"]
     assert list(tmp_path.glob("processed.json.tmp")) == []
+
+
+def test_local_reload_rebuilds_transaction_id_lookup_from_json_list(
+    tmp_path: Path,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """JSON の transaction_ids リストから再読込後の重複判定用 set が再構築されることを確認する。"""
+    config = app_config_factory(tmp_path, input_csv_name="dummy.csv")
+    processed_file = tmp_path / AppConstants.PROCESSED_FILENAME
+    processed_file.write_text(
+        json.dumps(
+            {
+                "transaction_ids": ["TX_RELOAD"],
+                "fallback_keys": [],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
+
+    detector = LocalDuplicateDetector(config)
+
+    assert detector.is_duplicate(transaction_factory(transaction_id="TX_RELOAD")) is True
+
+
+def test_local_mark_processed_does_not_duplicate_stored_transaction_ids(
+    tmp_path: Path,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """同一 transaction_id を複数回 mark_processed しても保存リストに重複追加しない。"""
+    config = app_config_factory(tmp_path, input_csv_name="dummy.csv")
+    detector = LocalDuplicateDetector(config)
+    tx = transaction_factory(transaction_id="TX_ONCE")
+
+    detector.mark_processed(tx)
+    detector.mark_processed(tx)
+    detector.flush()
+
+    stored = json.loads(
+        (tmp_path / AppConstants.PROCESSED_FILENAME).read_text(
+            encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+        )
+    )
+    assert stored["transaction_ids"] == ["TX_ONCE"]
 
 
 # フォールバック: tolerance_seconds 内は重複
