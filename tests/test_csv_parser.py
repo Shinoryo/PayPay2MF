@@ -8,6 +8,8 @@
     TC-02-05: UTF-8 エンコーディング
     TC-02-06: Shift_JIS エンコーディング
     TC-02-07: BOM 付き UTF-8 エンコーディング
+    TC-02-08: 出金額・入金額が両方0の行の拒否
+    TC-02-09: 出金額・入金額が両方正数の行の拒否
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ _COMPOUND_MERCHANT = "キャンドゥ　横浜橋商店街"
 _FOREIGN_MEMO_MARKER = "海外"
 _JPY_CURRENCY = "JPY"
 _PARSE_ERROR_INVALID_DATE = "invalid_date"
+_PARSE_ERROR_INVALID_VALUE = "invalid_value"
 _PARSE_ERROR_MISSING_COLUMN = "missing_column"
 _TRADE_DATE_COLUMN = "取引日"
 
@@ -208,6 +211,46 @@ def test_parse_csv_collects_invalid_rows(tmp_path: Path) -> None:
     assert failures[0].transaction_id == _BAD_TRANSACTION_ID
     assert failures[0].error_type == _PARSE_ERROR_INVALID_DATE
     assert failures[0].row_index == 3
+
+
+def test_parse_csv_rejects_zero_amount_rows(tmp_path: Path) -> None:
+    """TC-02-08: 出金額と入金額が両方0の行は ParseFailure として収集される。"""
+    csv_content = (
+        "取引日,出金金額（円）,入金金額（円）,海外出金金額,通貨,変換レート（円）,"
+        "利用国,取引内容,取引先,取引方法,支払い区分,利用者,取引番号\r\n"
+        "2025/02/11 19:24:02,-,-,-,-,-,-,支払い,ゼロ金額加盟店,"
+        "PayPay残高,-,本人,ZERO001\r\n"
+    )
+    csv_file = tmp_path / "zero_amount.csv"
+    csv_file.write_text(csv_content, encoding=AppConstants.ENCODING_UTF8)
+
+    txs, failures = parse_csv(csv_file, _make_config(csv_file))
+
+    assert txs == []
+    assert len(failures) == 1
+    assert failures[0].transaction_id == "ZERO001"
+    assert failures[0].error_type == _PARSE_ERROR_INVALID_VALUE
+    assert failures[0].row_index == 2
+
+
+def test_parse_csv_rejects_ambiguous_amount_rows(tmp_path: Path) -> None:
+    """TC-02-09: 出金額と入金額が両方正数の行は ParseFailure として収集される。"""
+    csv_content = (
+        "取引日,出金金額（円）,入金金額（円）,海外出金金額,通貨,変換レート（円）,"
+        "利用国,取引内容,取引先,取引方法,支払い区分,利用者,取引番号\r\n"
+        "2025/02/11 19:24:02,100,200,-,-,-,-,支払い,曖昧金額加盟店,"
+        "PayPay残高,-,本人,AMB001\r\n"
+    )
+    csv_file = tmp_path / "ambiguous_amount.csv"
+    csv_file.write_text(csv_content, encoding=AppConstants.ENCODING_UTF8)
+
+    txs, failures = parse_csv(csv_file, _make_config(csv_file))
+
+    assert txs == []
+    assert len(failures) == 1
+    assert failures[0].transaction_id == "AMB001"
+    assert failures[0].error_type == _PARSE_ERROR_INVALID_VALUE
+    assert failures[0].row_index == 2
 
 
 def test_parse_csv_bom_preserves_row_index_for_invalid_rows(tmp_path: Path) -> None:

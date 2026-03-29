@@ -47,6 +47,11 @@ _ERR_UNSUPPORTED_ENCODING = "対応するエンコーディングで読み込め
 _ERR_DATE_PARSE_FAILED = "日付のパースに失敗しました: {!r}"
 _ERR_REQUIRED_COLUMN_MISSING = "必須列が欠損しています: {!r}"
 _ERR_REQUIRED_VALUE_MISSING = "必須列の値が空です: {!r}"
+_ERR_ZERO_AMOUNT_TRANSACTION = "出金金額と入金金額の両方が0です"
+_ERR_AMBIGUOUS_AMOUNT_TRANSACTION = "出金金額と入金金額の両方に正の値があります"
+_ERR_INVALID_AMOUNT_TRANSACTION = (
+    "出金金額と入金金額のどちらか一方のみ正の値である必要があります"
+)
 
 # 列名の定数
 _COL_TRADE_DATE = "取引日"
@@ -273,13 +278,7 @@ def _to_transaction(
     date = _parse_date(_get_required_value(row, _COL_TRADE_DATE), date_formats)
     out_amount = _parse_amount(_get_required_value(row, _COL_OUT_AMOUNT))
     in_amount = _parse_amount(_get_required_value(row, _COL_IN_AMOUNT))
-
-    if out_amount > 0:
-        amount = out_amount
-        direction = AppConstants.DIRECTION_OUT
-    else:
-        amount = in_amount
-        direction = AppConstants.DIRECTION_IN
+    amount, direction = _resolve_transaction_amount(out_amount, in_amount)
 
     memo = _get_required_value(row, _COL_CONTENT)
     foreign = (row.get(_COL_FOREIGN) or AppConstants.HYPHEN).strip()
@@ -298,6 +297,19 @@ def _to_transaction(
         merchant=merchant,
         transaction_id=tid,
     )
+
+
+def _resolve_transaction_amount(out_amount: int, in_amount: int) -> tuple[int, str]:
+    """出金額と入金額から登録対象の金額と方向を確定する。"""
+    if out_amount == 0 and in_amount == 0:
+        raise ValueError(_ERR_ZERO_AMOUNT_TRANSACTION)
+    if out_amount > 0 and in_amount > 0:
+        raise ValueError(_ERR_AMBIGUOUS_AMOUNT_TRANSACTION)
+    if out_amount > 0:
+        return out_amount, AppConstants.DIRECTION_OUT
+    if in_amount > 0:
+        return in_amount, AppConstants.DIRECTION_IN
+    raise ValueError(_ERR_INVALID_AMOUNT_TRANSACTION)
 
 
 def _try_strptime(s: str, fmt: str) -> datetime | None:
