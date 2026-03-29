@@ -37,17 +37,18 @@ _GCLOUD_CREDENTIALS_FILENAME = "service-account.json"
 _MISSING_PATH_NAME = "nonexistent"
 _MISSING_PROFILE = "MissingProfile"
 _MATCH_MODE_INVALID = "fuzzy"
+_BACKEND_INVALID = "typo"
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _write_config(tmp_path: Path, data: dict) -> Path:
+def _write_config(tmp_path: Path, data: object) -> Path:
     """テスト用に tmp_path へ YAML 設定ファイルを書き出す。
 
     Args:
         tmp_path: pytest の tmp_path フィクスチャ。
-        data: 設定データの辞書。
+        data: YAML として書き出すデータ。
 
     Returns:
         書き出した設定ファイルの Path。
@@ -96,6 +97,23 @@ def test_load_config_ok(tmp_path: Path) -> None:
     assert config.input_csv == tmp_path / _INPUT_CSV_FILENAME
     assert config.mf_account == _DEFAULT_MF_ACCOUNT
     assert config.exclude_prefixes == list(AppConstants.DEFAULT_EXCLUDE_PREFIXES)
+
+
+@pytest.mark.parametrize(
+    "root_value",
+    [
+        pytest.param(["invalid"], id="list-root"),
+        pytest.param("invalid", id="string-root"),
+        pytest.param(42, id="int-root"),
+    ],
+)
+def test_invalid_yaml_root_type_raises_value_error(
+    tmp_path: Path,
+    root_value: object,
+) -> None:
+    """YAML ルートが object 以外の場合に ValueError が送出されることを確認する。"""
+    with pytest.raises(ValueError, match="config.yml のルート要素は object"):
+        load_config(_write_config(tmp_path, root_value))
 
 
 # TC-01-02: 必須項目欠落（chrome_user_data_dir）
@@ -402,3 +420,251 @@ def test_mapping_rule_invalid_match_mode(tmp_path: Path) -> None:
     cfg_path = _write_config(tmp_path, data)
     with pytest.raises(ValueError, match="match_mode"):
         load_config(cfg_path)
+
+
+def test_mapping_rules_must_be_list(tmp_path: Path) -> None:
+    """mapping_rules が list 以外の場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["mapping_rules"] = "not-a-list"
+
+    with pytest.raises(ValueError, match="mapping_rules は list"):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_mapping_rule_item_must_be_object(tmp_path: Path) -> None:
+    """mapping_rules の要素が object 以外の場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["mapping_rules"] = ["invalid-item"]
+
+    with pytest.raises(ValueError, match=r"mapping_rules\[0\] は object"):
+        load_config(_write_config(tmp_path, data))
+
+
+@pytest.mark.parametrize(
+    ("section", "value", "message"),
+    [
+        pytest.param(
+            "duplicate_detection",
+            "invalid",
+            "duplicate_detection は object",
+            id="duplicate-detection-type",
+        ),
+        pytest.param("parser", "invalid", "parser は object", id="parser-type"),
+        pytest.param(
+            "log_settings",
+            "invalid",
+            "log_settings は object",
+            id="log-settings-type",
+        ),
+        pytest.param(
+            "advanced",
+            "invalid",
+            "advanced は object",
+            id="advanced-type",
+        ),
+    ],
+)
+def test_optional_object_sections_must_be_objects(
+    tmp_path: Path,
+    section: str,
+    value: object,
+    message: str,
+) -> None:
+    """任意 object セクションが object 以外の場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data[section] = value
+
+    with pytest.raises(ValueError, match=message):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_duplicate_detection_backend_must_be_valid_enum(tmp_path: Path) -> None:
+    """duplicate_detection.backend が無効値の場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["duplicate_detection"] = {"backend": _BACKEND_INVALID}
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "duplicate_detection.backend が無効です: 'typo' （有効値: gcloud, local）"
+        ),
+    ):
+        load_config(_write_config(tmp_path, data))
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        pytest.param(-1, "0 以上の整数", id="negative"),
+        pytest.param("60", "整数を指定してください", id="string"),
+        pytest.param(True, "整数を指定してください", id="bool"),
+    ],
+)
+def test_duplicate_detection_tolerance_seconds_validation(
+    tmp_path: Path,
+    value: object,
+    message: str,
+) -> None:
+    """duplicate_detection.tolerance_seconds の型と範囲が検証されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["duplicate_detection"] = {"tolerance_seconds": value}
+
+    with pytest.raises(ValueError, match=message):
+        load_config(_write_config(tmp_path, data))
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        pytest.param(
+            "encoding_priority",
+            "utf-8",
+            "parser.encoding_priority は list",
+            id="encoding-priority-type",
+        ),
+        pytest.param(
+            "date_formats",
+            "%Y/%m/%d %H:%M:%S",
+            "parser.date_formats は list",
+            id="date-formats-type",
+        ),
+    ],
+)
+def test_parser_list_fields_must_be_lists(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    """parser の list フィールドが list 以外の場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["parser"] = {field: value}
+
+    with pytest.raises(ValueError, match=message):
+        load_config(_write_config(tmp_path, data))
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        pytest.param(
+            "encoding_priority",
+            [],
+            "parser.encoding_priority は 1 件以上指定してください。",
+            id="encoding-priority-empty-list",
+        ),
+        pytest.param(
+            "date_formats",
+            [],
+            "parser.date_formats は 1 件以上指定してください。",
+            id="date-formats-empty-list",
+        ),
+    ],
+)
+def test_parser_list_fields_must_not_be_empty(
+    tmp_path: Path,
+    field: str,
+    value: list[object],
+    message: str,
+) -> None:
+    """parser の list フィールドが空 list の場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["parser"] = {field: value}
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        load_config(_write_config(tmp_path, data))
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        pytest.param(
+            "encoding_priority",
+            [123],
+            r"parser\.encoding_priority\[0\] には文字列を指定してください。",
+            id="encoding-priority-item-type",
+        ),
+        pytest.param(
+            "encoding_priority",
+            ["utf-8", ""],
+            r"parser\.encoding_priority\[1\] は空文字を許可しません。",
+            id="encoding-priority-item-empty",
+        ),
+        pytest.param(
+            "date_formats",
+            [False],
+            r"parser\.date_formats\[0\] には文字列を指定してください。",
+            id="date-formats-item-type",
+        ),
+        pytest.param(
+            "date_formats",
+            ["%Y/%m/%d %H:%M:%S", "   "],
+            r"parser\.date_formats\[1\] は空文字を許可しません。",
+            id="date-formats-item-empty",
+        ),
+    ],
+)
+def test_parser_list_items_are_validated_with_index(
+    tmp_path: Path,
+    field: str,
+    value: list[object],
+    message: str,
+) -> None:
+    """parser の list 要素が index 付きで検証されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["parser"] = {field: value}
+
+    with pytest.raises(ValueError, match=message):
+        load_config(_write_config(tmp_path, data))
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        pytest.param(
+            "max_log_count",
+            -1,
+            "log_settings.max_log_count には 0 以上の整数",
+            id="max-log-count-negative",
+        ),
+        pytest.param(
+            "max_log_count",
+            True,
+            "log_settings.max_log_count には整数を指定してください",
+            id="max-log-count-bool",
+        ),
+        pytest.param(
+            "max_total_log_size_mb",
+            -1,
+            "log_settings.max_total_log_size_mb には 0 以上の整数",
+            id="max-total-size-negative",
+        ),
+        pytest.param(
+            "max_total_log_size_mb",
+            "10",
+            "log_settings.max_total_log_size_mb には整数を指定してください",
+            id="max-total-size-string",
+        ),
+    ],
+)
+def test_log_settings_numeric_fields_are_validated(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    """log_settings の数値フィールドの型と範囲が検証されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["log_settings"] = {field: value}
+
+    with pytest.raises(ValueError, match=message):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_advanced_screenshot_on_error_must_be_bool(tmp_path: Path) -> None:
+    """advanced.screenshot_on_error が bool 以外の場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["advanced"] = {"screenshot_on_error": "yes"}
+
+    with pytest.raises(ValueError, match="advanced.screenshot_on_error"):
+        load_config(_write_config(tmp_path, data))
