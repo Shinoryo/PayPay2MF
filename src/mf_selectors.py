@@ -45,7 +45,7 @@ ACCOUNT_OPTION_LOOKUP_SCRIPT = """(name) => {
     );
     if (!sel) return null;
     for (const opt of sel.options) {
-        if (opt.text.trim().startsWith(name)) return opt.value;
+        if (opt.text.trim() === name) return opt.value;
     }
     return null;
 }"""

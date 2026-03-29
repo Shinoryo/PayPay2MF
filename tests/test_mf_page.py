@@ -22,7 +22,9 @@ from src.mf_page import MFManualFormPage
 from src.models import Transaction
 
 _DEFAULT_OPTION_VALUE = "account-001"
+_LEGACY_OPTION_VALUE = "account-legacy"
 _DEFAULT_ACCOUNT_NAME = "PayPay残高"
+_PREFIX_ACCOUNT_NAME = "PayPay残高 旧"
 _DEFAULT_CATEGORY = "食料品"
 _DEFAULT_LARGE_CATEGORY = "食費"
 _UNKNOWN_CATEGORY = "未知カテゴリ"
@@ -94,12 +96,14 @@ class _FakePage:
         self,
         *,
         option_value: str | None = _DEFAULT_OPTION_VALUE,
+        account_options: list[tuple[str, str]] | None = None,
         wait_failures: dict[tuple[str, str], Exception] | None = None,
         submit_outcome: dict[str, str] | None = None,
         wait_for_function_failure: Exception | None = None,
     ) -> None:
         self.actions: list[tuple] = []
         self._option_value = option_value
+        self._account_options = account_options
         self._wait_failures = wait_failures or {}
         self._submit_outcome = submit_outcome or {"status": "closed"}
         self._wait_for_function_failure = wait_for_function_failure
@@ -109,7 +113,22 @@ class _FakePage:
 
     def evaluate(self, script: str, account_name: str) -> str | None:
         self.actions.append(("evaluate", script, account_name))
-        return self._option_value
+        if self._account_options is None:
+            return self._option_value
+
+        for option_name, option_value in self._account_options:
+            normalized_name = option_name.strip()
+            if "startsWith(name)" in script and normalized_name.startswith(
+                account_name
+            ):
+                return option_value
+            if "=== name" in script and normalized_name == account_name:
+                return option_value
+
+        if "startsWith(name)" not in script and "=== name" not in script:
+            raise AssertionError("Unexpected account lookup script")
+
+        return None
 
     def goto(self, url: str) -> None:
         self.actions.append(("goto", url))
@@ -313,6 +332,57 @@ def test_register_transaction_accepts_closed_modal_without_success_feedback() ->
         and action[2].get("state") == AppConstants.LOCATOR_STATE_HIDDEN
     ]
     assert hidden_wait_calls == []
+
+
+def test_register_transaction_selects_exact_account_match_when_prefix_exists() -> None:
+    """mf_account は前方一致ではなく完全一致で選択する。"""
+    page = _FakePage(
+        account_options=[
+            (_PREFIX_ACCOUNT_NAME, _LEGACY_OPTION_VALUE),
+            (f"  {_DEFAULT_ACCOUNT_NAME}  ", _DEFAULT_OPTION_VALUE),
+        ],
+        submit_outcome={"status": "closed"},
+    )
+    form_page = MFManualFormPage(
+        page,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    form_page.register_transaction(_make_tx())
+
+    assert (
+        "select_option",
+        f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.ACCOUNT_SELECT}",
+        {"value": _DEFAULT_OPTION_VALUE},
+    ) in page.actions
+    assert (
+        "select_option",
+        f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.ACCOUNT_SELECT}",
+        {"value": _LEGACY_OPTION_VALUE},
+    ) not in page.actions
+
+
+def test_register_transaction_raises_when_exact_account_match_is_missing() -> None:
+    """完全一致の口座候補がなければ即失敗する。"""
+    page = _FakePage(
+        account_options=[(_PREFIX_ACCOUNT_NAME, _LEGACY_OPTION_VALUE)],
+    )
+    form_page = MFManualFormPage(
+        page,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    with pytest.raises(ValueError, match=_DEFAULT_ACCOUNT_NAME):
+        form_page.register_transaction(_make_tx())
+
+    select_option_calls = [
+        action for action in page.actions if action[0] == "select_option"
+    ]
+    assert select_option_calls == []
 
 
 def test_register_transaction_warns_for_unknown_category() -> None:

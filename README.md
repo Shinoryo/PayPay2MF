@@ -15,7 +15,8 @@
 1. 依存関係をインストールする: `pip install -e .`
 2. `config_sample.yml` を元に、作業ディレクトリへ `config.yml` を作成する。
 3. `chrome_user_data_dir` / `chrome_profile` / `dry_run` / `input_csv` /
-  `mf_account` の必須 5 項目を設定する。
+  `mf_account` の必須 5 項目を設定する。`mf_account` には MF の口座表示名と
+  完全一致する値を指定する。
 4. まず `dry_run: true` で `python main.py` を実行し、CSV の読込結果と
   件数サマリーを確認する。
 5. `logs_dir` 配下のログや `parse_error_*.csv` を確認し、問題がなければ
