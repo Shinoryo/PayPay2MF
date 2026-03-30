@@ -167,7 +167,9 @@ class MFRegistrar:
 
     def _close(self) -> None:
         """Playwright のブラウザとコンテキストを終了する。"""
-        if self._context is not None:
-            self._context.close()
-        if self._playwright is not None:
-            self._playwright.stop()
+        try:
+            if self._context is not None:
+                self._context.close()
+        finally:
+            if self._playwright is not None:
+                self._playwright.stop()
