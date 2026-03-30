@@ -104,7 +104,7 @@ def _match_category(
 
     Args:
         merchant: 取引先名。
-        sorted_rules: カテゴリマッピングルールのリスト。priority 降順を想定。
+        prepared_rules: カテゴリマッピングルールのリスト。priority 降順を想定。
 
     Returns:
         マッチしたカテゴリ名。マッチしない場合は "未分類"。
