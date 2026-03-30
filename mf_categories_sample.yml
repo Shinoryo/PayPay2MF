@@ -1,5 +1,5 @@
 ﻿# advanced.mf_categories_path で指定する独自カテゴリ YAML のサンプルです。
-# このファイルを指定した場合、同梱の src/mf_categories.yml は使用されず、
+# このファイルを指定した場合、同梱の src/paypay2mf/mf_categories.yml は使用されず、
 # ここに定義した対応表で完全に置き換わります。
 # 必要な中項目を残したうえで編集してください。
 # config.yml 設定例:
