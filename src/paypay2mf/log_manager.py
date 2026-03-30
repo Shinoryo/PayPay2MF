@@ -202,7 +202,8 @@ def _rotate_logs(config: AppConfig, logs_dir: Path) -> None:
 
     max_count = config.log_settings.max_log_count
     if max_count is not None:
-        while len(log_files) > max_count:
+        keep = max(max_count - 1, 0)
+        while len(log_files) > keep:
             log_files.pop(0).unlink(missing_ok=True)
 
     max_size_mb = config.log_settings.max_total_log_size_mb

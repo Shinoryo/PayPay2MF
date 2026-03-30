@@ -168,6 +168,35 @@ def test_setup_logger_keeps_active_log_when_max_count_is_zero(
     assert old_log.exists() is False
 
 
+def test_setup_logger_max_log_count_is_hard_cap_including_new_file(
+    tmp_path: Path,
+    app_config_factory,
+) -> None:
+    """max_log_count が新規ログファイルを含む上限として機能することを確認する。
+
+    既存ログが max_log_count と同数の場合、新規ログ作成後も
+    合計ファイル数が max_log_count を超えないことを検証する。
+    """
+    logs_dir = tmp_path / "custom-logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    config = app_config_factory(tmp_path, logs_dir=logs_dir, input_csv_name="dummy.csv")
+    config.log_settings.max_log_count = 2
+
+    old_log1 = logs_dir / "app_old1.log"
+    old_log2 = logs_dir / "app_old2.log"
+    old_log1.write_text("old1", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+    old_log2.write_text("old2", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+
+    logger = setup_logger(config)
+    logger.info(_LOG_MESSAGE)
+
+    for handler in logger.handlers:
+        handler.flush()
+
+    log_files = list(logs_dir.glob("app_*.log"))
+    assert len(log_files) == 2
+
+
 def test_write_error_csv_uses_minimum_columns(
     tmp_path: Path,
     app_config_factory,
