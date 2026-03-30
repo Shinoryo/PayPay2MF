@@ -1,0 +1,82 @@
+﻿# ============================================================
+# config_sample.yml — PayPay→MoneyForward 自動登録ツール 設定ファイル
+# このファイルを config.yml にコピーして使用してください。
+# ============================================================
+
+# ------ 必須設定（5項目。未記載で起動エラー） ------
+
+chrome_user_data_dir: "C:\\Users\\yourname\\AppData\\Local\\Google\\Chrome\\User Data"
+chrome_profile: "Default"
+dry_run: true          # true: ドライラン（書き込みなし） / false: 本番実行
+input_csv: "C:\\Users\\yourname\\Downloads\\paypay_history.csv"
+mf_account: "PayPay残高"
+
+# ------ 任意設定 ------
+
+mapping_rules:
+  - keyword: "セブン"
+    category: "食料品"
+    match_mode: "contains"
+    priority: 100        # 0 以上の整数のみ指定可
+  - keyword: "ファミリーマート"
+    category: "食料品"
+    match_mode: "contains"
+    priority: 100
+  - keyword: "イオンシネマ"
+    category: "映画・音楽・ゲーム"
+    match_mode: "contains"
+    priority: 100
+  - keyword: "Yahoo!ショッピング"
+    category: "その他日用品"
+    match_mode: "contains"
+    priority: 100
+  - keyword: "Google - GOOGLE PLAY"
+    category: "情報サービス"
+    match_mode: "contains"
+    priority: 100
+  - keyword: "モス"
+    category: "外食"
+    match_mode: "contains"
+    priority: 100
+  - keyword: "キャンドゥ"
+    category: "日用品"
+    match_mode: "contains"
+    priority: 100
+  - keyword: "つきじ海賓"
+    category: "外食"
+    match_mode: "contains"
+    priority: 100
+  - keyword: "MYB"
+    category: "雑費"
+    match_mode: "contains"
+    priority: 100
+  - keyword: "giftee"
+    category: "その他入金"
+    match_mode: "contains"
+    priority: 100
+
+exclude_prefixes:
+  - "PPCD_A_"          # list で指定。単一文字列は不可
+
+duplicate_detection:
+  backend: "local"          # "local" または "gcloud"
+  tolerance_seconds: 60
+
+parser:
+  encoding_priority:
+    - "utf-8"
+    - "shift_jis"
+  date_formats:
+    - "%Y/%m/%d %H:%M:%S"
+
+log_settings:
+  logs_dir: null            # string または null。null → デフォルト <tool_folder>\logs を使用
+  max_log_count: null       # null = 無制限
+  max_total_log_size_mb: null  # null = 無制限
+
+advanced:
+  screenshot_on_error: false    # true にした場合のみエラー時 PNG を保存
+  mf_categories_path: null      # 例: ".\\mf_categories_sample.yml"。null で同梱カテゴリ定義を使用
+
+# gcloud_credentials_path: "C:\\Users\\yourname\\gcloud-service-account.json"
+# ↑ duplicate_detection.backend: "gcloud" 使用時のみ設定する
