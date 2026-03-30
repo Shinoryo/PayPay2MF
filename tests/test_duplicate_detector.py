@@ -697,6 +697,21 @@ def test_create_detector_gcloud_returns_gcloud_detector(
     assert isinstance(detector, GCloudDuplicateDetector)
 
 
+def test_create_detector_gcloud_raises_when_credentials_path_is_none(
+    tmp_path: Path,
+    app_config_factory,
+) -> None:
+    """create_detector は gcloud backend で credentials_path が None の場合に明確な例外を送出する。"""
+    config = _build_gcloud_config(tmp_path, app_config_factory)
+    config.gcloud_credentials_path = None
+
+    with pytest.raises(
+        DuplicateHistoryError,
+        match='duplicate_detection.backend: "gcloud" の場合は gcloud_credentials_path の指定が必要です。',
+    ):
+        create_detector(config)
+
+
 def test_create_detector_gcloud_raises_clear_import_error_when_dependency_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

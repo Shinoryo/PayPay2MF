@@ -45,6 +45,10 @@ _KEY_DATE_BUCKET = "date_bucket"
 # Firestore のクエリ構築に使う定数。
 _FIRESTORE_EQUALS_OPERATOR = "=="
 _DATE_BUCKET_FORMAT = "%Y%m%d%H%M"
+_MSG_GCLOUD_CREDS_REQUIRED = (
+    'duplicate_detection.backend: "gcloud" の場合は '
+    "gcloud_credentials_path の指定が必要です。"
+)
 _MSG_PROCESSED_SAVE_FAILED = "processed.json の保存に失敗しました"
 
 
@@ -97,6 +101,8 @@ def create_detector(config: AppConfig) -> DuplicateDetector:
         LocalDuplicateDetector または GCloudDuplicateDetector のインスタンス。
     """
     if config.duplicate_detection.backend == AppConstants.BACKEND_GCLOUD:
+        if config.gcloud_credentials_path is None:
+            raise DuplicateHistoryError(_MSG_GCLOUD_CREDS_REQUIRED)
         return GCloudDuplicateDetector(
             credentials_path=config.gcloud_credentials_path,
             tolerance_seconds=config.duplicate_detection.tolerance_seconds,
