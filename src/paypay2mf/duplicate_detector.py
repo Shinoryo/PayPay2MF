@@ -362,7 +362,11 @@ class LocalDuplicateDetector:
         backup_path = self._store_path.with_name(
             f"{self._store_path.stem}.corrupted_{timestamp}{self._store_path.suffix}",
         )
-        self._store_path.replace(backup_path)
+        try:
+            self._store_path.replace(backup_path)
+        except OSError as exc:
+            msg = f"processed.json の退避に失敗しました: {backup_path}"
+            raise DuplicateHistoryError(msg) from exc
         return backup_path
 
 
@@ -405,10 +409,14 @@ class GCloudDuplicateDetector:
             )
             raise ImportError(msg) from e
 
-        creds = service_account.Credentials.from_service_account_file(
-            str(credentials_path),
-        )
-        self._client = _firestore.Client(credentials=creds)
+        try:
+            creds = service_account.Credentials.from_service_account_file(
+                str(credentials_path),
+            )
+            self._client = _firestore.Client(credentials=creds)
+        except Exception as exc:
+            msg = f"GCloud 認証情報の初期化に失敗しました: {credentials_path}"
+            raise DuplicateHistoryError(msg) from exc
         self._dry_run = dry_run
         self._tolerance = tolerance_seconds
 

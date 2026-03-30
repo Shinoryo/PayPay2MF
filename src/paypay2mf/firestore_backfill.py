@@ -36,6 +36,9 @@ _MSG_GCLOUD_CREDS_REQUIRED = (
     "gcloud_credentials_path の指定が必要です。"
 )
 _MSG_GCLOUD_CREDS_NOT_EXIST = "gcloud_credentials_path のファイルが存在しません: {path}"
+_MSG_GCLOUD_CREDS_NOT_FILE = (
+    "gcloud_credentials_path にはファイルを指定してください: {path}"
+)
 _MSG_DUPLICATE_TOLERANCE_TYPE = (
     "duplicate_detection.tolerance_seconds には整数を指定してください。"
 )
@@ -187,6 +190,8 @@ def _resolve_gcloud_credentials_path(
     credentials_path = _resolve_path(credentials_raw, config_dir)
     if not credentials_path.exists():
         raise ValueError(_MSG_GCLOUD_CREDS_NOT_EXIST.format(path=credentials_path))
+    if not credentials_path.is_file():
+        raise ValueError(_MSG_GCLOUD_CREDS_NOT_FILE.format(path=credentials_path))
     return credentials_path
 
 

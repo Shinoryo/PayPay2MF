@@ -98,6 +98,7 @@ _MSG_CHROME_USER_DATA_DIR_NOT_EXIST = (
 )
 _MSG_CHROME_PROFILE_NOT_EXIST = "chrome_profile のディレクトリが存在しません: {path}"
 _MSG_INPUT_CSV_NOT_EXIST = "input_csv のファイルが存在しません: {path}"
+_MSG_INPUT_CSV_NOT_FILE = "input_csv にはファイルを指定してください: {path}"
 _MSG_INPUT_CSV_BAD_EXT = "input_csv の拡張子が .csv ではありません: {path}"
 
 _MSG_MAPPING_RULES_TYPE = "mapping_rules は list で指定してください。"
@@ -187,8 +188,14 @@ _MSG_GCLOUD_CREDS_TYPE = (
     "gcloud_credentials_path には文字列または null を指定してください。"
 )
 _MSG_GCLOUD_CREDS_NOT_EXIST = "gcloud_credentials_path のファイルが存在しません: {path}"
+_MSG_GCLOUD_CREDS_NOT_FILE = (
+    "gcloud_credentials_path にはファイルを指定してください: {path}"
+)
 _MSG_MF_CATEGORIES_NOT_EXIST = (
     "advanced.mf_categories_path のファイルが存在しません: {path}"
+)
+_MSG_MF_CATEGORIES_NOT_FILE = (
+    "advanced.mf_categories_path にはファイルを指定してください: {path}"
 )
 
 _REQUIRED_KEYS: dict[str, str] = {
@@ -490,6 +497,8 @@ def _validate_paths(
     input_csv = _resolve_path(raw[_KEY_INPUT_CSV], config_dir)
     if not input_csv.exists():
         errors.append(_MSG_INPUT_CSV_NOT_EXIST.format(path=input_csv))
+    elif not input_csv.is_file():
+        errors.append(_MSG_INPUT_CSV_NOT_FILE.format(path=input_csv))
     elif input_csv.suffix.lower() != AppConstants.CSV_EXTENSION:
         errors.append(_MSG_INPUT_CSV_BAD_EXT.format(path=input_csv))
 
@@ -499,6 +508,8 @@ def _validate_paths(
     )
     if mf_categories_path is not None and not mf_categories_path.exists():
         errors.append(_MSG_MF_CATEGORIES_NOT_EXIST.format(path=mf_categories_path))
+    elif mf_categories_path is not None and not mf_categories_path.is_file():
+        errors.append(_MSG_MF_CATEGORIES_NOT_FILE.format(path=mf_categories_path))
 
     if errors:
         raise ValueError("\n".join(errors))
@@ -844,6 +855,8 @@ def _validate_gcloud(
     resolved_creds = _resolve_optional_path(creds, config_dir)
     if resolved_creds is not None and not resolved_creds.exists():
         raise ValueError(_MSG_GCLOUD_CREDS_NOT_EXIST.format(path=resolved_creds))
+    if resolved_creds is not None and not resolved_creds.is_file():
+        raise ValueError(_MSG_GCLOUD_CREDS_NOT_FILE.format(path=resolved_creds))
 
 
 def _build_config(

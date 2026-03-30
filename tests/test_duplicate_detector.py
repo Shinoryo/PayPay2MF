@@ -724,6 +724,28 @@ def test_create_detector_gcloud_raises_clear_import_error_when_dependency_missin
         create_detector(config)
 
 
+def test_create_detector_gcloud_wraps_invalid_credentials_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    """認証情報の読込失敗は DuplicateHistoryError に正規化されることを確認する。"""
+    _install_fake_gcloud_modules(monkeypatch)
+    config = _build_gcloud_config(tmp_path, app_config_factory)
+
+    service_account_module = sys.modules["google.oauth2.service_account"]
+
+    class _BrokenCredentials:
+        @staticmethod
+        def from_service_account_file(_path: str) -> object:
+            raise OSError
+
+    monkeypatch.setattr(service_account_module, "Credentials", _BrokenCredentials)
+
+    with pytest.raises(DuplicateHistoryError, match=r"GCloud 認証情報の初期化に失敗"):
+        create_detector(config)
+
+
 def test_gcloud_duplicate_by_transaction_id(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

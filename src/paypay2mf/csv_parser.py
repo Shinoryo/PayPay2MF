@@ -200,14 +200,14 @@ def _merge_compound(rows: list[CsvRow]) -> list[CsvRow]:
     Returns:
         集約後の行番号付き行辞書のリスト。
     """
-    seen: dict[str, CsvRow] = {}
-    order: list[str] = []
+    seen: dict[object, CsvRow] = {}
+    order: list[object] = []
 
     for row_index, row in rows:
         tid = (row.get(_COL_TID) or AppConstants.EMPTY_STRING).strip()
         if not tid:
             # 取引番号なし → 独立行として追加
-            key = f"{_MISSING_ID_PREFIX}{len(seen)}"
+            key = (_MISSING_ID_PREFIX, len(order))
             seen[key] = (row_index, row)
             order.append(key)
             continue

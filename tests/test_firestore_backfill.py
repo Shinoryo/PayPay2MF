@@ -269,6 +269,29 @@ def test_load_gcloud_detector_accepts_minimal_backfill_config(
     assert detector.client.credentials == ("creds", str(credentials_file))
 
 
+def test_load_backfill_config_rejects_credentials_directory(tmp_path: Path) -> None:
+    """backfill 設定の gcloud_credentials_path にディレクトリを指定した場合は ValueError になる。"""
+    credentials_dir = tmp_path / "service-account.json"
+    credentials_dir.mkdir()
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        (
+            "duplicate_detection:\n"
+            "  backend: 'gcloud'\n"
+            "  tolerance_seconds: 60\n"
+            "gcloud_credentials_path: 'service-account.json'"
+        ),
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
+    load_backfill_config = firestore_backfill._load_backfill_config  # noqa: SLF001
+
+    with pytest.raises(
+        ValueError,
+        match=r"gcloud_credentials_path にはファイルを指定してください",
+    ):
+        load_backfill_config(config_path)
+
+
 def test_main_uses_cli_config_path_before_env_and_cwd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -315,3 +315,35 @@ def test_merge_compound_no_id() -> None:
     ]
     result = _merge_compound(rows)
     assert len(result) == 2
+
+
+def test_merge_compound_does_not_collide_with_real_transaction_id() -> None:
+    """空 transaction_id 行の内部キーが実在の transaction_id と衝突しないことを確認する。"""
+    rows = [
+        (
+            2,
+            {
+                "取引番号": "",
+                "出金金額（円）": "100",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "AAA",
+            },
+        ),
+        (
+            3,
+            {
+                "取引番号": "__no_id_0",
+                "出金金額（円）": "200",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "BBB",
+            },
+        ),
+    ]
+
+    result = _merge_compound(rows)
+
+    assert len(result) == 2
+    assert result[0][1]["出金金額（円）"] == "100"
+    assert result[0][1]["取引先"] == "AAA"
+    assert result[1][1]["出金金額（円）"] == "200"
+    assert result[1][1]["取引先"] == "BBB"

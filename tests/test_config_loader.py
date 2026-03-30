@@ -299,6 +299,21 @@ def test_missing_relative_input_csv_raises_value_error(tmp_path: Path) -> None:
         load_config(_write_config(tmp_path, data))
 
 
+def test_input_csv_directory_raises_value_error(tmp_path: Path) -> None:
+    """input_csv にディレクトリを指定した場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    input_dir = tmp_path / _INPUT_CSV_FILENAME
+    input_dir.unlink()
+    input_dir.mkdir()
+    data["input_csv"] = _INPUT_CSV_FILENAME
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(f"input_csv にはファイルを指定してください: {input_dir}"),
+    ):
+        load_config(_write_config(tmp_path, data))
+
+
 def test_logs_dir_is_resolved_relative_to_config(tmp_path: Path) -> None:
     """log_settings.logs_dir は config.yml 基準の相対パスとして解決されることを確認する。"""
     data = _base_data(tmp_path)
@@ -428,6 +443,23 @@ def test_missing_relative_gcloud_credentials_path_raises_value_error(
     with pytest.raises(
         ValueError,
         match=re.escape(str(tmp_path / _GCLOUD_CREDENTIALS_FILENAME)),
+    ):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_gcloud_credentials_directory_raises_value_error(tmp_path: Path) -> None:
+    """gcloud_credentials_path にディレクトリを指定した場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    credentials_dir = tmp_path / _GCLOUD_CREDENTIALS_FILENAME
+    credentials_dir.mkdir()
+    data["duplicate_detection"] = {"backend": AppConstants.BACKEND_GCLOUD}
+    data["gcloud_credentials_path"] = _GCLOUD_CREDENTIALS_FILENAME
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            f"gcloud_credentials_path にはファイルを指定してください: {credentials_dir}"
+        ),
     ):
         load_config(_write_config(tmp_path, data))
 
@@ -562,6 +594,22 @@ def test_missing_mf_categories_path_raises_value_error(tmp_path: Path) -> None:
     data["advanced"] = {"mf_categories_path": _MISSING_CATEGORIES_FILENAME}
 
     with pytest.raises(ValueError, match=r"advanced\.mf_categories_path"):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_mf_categories_directory_raises_value_error(tmp_path: Path) -> None:
+    """advanced.mf_categories_path にディレクトリを指定した場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    categories_dir = tmp_path / _CUSTOM_CATEGORIES_FILENAME
+    categories_dir.mkdir()
+    data["advanced"] = {"mf_categories_path": _CUSTOM_CATEGORIES_FILENAME}
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            f"advanced.mf_categories_path にはファイルを指定してください: {categories_dir}"
+        ),
+    ):
         load_config(_write_config(tmp_path, data))
 
 
