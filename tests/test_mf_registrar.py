@@ -23,7 +23,12 @@ _SCREENSHOT_STUB = "stub"
 _DEFAULT_MERCHANT = "Sample Merchant"
 _LOGGER_NAME_OPTOUT = "test-mf-registrar-optout"
 _LOGGER_NAME_OPTIN = "test-mf-registrar-optin"
+_LOGGER_NAME_NO_PAGE = "test-mf-registrar-no-page"
 _SCREENSHOT_NAME_PATTERN = r"screenshot_\d{8}_\d{6}\.png"
+_SCREENSHOT_SAVED_LOG = "スクリーンショットを保存しました"
+_SCREENSHOT_SKIPPED_LOG = (
+    "Playwright page が未初期化のため、スクリーンショットを保存しませんでした。"
+)
 
 pytestmark = pytest.mark.ui_contract
 
@@ -91,3 +96,52 @@ def test_register_saves_redacted_screenshot_name_when_opted_in(
     assert re.fullmatch(_SCREENSHOT_NAME_PATTERN, screenshot_name)
     assert _DEFAULT_MERCHANT not in screenshot_name
     assert pathlib.Path(fake_page.screenshot_paths[0]).exists()
+
+
+def test_register_logs_warning_without_false_saved_message_when_page_missing(
+    tmp_path: pathlib.Path,
+    app_config_factory,
+    transaction_factory,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """コンテキスト外誤用時は保存済みログを出さず、保存不可 warning のみ出す。"""
+    logger = logging.getLogger(_LOGGER_NAME_NO_PAGE)
+    registrar = MFRegistrar(
+        app_config_factory(
+            tmp_path,
+            screenshot_on_error=True,
+            logs_dir=tmp_path / "logs",
+            input_csv_name="dummy.csv",
+        ),
+        logger,
+    )
+
+    with caplog.at_level(logging.WARNING, logger=logger.name):
+        with pytest.raises(RuntimeError, match="Playwright page が初期化されていません。"):
+            registrar.register(transaction_factory(merchant=_DEFAULT_MERCHANT))
+
+    assert (_SCREENSHOT_SKIPPED_LOG,) == tuple(
+        record.message for record in caplog.records if record.name == logger.name
+    )
+    assert not (tmp_path / "logs").exists()
+
+
+def test_take_screenshot_returns_none_without_creating_files_when_page_missing(
+    tmp_path: pathlib.Path,
+    app_config_factory,
+) -> None:
+    """_page が未初期化ならスクリーンショットを保存せず None を返す。"""
+    logs_dir = tmp_path / "logs"
+    registrar = MFRegistrar(
+        app_config_factory(
+            tmp_path,
+            screenshot_on_error=True,
+            logs_dir=logs_dir,
+            input_csv_name="dummy.csv",
+        ),
+        logging.getLogger(_LOGGER_NAME_NO_PAGE),
+    )
+
+    assert registrar._take_screenshot() is None
+    assert not logs_dir.exists()
+    assert list(tmp_path.glob("screenshot_*.png")) == []

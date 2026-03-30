@@ -183,8 +183,9 @@ mf_account: "PayPay残高"
 | ---- | ---- |
 | ファイル名 | `screenshot_yyyyMMdd_HHmmss.png` |
 | 配置場所 | `log_settings.logs_dir` |
-| 出力条件 | `advanced.screenshot_on_error: true` を明示した場合のみ、エラー発生時 |
+| 出力条件 | `advanced.screenshot_on_error: true` を明示し、Playwright page が利用可能な状態でエラーが発生した場合 |
 
+> 注意: コンテキスト外誤用などで Playwright page が未初期化の場合、保存済みログは出力されず、スクリーンショットも保存されません。
 > 注意: 保存物の全体像と運用上の注意は、上部の「保存される情報と運用上の注意」を参照してください。
 
 ### タイムゾーンに関する注意
@@ -376,8 +377,9 @@ flowchart TD
 | 13 | WARNING | `解析エラーCSVを出力しました: {filename}` |
 | 14 | WARNING | `登録失敗CSVを出力しました: {filename}` |
 | 15 | WARNING | `スクリーンショットを保存しました: {filename}` |
-| 16 | INFO | `実行完了: 成功 {success}件 / 除外 {excluded}件 / 重複スキップ {skipped}件 / 失敗 {failed}件` |
-| 17 | INFO | `アプリケーションを終了します` |
+| 16 | WARNING | `Playwright page が未初期化のため、スクリーンショットを保存しませんでした。` |
+| 17 | INFO | `実行完了: 成功 {success}件 / 除外 {excluded}件 / 重複スキップ {skipped}件 / 失敗 {failed}件` |
+| 18 | INFO | `アプリケーションを終了します` |
 
 ## Google Cloud Firestore バックエンドの設定（任意）
 

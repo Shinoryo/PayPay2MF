@@ -28,6 +28,9 @@ if TYPE_CHECKING:
 _LOG_MSG_CHROME_STARTED = "Chrome を起動しました"
 _LOG_MSG_MF_PAGE_OPENED = "MF ページへ遷移しました"
 _LOG_MSG_SCREENSHOT_SAVED = "スクリーンショットを保存しました: %s"
+_LOG_MSG_SCREENSHOT_SKIPPED = (
+    "Playwright page が未初期化のため、スクリーンショットを保存しませんでした。"
+)
 _LOG_MSG_SCREENSHOT_SENSITIVE = (
     "スクリーンショットは機微情報を含む可能性があります。共有しないでください。"
 )
@@ -111,6 +114,7 @@ class MFRegistrar:
         Raises:
             ValueError: 口座名が MF で見つからない場合。
             playwright.sync_api.TimeoutError: ページ操作がタイムアウトした場合。
+            RuntimeError: コンテキスト外で呼び出され、Playwright page が未初期化の場合。
         """
         try:
             self._ensure_manual_form_page().register_transaction(tx)
@@ -118,8 +122,11 @@ class MFRegistrar:
         except Exception:
             if self._config.advanced.screenshot_on_error:
                 shot_path = self._take_screenshot()
-                self._logger.warning(_LOG_MSG_SCREENSHOT_SAVED, shot_path.name)
-                self._logger.warning(_LOG_MSG_SCREENSHOT_SENSITIVE)
+                if shot_path is None:
+                    self._logger.warning(_LOG_MSG_SCREENSHOT_SKIPPED)
+                else:
+                    self._logger.warning(_LOG_MSG_SCREENSHOT_SAVED, shot_path.name)
+                    self._logger.warning(_LOG_MSG_SCREENSHOT_SENSITIVE)
             raise
 
     def open_manual_form(self) -> Locator:
@@ -143,14 +150,18 @@ class MFRegistrar:
             self._manual_form_page = self._build_manual_form_page()
         return self._manual_form_page
 
-    def _take_screenshot(self) -> Path:
+    def _take_screenshot(self) -> Path | None:
         """スクリーンショットを保存する。
 
-        screenshot_on_error が True の場合のみ保存する。
+        Playwright page が利用可能な場合のみ保存する。
 
         Returns:
             保存したスクリーンショットファイルの Path。
+            Playwright page が未初期化の場合は None。
         """
+        if self._page is None:
+            return None
+
         timestamp = datetime.now().strftime(AppConstants.TIMESTAMP_FORMAT)  # noqa: DTZ005
         logs_dir = self._config.log_settings.logs_dir
         if logs_dir is None:
@@ -161,8 +172,7 @@ class MFRegistrar:
             logs_dir
             / f"{_SCREENSHOT_FILE_PREFIX}{timestamp}{AppConstants.PNG_EXTENSION}"
         )
-        if self._page is not None:
-            self._page.screenshot(path=str(out_path))
+        self._page.screenshot(path=str(out_path))
         return out_path
 
     def _close(self) -> None:
