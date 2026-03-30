@@ -11,7 +11,7 @@ if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
 
-def _run() -> int:
+def _run() -> None:
     main = importlib.import_module("paypay2mf.firestore_backfill").main
     return main()
 
