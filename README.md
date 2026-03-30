@@ -573,6 +573,4 @@ python -m pytest -q -m smoke_test tests/test_mf_smoke.py
 
 | バージョン | 日付 | 内容 |
 | ----- | ---------- | -------------- |
-| 0.3 | 2026-03-30 | `input_csv` / `advanced.mf_categories_path` / `gcloud_credentials_path` のファイル必須化、ローカル重複履歴の単一インスタンス前提、markdownlint を含む品質ゲート手順を追記。 |
-| 0.2 | 2026-03-29 | 初回利用者向けの最短手順、`config.yml` 基準の相対パス方針、保存される情報と運用上の注意、smoke test の実行前提を現行実装に合わせて整理。 |
-| 0.1 | 2026-03-28 | 初版作成 |
+| 1.0.0 | 2026-03-31 | 初版作成 |
