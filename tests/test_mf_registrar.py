@@ -33,6 +33,9 @@ _SCREENSHOT_SKIPPED_LOG = (
     "Selenium driver が未初期化のため、スクリーンショットを保存しませんでした。"
 )
 _BOOT_FAILED = "boot failed"
+_QUIT_FAILED = "quit failed"
+_CHROME_QUIT_FAILED_LOG = "Chrome の終了中に例外が発生しました。"
+_LOGGER_NAME_CLOSE = "test-mf-registrar-close"
 
 pytestmark = pytest.mark.ui_contract
 
@@ -56,6 +59,11 @@ class _FakeDriver:
 
     def quit(self) -> None:
         self.quit_called = True
+
+
+class _FailingQuitDriver(_FakeDriver):
+    def quit(self) -> None:
+        raise RuntimeError(_QUIT_FAILED)
 
 
 class _FakeOpenableManualFormPage:
@@ -267,3 +275,27 @@ def test_registrar_restores_env_after_chrome_boot_failure(
         registrar.__enter__()
 
     assert os.environ.get("SE_AVOID_STATS") is None
+
+
+def test_close_suppresses_quit_exception_and_logs_warning(
+    tmp_path: pathlib.Path,
+    app_config_factory,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """quit() が例外を投げても _close() は例外を伝播させず warning をログに残す。"""
+    logger = logging.getLogger(_LOGGER_NAME_CLOSE)
+    registrar = MFRegistrar(
+        app_config_factory(tmp_path, input_csv_name="dummy.csv"),
+        logger,
+    )
+    object.__setattr__(registrar, "_driver", _FailingQuitDriver())
+
+    with caplog.at_level(logging.WARNING, logger=logger.name):
+        registrar._close()
+
+    warning_messages = [
+        record.message
+        for record in caplog.records
+        if record.name == logger.name and record.levelno == logging.WARNING
+    ]
+    assert any(_CHROME_QUIT_FAILED_LOG in msg for msg in warning_messages)

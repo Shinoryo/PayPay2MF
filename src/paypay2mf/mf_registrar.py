@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 
 _LOG_MSG_CHROME_STARTED = "Chrome を起動しました"
+_LOG_MSG_CHROME_QUIT_FAILED = "Chrome の終了中に例外が発生しました。"
 _LOG_MSG_WAITING_FOR_LOGIN = "Money Forward のトップページを開きました。"
 _LOG_MSG_MF_PAGE_OPENED = "MF ページへ遷移しました"
 _LOG_MSG_SCREENSHOT_SAVED = "スクリーンショットを保存しました: %s"
@@ -166,6 +167,8 @@ class MFRegistrar:
         try:
             if self._driver is not None:
                 self._driver.quit()
+        except Exception:
+            self._logger.warning(_LOG_MSG_CHROME_QUIT_FAILED, exc_info=True)
         finally:
             if self._temporary_profile_dir is not None:
                 rmtree(self._temporary_profile_dir, ignore_errors=True)
