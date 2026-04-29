@@ -169,11 +169,12 @@ def test_registrar_sets_avoid_stats_only_during_chrome_startup(
 ) -> None:
     """Chrome 起動時だけ SE_AVOID_STATS を補完し、終了後に戻す。"""
     observed_value: list[str | None] = []
+    observed_page_load_strategy: list[str] = []
     fake_driver = _FakeDriver()
 
     def _fake_chrome(*, options) -> object:
-        del options
         observed_value.append(os.environ.get("SE_AVOID_STATS"))
+        observed_page_load_strategy.append(options.page_load_strategy)
         return fake_driver
 
     monkeypatch.delenv("SE_AVOID_STATS", raising=False)
@@ -194,6 +195,7 @@ def test_registrar_sets_avoid_stats_only_during_chrome_startup(
 
     with registrar:
         assert observed_value == ["true"]
+        assert observed_page_load_strategy == ["eager"]
         assert os.environ.get("SE_AVOID_STATS") is None
 
     assert fake_driver.quit_called is True

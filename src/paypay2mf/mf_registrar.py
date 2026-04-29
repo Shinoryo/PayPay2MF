@@ -87,6 +87,7 @@ class MFRegistrar:
             tempfile.mkdtemp(prefix=_TEMP_PROFILE_PREFIX)
         )
         options = ChromeOptions()
+        options.page_load_strategy = "eager"
         options.add_argument(f"--user-data-dir={self._temporary_profile_dir}")
         options.add_argument("--start-maximized")
         self._driver = create_chrome_driver(options)
