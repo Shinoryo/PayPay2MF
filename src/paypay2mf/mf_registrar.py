@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from shutil import rmtree
@@ -20,6 +22,7 @@ from paypay2mf.mf_page import MFManualFormPage
 
 if TYPE_CHECKING:
     import logging
+    from collections.abc import Iterator
     from types import TracebackType
 
     from selenium.webdriver.remote.webelement import WebElement
@@ -41,7 +44,30 @@ _LOG_MSG_SCREENSHOT_SENSITIVE = (
 )
 _MSG_DRIVER_NOT_INITIALIZED = "Selenium driver が初期化されていません。"
 _SCREENSHOT_FILE_PREFIX = "screenshot_"
+_SELENIUM_MANAGER_AVOID_STATS_ENV_VAR = "SE_AVOID_STATS"
+_SELENIUM_MANAGER_AVOID_STATS_ENABLED = "true"
 _TEMP_PROFILE_PREFIX = "paypay2mf-selenium-"
+
+
+@contextmanager
+def _suppress_selenium_manager_stats() -> Iterator[None]:
+    existing_value = os.environ.get(_SELENIUM_MANAGER_AVOID_STATS_ENV_VAR)
+    if existing_value is not None:
+        yield
+        return
+
+    os.environ[_SELENIUM_MANAGER_AVOID_STATS_ENV_VAR] = (
+        _SELENIUM_MANAGER_AVOID_STATS_ENABLED
+    )
+    try:
+        yield
+    finally:
+        os.environ.pop(_SELENIUM_MANAGER_AVOID_STATS_ENV_VAR, None)
+
+
+def create_chrome_driver(options: ChromeOptions) -> Chrome:
+    with _suppress_selenium_manager_stats():
+        return Chrome(options=options)
 
 
 class MFRegistrar:
@@ -63,7 +89,7 @@ class MFRegistrar:
         options = ChromeOptions()
         options.add_argument(f"--user-data-dir={self._temporary_profile_dir}")
         options.add_argument("--start-maximized")
-        self._driver = Chrome(options=options)
+        self._driver = create_chrome_driver(options)
         self._logger.info(_LOG_MSG_CHROME_STARTED)
 
         self._open_moneyforward_page()

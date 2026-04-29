@@ -89,6 +89,7 @@ paypay2mf
 ```
 
 Selenium が Chrome を起動して Money Forward トップページを開きます。
+Chrome 起動時の Selenium Manager 統計送信は既定で抑止しているため、通常は Plausible への接続失敗メッセージは表示されません。
 ユーザーが手動ログインして Enter を押すと、家計簿タブを選択して /cf に遷移し、
 以降は MF の手入力フォームに1件ずつ自動登録します。
 
