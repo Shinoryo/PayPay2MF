@@ -549,7 +549,9 @@ def test_run_registration_exits_when_duplicate_history_update_fails_after_regist
 
     class _BrokenDetector:
         def __init__(self) -> None:
-            self.mark_processed = Mock(side_effect=[RuntimeError("history write failed")])
+            self.mark_processed = Mock(
+                side_effect=[RuntimeError("history write failed")]
+            )
             self.flush = Mock()
 
     detector = _BrokenDetector()

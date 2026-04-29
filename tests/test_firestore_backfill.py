@@ -305,7 +305,9 @@ def test_load_backfill_config_rejects_config_directory(tmp_path: Path) -> None:
 def test_load_backfill_config_rejects_invalid_yaml_syntax(tmp_path: Path) -> None:
     """backfill 設定の YAML 構文エラーは ValueError に正規化される。"""
     config_path = tmp_path / "config.yml"
-    config_path.write_text("duplicate_detection: [\n", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+    config_path.write_text(
+        "duplicate_detection: [\n", encoding=AppConstants.DEFAULT_TEXT_ENCODING
+    )
     load_backfill_config = firestore_backfill._load_backfill_config  # noqa: SLF001
 
     with pytest.raises(ValueError, match=r"YAML 構文"):

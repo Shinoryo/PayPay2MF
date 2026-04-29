@@ -291,13 +291,14 @@ def _to_transaction(
     in_amount = _parse_amount(_get_required_value(row, _COL_IN_AMOUNT))
     amount, direction = _resolve_transaction_amount(out_amount, in_amount)
 
-    memo = _get_required_value(row, _COL_CONTENT)
+    # 取引内容は必須フィールドとして検証する（メモには使用しない）
+    _get_required_value(row, _COL_CONTENT)
+    merchant = _get_required_value(row, _COL_MERCHANT)
     foreign = (row.get(_COL_FOREIGN) or AppConstants.HYPHEN).strip()
     currency = (row.get(_COL_CURRENCY) or AppConstants.HYPHEN).strip()
+    memo = merchant
     if foreign not in (AppConstants.HYPHEN, AppConstants.EMPTY_STRING):
         memo = _FOREIGN_MEMO_TEMPLATE.format(memo, foreign, currency)
-
-    merchant = _get_required_value(row, _COL_MERCHANT)
     tid = (row.get(_COL_TID) or AppConstants.EMPTY_STRING).strip() or None
 
     return Transaction(
