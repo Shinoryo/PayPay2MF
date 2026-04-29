@@ -22,6 +22,9 @@ _DEFAULT_OPTION_VALUE = "account-001"
 _LEGACY_OPTION_VALUE = "account-legacy"
 _DEFAULT_ACCOUNT_NAME = "PayPay残高"
 _PREFIX_ACCOUNT_NAME = "PayPay残高 旧"
+_DYNAMIC_BALANCE_ACCOUNT_NAME = "PayPay"
+_DYNAMIC_BALANCE_OPTION_TEXT = "PayPay (439,670円)"
+_SECOND_DYNAMIC_BALANCE_OPTION_TEXT = "PayPay (12,000円)"
 _DEFAULT_CATEGORY = "食料品"
 _DEFAULT_LARGE_CATEGORY = "食費"
 _UNKNOWN_CATEGORY = "未知カテゴリ"
@@ -523,6 +526,44 @@ def test_register_transaction_selects_exact_account_match_when_prefix_exists() -
     ) not in driver.actions
 
 
+def test_register_transaction_selects_account_with_balance_suffix() -> None:
+    driver = _make_driver(
+        account_options=[(_DYNAMIC_BALANCE_OPTION_TEXT, _DEFAULT_OPTION_VALUE)]
+    )
+    form_page = MFManualFormPage(
+        driver,
+        Mock(),
+        _DYNAMIC_BALANCE_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    form_page.register_transaction(_make_tx())
+
+    assert (
+        "select_by_value",
+        mf_selectors.ACCOUNT_SELECT,
+        _DEFAULT_OPTION_VALUE,
+    ) in driver.actions
+
+
+def test_register_transaction_raises_when_multiple_accounts_match_after_normalization() -> None:
+    driver = _make_driver(
+        account_options=[
+            (_DYNAMIC_BALANCE_OPTION_TEXT, _DEFAULT_OPTION_VALUE),
+            (_SECOND_DYNAMIC_BALANCE_OPTION_TEXT, _LEGACY_OPTION_VALUE),
+        ]
+    )
+    form_page = MFManualFormPage(
+        driver,
+        Mock(),
+        _DYNAMIC_BALANCE_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    with pytest.raises(ValueError, match="複数見つかりました"):
+        form_page.register_transaction(_make_tx())
+
+
 def test_register_transaction_raises_when_exact_account_match_is_missing() -> None:
     driver = _make_driver(account_options=[(_PREFIX_ACCOUNT_NAME, _LEGACY_OPTION_VALUE)])
     form_page = MFManualFormPage(
@@ -533,6 +574,9 @@ def test_register_transaction_raises_when_exact_account_match_is_missing() -> No
     )
 
     with pytest.raises(ValueError, match=_DEFAULT_ACCOUNT_NAME):
+        form_page.register_transaction(_make_tx())
+
+    with pytest.raises(ValueError, match=_PREFIX_ACCOUNT_NAME):
         form_page.register_transaction(_make_tx())
 
     select_calls = [action for action in driver.actions if action[0] == "select_by_value"]

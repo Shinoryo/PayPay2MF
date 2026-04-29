@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from selenium.common.exceptions import (
@@ -49,6 +50,12 @@ _AMOUNT_INPUT_NOT_READY_MESSAGE = (
     "手入力フォームの金額入力欄が操作可能になりませんでした。"
     "フォーム切替の反映待ちに失敗した可能性があります。"
 )
+_ACCOUNT_NAME_SUFFIX_PATTERN = re.compile(r"\s*\([^()]*円\)\s*$")
+_ACCOUNT_AMBIGUOUS_MESSAGE = (
+    "口座 '{account_name}' に一致する MF 口座が複数見つかりました。"
+    "config.yml の mf_account を見直してください。候補: {candidates}"
+)
+_ACCOUNT_AVAILABLE_MESSAGE = "利用可能な口座候補: {candidates}"
 
 
 class MFManualFormPage:
@@ -161,17 +168,36 @@ class MFManualFormPage:
         account_select = Select(
             modal.find_element(By.CSS_SELECTOR, mf_selectors.ACCOUNT_SELECT)
         )
-        for option in account_select.options:
-            if option.text.strip() != self._mf_account:
-                continue
-            option_value = option.get_attribute("value")
-            if option_value is None:
-                continue
-            account_select.select_by_value(option_value)
-            return
+        normalized_target = self._normalize_account_name(self._mf_account)
+        matched_options = []
 
+        for option in account_select.options:
+            option_text = option.text.strip()
+            if self._normalize_account_name(option_text) != normalized_target:
+                continue
+            matched_options.append(option)
+
+        if len(matched_options) > 1:
+            msg = _ACCOUNT_AMBIGUOUS_MESSAGE.format(
+                account_name=self._mf_account,
+                candidates=", ".join(option.text.strip() for option in matched_options),
+            )
+            raise ValueError(msg)
+
+        if len(matched_options) == 1:
+            option_value = matched_options[0].get_attribute("value")
+            if option_value is not None:
+                account_select.select_by_value(option_value)
+                return
+
+        available_options = [option.text.strip() for option in account_select.options]
         msg = _ACCOUNT_NOT_FOUND_MESSAGE.format(account_name=self._mf_account)
+        if available_options:
+            msg = f"{msg} {_ACCOUNT_AVAILABLE_MESSAGE.format(candidates=', '.join(available_options))}"
         raise ValueError(msg)
+
+    def _normalize_account_name(self, account_name: str) -> str:
+        return _ACCOUNT_NAME_SUFFIX_PATTERN.sub(AppConstants.EMPTY_STRING, account_name.strip())
 
     def _select_category(self, modal: WebElement, category: str) -> None:
         large_name = self._category_map.get(category)
