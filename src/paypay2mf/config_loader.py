@@ -220,6 +220,15 @@ class _ConfigSections:
     advanced: dict
 
 
+@dataclass(frozen=True)
+class _YamlLoadMessages:
+    not_found: str
+    not_file: str
+    root_type: str
+    yaml_invalid: str
+    open_failed: str
+
+
 _PARSER_ENCODING_PRIORITY_MESSAGES = _StringListValidationMessages(
     list_type=_MSG_PARSER_ENCODING_PRIORITY_TYPE,
     empty_list=_MSG_PARSER_ENCODING_PRIORITY_EMPTY,
@@ -324,27 +333,16 @@ def load_config(path: Path) -> AppConfig:
         FileNotFoundError: 設定ファイルが存在しない場合。
         ValueError: 必須項目の欠落・型不正・パス検証エラーの場合。
     """
-    if not path.exists():
-        raise FileNotFoundError(_MSG_CONFIG_NOT_FOUND.format(path=path))
-    if not path.is_file():
-        raise ValueError(_MSG_CONFIG_NOT_FILE.format(path=path))
-
-    try:
-        with path.open(encoding=AppConstants.DEFAULT_TEXT_ENCODING) as f:
-            loaded = yaml.safe_load(f)
-    except yaml.YAMLError as exc:
-        raise ValueError(_MSG_CONFIG_YAML_INVALID.format(detail=str(exc))) from exc
-    except OSError as exc:
-        raise ValueError(
-            _MSG_CONFIG_OPEN_FAILED.format(path=path, detail=str(exc)),
-        ) from exc
-
-    if loaded is None:
-        raw: dict = {}
-    elif isinstance(loaded, dict):
-        raw = loaded
-    else:
-        raise ValueError(_MSG_CONFIG_ROOT_TYPE)
+    raw = _load_yaml_dict(
+        path,
+        messages=_YamlLoadMessages(
+            not_found=_MSG_CONFIG_NOT_FOUND,
+            not_file=_MSG_CONFIG_NOT_FILE,
+            root_type=_MSG_CONFIG_ROOT_TYPE,
+            yaml_invalid=_MSG_CONFIG_YAML_INVALID,
+            open_failed=_MSG_CONFIG_OPEN_FAILED,
+        ),
+    )
 
     sections = _load_optional_sections(raw)
 
@@ -370,6 +368,34 @@ def load_config(path: Path) -> AppConfig:
         config_dir=path.parent,
         sections=sections,
     )
+
+
+def _load_yaml_dict(
+    path: Path,
+    *,
+    messages: _YamlLoadMessages,
+) -> dict[str, object]:
+    """YAML ファイルを object ルートの辞書として読み込む。"""
+    if not path.exists():
+        raise FileNotFoundError(messages.not_found.format(path=path))
+    if not path.is_file():
+        raise ValueError(messages.not_file.format(path=path))
+
+    try:
+        with path.open(encoding=AppConstants.DEFAULT_TEXT_ENCODING) as file_obj:
+            loaded = yaml.safe_load(file_obj)
+    except yaml.YAMLError as exc:
+        raise ValueError(messages.yaml_invalid.format(detail=str(exc))) from exc
+    except OSError as exc:
+        raise ValueError(
+            messages.open_failed.format(path=path, detail=str(exc)),
+        ) from exc
+
+    if loaded is None:
+        return {}
+    if isinstance(loaded, dict):
+        return loaded
+    raise ValueError(messages.root_type)
 
 
 def _load_optional_sections(raw: dict) -> _ConfigSections:
@@ -767,11 +793,28 @@ def _validate_non_negative_int(
     errors: list[str],
 ) -> None:
     """非負整数の型と範囲を検証する。"""
+    try:
+        _ensure_non_negative_int(
+            value,
+            type_message=type_message,
+            range_message=range_message,
+        )
+    except (TypeError, ValueError) as exc:
+        errors.append(str(exc))
+
+
+def _ensure_non_negative_int(
+    value: object,
+    *,
+    type_message: str,
+    range_message: str,
+) -> int:
+    """非負整数であることを検証して値を返す。"""
     if isinstance(value, bool) or not isinstance(value, int):
-        errors.append(type_message)
-        return
+        raise TypeError(type_message)
     if value < 0:
-        errors.append(range_message.format(value=value))
+        raise ValueError(range_message.format(value=value))
+    return value
 
 
 def _validate_string_list(

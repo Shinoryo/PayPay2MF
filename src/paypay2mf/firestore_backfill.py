@@ -9,9 +9,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-import yaml
-
-from paypay2mf.config_loader import CONFIG_ENV_VAR, resolve_config_path
+from paypay2mf.config_loader import (
+    CONFIG_ENV_VAR,
+    _ensure_non_negative_int,
+    _get_optional_dict_section,
+    _load_yaml_dict,
+    _resolve_path,
+    _YamlLoadMessages,
+    resolve_config_path,
+)
 from paypay2mf.constants import AppConstants
 from paypay2mf.duplicate_detector import (
     DuplicateHistoryError,
@@ -123,13 +129,30 @@ def _load_gcloud_detector(config_path: Path) -> GCloudDuplicateDetector:
 
 
 def _load_backfill_config(config_path: Path) -> _BackfillDetectorConfig:
-    raw = _load_raw_config(config_path)
-    duplicate_detection_section = _get_duplicate_detection_section(raw)
-    _validate_backfill_backend(duplicate_detection_section)
+    raw = _load_yaml_dict(
+        config_path,
+        messages=_YamlLoadMessages(
+            not_found=_MSG_CONFIG_NOT_FOUND,
+            not_file=_MSG_CONFIG_NOT_FILE,
+            root_type=_MSG_CONFIG_ROOT_TYPE,
+            yaml_invalid=_MSG_CONFIG_YAML_INVALID,
+            open_failed=_MSG_CONFIG_OPEN_FAILED,
+        ),
+    )
     try:
-        tolerance = _get_tolerance_seconds(duplicate_detection_section)
+        duplicate_detection_section = _get_optional_dict_section(
+            raw,
+            _KEY_DUPLICATE_DETECTION,
+            _MSG_DUPLICATE_DETECTION_TYPE,
+        )
+        tolerance = _ensure_non_negative_int(
+            duplicate_detection_section.get(_KEY_DD_TOLERANCE_SECONDS, 60),
+            type_message=_MSG_DUPLICATE_TOLERANCE_TYPE,
+            range_message=_MSG_DUPLICATE_TOLERANCE_RANGE,
+        )
     except TypeError as exc:
         raise ValueError(str(exc)) from exc
+    _validate_backfill_backend(duplicate_detection_section)
     credentials_path = _resolve_gcloud_credentials_path(raw, config_path.parent)
 
     return _BackfillDetectorConfig(
@@ -141,38 +164,6 @@ def _load_backfill_config(config_path: Path) -> _BackfillDetectorConfig:
     )
 
 
-def _load_raw_config(config_path: Path) -> dict[str, object]:
-    if not config_path.exists():
-        raise FileNotFoundError(_MSG_CONFIG_NOT_FOUND.format(path=config_path))
-    if not config_path.is_file():
-        raise ValueError(_MSG_CONFIG_NOT_FILE.format(path=config_path))
-
-    try:
-        with config_path.open(encoding=AppConstants.DEFAULT_TEXT_ENCODING) as file_obj:
-            loaded = yaml.safe_load(file_obj)
-    except yaml.YAMLError as exc:
-        raise ValueError(_MSG_CONFIG_YAML_INVALID.format(detail=str(exc))) from exc
-    except OSError as exc:
-        raise ValueError(
-            _MSG_CONFIG_OPEN_FAILED.format(path=config_path, detail=str(exc)),
-        ) from exc
-
-    if loaded is None:
-        return {}
-    if isinstance(loaded, dict):
-        return loaded
-    raise ValueError(_MSG_CONFIG_ROOT_TYPE)
-
-
-def _get_duplicate_detection_section(raw: dict[str, object]) -> dict[str, object]:
-    duplicate_detection = raw.get(_KEY_DUPLICATE_DETECTION)
-    if duplicate_detection is None:
-        return {}
-    if isinstance(duplicate_detection, dict):
-        return duplicate_detection
-    raise ValueError(_MSG_DUPLICATE_DETECTION_TYPE)
-
-
 def _validate_backfill_backend(duplicate_detection_section: dict[str, object]) -> None:
     backend = duplicate_detection_section.get(
         _KEY_DD_BACKEND,
@@ -180,15 +171,6 @@ def _validate_backfill_backend(duplicate_detection_section: dict[str, object]) -
     )
     if backend != AppConstants.BACKEND_GCLOUD:
         raise ValueError(_MSG_BACKEND_REQUIRED)
-
-
-def _get_tolerance_seconds(duplicate_detection_section: dict[str, object]) -> int:
-    tolerance = duplicate_detection_section.get(_KEY_DD_TOLERANCE_SECONDS, 60)
-    if isinstance(tolerance, bool) or not isinstance(tolerance, int):
-        raise TypeError(_MSG_DUPLICATE_TOLERANCE_TYPE)
-    if tolerance < 0:
-        raise ValueError(_MSG_DUPLICATE_TOLERANCE_RANGE.format(value=tolerance))
-    return tolerance
 
 
 def _resolve_gcloud_credentials_path(
@@ -205,13 +187,6 @@ def _resolve_gcloud_credentials_path(
     if not credentials_path.is_file():
         raise ValueError(_MSG_GCLOUD_CREDS_NOT_FILE.format(path=credentials_path))
     return credentials_path
-
-
-def _resolve_path(raw_value: str, config_dir: Path) -> Path:
-    candidate = Path(raw_value)
-    if candidate.is_absolute():
-        return candidate
-    return config_dir / candidate
 
 
 def backfill_date_buckets(

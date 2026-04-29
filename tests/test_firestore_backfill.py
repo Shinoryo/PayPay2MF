@@ -302,6 +302,46 @@ def test_load_backfill_config_rejects_config_directory(tmp_path: Path) -> None:
         load_backfill_config(config_dir)
 
 
+def test_load_backfill_config_rejects_invalid_yaml_syntax(tmp_path: Path) -> None:
+    """backfill 設定の YAML 構文エラーは ValueError に正規化される。"""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text("duplicate_detection: [\n", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+    load_backfill_config = firestore_backfill._load_backfill_config  # noqa: SLF001
+
+    with pytest.raises(ValueError, match=r"YAML 構文"):
+        load_backfill_config(config_path)
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "message"),
+    [
+        pytest.param("sixty", "整数を指定してください", id="string"),
+        pytest.param(True, "整数を指定してください", id="bool"),
+        pytest.param(-1, "0 以上の整数", id="negative"),
+    ],
+)
+def test_load_backfill_config_validates_tolerance_seconds(
+    tmp_path: Path,
+    raw_value: object,
+    message: str,
+) -> None:
+    """backfill 設定でも tolerance_seconds の型と範囲を検証する。"""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        (
+            "duplicate_detection:\n"
+            "  backend: 'gcloud'\n"
+            f"  tolerance_seconds: {raw_value!r}\n"
+            "gcloud_credentials_path: 'service-account.json'"
+        ),
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
+    load_backfill_config = firestore_backfill._load_backfill_config  # noqa: SLF001
+
+    with pytest.raises(ValueError, match=message):
+        load_backfill_config(config_path)
+
+
 def test_main_uses_cli_config_path_before_env_and_cwd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

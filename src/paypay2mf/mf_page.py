@@ -9,9 +9,11 @@ from typing import TYPE_CHECKING
 from selenium.common.exceptions import (
     ElementClickInterceptedException,
     ElementNotInteractableException,
+    JavascriptException,
     NoSuchElementException,
     StaleElementReferenceException,
     TimeoutException,
+    WebDriverException,
 )
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
@@ -62,6 +64,7 @@ _ACCOUNT_AMBIGUOUS_MESSAGE = (
     "config.yml の mf_account を見直してください。候補: {candidates}"
 )
 _ACCOUNT_AVAILABLE_MESSAGE = "利用可能な口座候補: {candidates}"
+_MODAL_CLOSE_SKIPPED_DEBUG = "既存モーダルのクリーンアップをスキップしました: %s"
 
 
 class MFManualFormPage:
@@ -296,7 +299,11 @@ class MFManualFormPage:
     def _blur_element(self, element: WebElement) -> None:
         execute_script = getattr(self._driver, "execute_script", None)
         if execute_script is not None:
-            with suppress(Exception):
+            with suppress(
+                JavascriptException,
+                WebDriverException,
+                StaleElementReferenceException,
+            ):
                 execute_script(
                     """
                     arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
@@ -311,7 +318,11 @@ class MFManualFormPage:
     def _click_element(self, element: WebElement) -> None:
         execute_script = getattr(self._driver, "execute_script", None)
         if execute_script is not None:
-            with suppress(Exception):
+            with suppress(
+                JavascriptException,
+                WebDriverException,
+                StaleElementReferenceException,
+            ):
                 execute_script(
                     "arguments[0].scrollIntoView({block: 'center', inline: 'center'});",
                     element,
@@ -341,7 +352,14 @@ class MFManualFormPage:
             self._wait(mf_selectors.MODAL_TIMEOUT_MS).until(
                 lambda _driver: not self._is_modal_visible(),
             )
-        except Exception:
+        except (
+            ElementClickInterceptedException,
+            NoSuchElementException,
+            StaleElementReferenceException,
+            TimeoutException,
+            TimeoutError,
+        ) as exc:
+            self._logger.debug(_MODAL_CLOSE_SKIPPED_DEBUG, str(exc))
             return
 
     def _is_modal_visible(self) -> bool:
@@ -390,7 +408,11 @@ class MFManualFormPage:
                     element,
                 )
             )
-        except Exception:
+        except (
+            JavascriptException,
+            WebDriverException,
+            StaleElementReferenceException,
+        ):
             return True
 
     def _find_optional(self, by: str, value: str) -> WebElement | None:

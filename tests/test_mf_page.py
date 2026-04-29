@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Never
 from unittest.mock import Mock
 
 import pytest
 from selenium.common.exceptions import (
+    ElementClickInterceptedException,
     ElementNotInteractableException,
+    JavascriptException,
     NoSuchElementException,
+    StaleElementReferenceException,
+    TimeoutException,
+    WebDriverException,
 )
 from selenium.webdriver.common.by import By
 
@@ -177,6 +182,7 @@ class _FakeDriver:
         self._registry: dict[tuple[str, str], list[_FakeElement]] = {}
         self.wait_failure: Exception | None = None
         self.on_wait_poll = None
+        self.execute_script_errors: dict[str, Exception] = {}
 
     def register(
         self,
@@ -206,9 +212,29 @@ class _FakeDriver:
         return list(self._registry.get((by, value), []))
 
     def execute_script(self, _script: str, element: _FakeElement) -> bool:
+        if "dispatchEvent" in _script:
+            error = self.execute_script_errors.get("blur")
+            if error is not None:
+                raise error
+            self.record_action("execute_script", "blur", element.selector)
+            return True
+        if "scrollIntoView" in _script:
+            error = self.execute_script_errors.get("scroll")
+            if error is not None:
+                raise error
+            self.record_action("execute_script", "scroll", element.selector)
+            return True
         if ".click();" in _script:
+            error = self.execute_script_errors.get("click")
+            if error is not None:
+                raise error
             element.click()
             return True
+        if "elementFromPoint" in _script:
+            error = self.execute_script_errors.get("unobscured")
+            if error is not None:
+                raise error
+            return element.is_interactable()
         return element.is_interactable()
 
 
@@ -464,6 +490,126 @@ def test_open_manual_form_closes_existing_modal_before_reopening() -> None:
     assert returned_modal is modal
     assert ("click", mf_selectors.CLOSE_BUTTON) in driver.actions
     assert ("click", mf_selectors.OPEN_MANUAL_FORM_BUTTON) in driver.actions
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        pytest.param(JavascriptException("js failed"), id="javascript"),
+        pytest.param(WebDriverException("webdriver failed"), id="webdriver"),
+        pytest.param(StaleElementReferenceException("stale"), id="stale"),
+    ],
+)
+def test_blur_element_falls_back_to_tab_when_js_blur_fails(exc: Exception) -> None:
+    driver = _make_driver()
+    driver.execute_script_errors["blur"] = exc
+    form_page = MFManualFormPage(
+        driver,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+    date_input = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL).find_element(
+        By.CSS_SELECTOR,
+        mf_selectors.DATE_INPUT,
+    )
+
+    form_page._blur_element(date_input)  # noqa: SLF001
+
+    assert ("send_keys", mf_selectors.DATE_INPUT, mf_page_module.Keys.TAB) in driver.actions
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        pytest.param(JavascriptException("js failed"), id="javascript"),
+        pytest.param(WebDriverException("webdriver failed"), id="webdriver"),
+        pytest.param(StaleElementReferenceException("stale"), id="stale"),
+    ],
+)
+def test_click_element_continues_when_scroll_script_fails(exc: Exception) -> None:
+    driver = _make_driver()
+    driver.execute_script_errors["scroll"] = exc
+    form_page = MFManualFormPage(
+        driver,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+    open_button = driver.find_element(By.CSS_SELECTOR, mf_selectors.OPEN_MANUAL_FORM_BUTTON)
+
+    form_page._click_element(open_button)  # noqa: SLF001
+
+    assert ("click", mf_selectors.OPEN_MANUAL_FORM_BUTTON) in driver.actions
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        pytest.param(JavascriptException("js failed"), id="javascript"),
+        pytest.param(WebDriverException("webdriver failed"), id="webdriver"),
+        pytest.param(StaleElementReferenceException("stale"), id="stale"),
+    ],
+)
+def test_is_element_unobscured_returns_true_when_probe_fails(exc: Exception) -> None:
+    driver = _make_driver()
+    driver.execute_script_errors["unobscured"] = exc
+    form_page = MFManualFormPage(
+        driver,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+    amount_input = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL).find_element(
+        By.CSS_SELECTOR,
+        mf_selectors.AMOUNT_INPUT,
+    )
+
+    assert form_page._is_element_unobscured(amount_input) is True  # noqa: SLF001
+
+
+def test_close_existing_modal_tolerates_click_intercepted_exception() -> None:
+    driver = _make_driver()
+    logger = Mock()
+    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+    modal.set_displayed(displayed=True)
+    form_page = MFManualFormPage(
+        driver,
+        logger,
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+    form_page._click_element = Mock(  # noqa: SLF001
+        side_effect=ElementClickInterceptedException("blocked")
+    )
+
+    form_page._close_existing_modal_if_present()  # noqa: SLF001
+
+    logger.debug.assert_called_once()
+
+
+def test_close_existing_modal_tolerates_timeout_exception() -> None:
+    driver = _make_driver()
+    logger = Mock()
+    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+    modal.set_displayed(displayed=True)
+    form_page = MFManualFormPage(
+        driver,
+        logger,
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    class _TimeoutWait:
+        def until(self, _condition) -> Never:
+            message = "timeout"
+            raise TimeoutException(message)
+
+    form_page._wait = Mock(return_value=_TimeoutWait())  # noqa: SLF001
+
+    form_page._close_existing_modal_if_present()  # noqa: SLF001
+
+    logger.debug.assert_called_once()
 
 
 def test_register_transaction_commits_date_after_other_fields() -> None:
