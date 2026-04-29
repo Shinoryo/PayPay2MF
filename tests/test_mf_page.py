@@ -337,7 +337,8 @@ def test_register_transaction_uses_selector_contract() -> None:
     assert ("click", mf_selectors.OPEN_MANUAL_FORM_BUTTON) in driver.actions
     assert ("clear", mf_selectors.DATE_INPUT) in driver.actions
     assert ("send_keys", mf_selectors.DATE_INPUT, _DATE_INPUT_VALUE) in driver.actions
-    assert ("send_keys", mf_selectors.DATE_INPUT, mf_page_module.Keys.ESCAPE) in driver.actions
+    assert ("send_keys", mf_selectors.DATE_INPUT, mf_page_module.Keys.TAB) in driver.actions
+    assert ("send_keys", mf_selectors.DATE_INPUT, mf_page_module.Keys.ESCAPE) not in driver.actions
     assert ("clear", mf_selectors.AMOUNT_INPUT) in driver.actions
     assert ("send_keys", mf_selectors.AMOUNT_INPUT, _AMOUNT_INPUT_VALUE) in driver.actions
     assert (
@@ -380,7 +381,7 @@ def test_register_transaction_refetches_amount_input_after_date_input() -> None:
     date_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.DATE_INPUT)
 
     def _swap_amount_input(value: str) -> None:
-        if value != mf_page_module.Keys.ESCAPE:
+        if value != mf_page_module.Keys.TAB:
             return
         amount_input.set_interactable(False)
         modal._children[(By.CSS_SELECTOR, mf_selectors.AMOUNT_INPUT)] = [replacement_amount_input]
@@ -398,6 +399,33 @@ def test_register_transaction_refetches_amount_input_after_date_input() -> None:
 
     assert ("clear", "replacement-amount-input") in driver.actions
     assert ("send_keys", "replacement-amount-input", _AMOUNT_INPUT_VALUE) in driver.actions
+
+
+def test_register_transaction_avoids_escape_that_closes_modal_after_date_input() -> None:
+    driver = _make_driver()
+    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+    amount_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.AMOUNT_INPUT)
+    date_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.DATE_INPUT)
+
+    def _close_modal_on_escape(value: str) -> None:
+        if value != mf_page_module.Keys.ESCAPE:
+            return
+        modal.set_displayed(False)
+        amount_input.set_displayed(False)
+
+    date_input._on_send_keys = _close_modal_on_escape
+    form_page = MFManualFormPage(
+        driver,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    form_page.register_transaction(_make_tx())
+
+    assert ("send_keys", mf_selectors.DATE_INPUT, mf_page_module.Keys.TAB) in driver.actions
+    assert ("send_keys", mf_selectors.DATE_INPUT, mf_page_module.Keys.ESCAPE) not in driver.actions
+    assert ("clear", mf_selectors.AMOUNT_INPUT) in driver.actions
 
 
 def test_register_transaction_raises_when_amount_input_never_becomes_interactable() -> None:

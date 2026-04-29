@@ -106,11 +106,7 @@ class MFManualFormPage:
         self._wait_for_amount_input(modal)
 
         date_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.DATE_INPUT)
-        date_input.clear()
-        date_input.send_keys(tx.date.strftime(AppConstants.FORM_DATE_FORMAT))
-        date_input.send_keys(Keys.ESCAPE)
-
-        amount_input = self._wait_for_amount_input(modal)
+        amount_input = self._commit_date_input(modal, date_input, tx.date.strftime(AppConstants.FORM_DATE_FORMAT))
         try:
             amount_input.clear()
             amount_input.send_keys(str(tx.amount))
@@ -201,6 +197,17 @@ class MFManualFormPage:
             ignored_exceptions=(NoSuchElementException, StaleElementReferenceException),
         )
 
+    def _commit_date_input(
+        self,
+        modal: WebElement,
+        date_input: WebElement,
+        date_value: str,
+    ) -> WebElement:
+        date_input.clear()
+        date_input.send_keys(date_value)
+        date_input.send_keys(Keys.TAB)
+        return self._wait_for_amount_input(modal)
+
     def _wait_for_amount_input(self, modal: WebElement) -> WebElement:
         try:
             return self._wait(mf_selectors.MODAL_TIMEOUT_MS).until(
@@ -210,6 +217,9 @@ class MFManualFormPage:
             raise RuntimeError(_AMOUNT_INPUT_NOT_READY_MESSAGE) from exc
 
     def _find_interactable_amount_input(self, modal: WebElement) -> WebElement | bool:
+        if not modal.is_displayed():
+            return False
+
         for element in modal.find_elements(By.CSS_SELECTOR, mf_selectors.AMOUNT_INPUT):
             if not element.is_displayed() or not element.is_enabled():
                 continue
