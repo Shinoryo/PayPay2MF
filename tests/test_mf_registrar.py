@@ -69,20 +69,25 @@ def test_register_does_not_save_screenshot_when_opted_out(
     transaction_factory,
 ) -> None:
     """TC-08-01: screenshot_on_error=False では例外時も PNG を保存しないことを確認する。"""
+    logs_dir = tmp_path / "logs"
+    fake_driver = _FakeDriver()
     registrar = MFRegistrar(
         app_config_factory(
             tmp_path,
             screenshot_on_error=False,
+            logs_dir=logs_dir,
             input_csv_name="dummy.csv",
         ),
         logging.getLogger(_LOGGER_NAME_OPTOUT),
     )
+    object.__setattr__(registrar, "_driver", fake_driver)
     object.__setattr__(registrar, "_manual_form_page", _FailingManualFormPage())
 
     with pytest.raises(RuntimeError, match=_SELECTOR_TIMEOUT_MESSAGE):
         registrar.register(transaction_factory(merchant=_DEFAULT_MERCHANT))
 
-    assert registrar._take_screenshot() is None
+    assert fake_driver.screenshot_paths == []
+    assert not logs_dir.exists()
 
 
 def test_register_saves_redacted_screenshot_name_when_opted_in(
