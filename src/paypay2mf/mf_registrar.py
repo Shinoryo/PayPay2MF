@@ -31,9 +31,7 @@ if TYPE_CHECKING:
 
 
 _LOG_MSG_CHROME_STARTED = "Chrome を起動しました"
-_LOG_MSG_WAITING_FOR_LOGIN = (
-    "Money Forward のトップページを開きました。ログイン後に Enter を押してください。"
-)
+_LOG_MSG_WAITING_FOR_LOGIN = "Money Forward のトップページを開きました。"
 _LOG_MSG_MF_PAGE_OPENED = "MF ページへ遷移しました"
 _LOG_MSG_SCREENSHOT_SAVED = "スクリーンショットを保存しました: %s"
 _LOG_MSG_SCREENSHOT_SKIPPED = (
