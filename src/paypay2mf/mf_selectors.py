@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-TOP_PAGE_URL = "https://moneyforward.com/"
+SIGN_IN_PAGE_URL = "https://moneyforward.com/sign_in"
 MANUAL_FORM_URL = "https://moneyforward.com/cf"
 
 HOUSEHOLD_BOOK_TAB_CSS = 'a[href="/cf"], a[href="https://moneyforward.com/cf"]'
