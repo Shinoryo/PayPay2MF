@@ -242,7 +242,6 @@ mf_account: "PayPay残高"
 ```text
 2026-03-28 10:05:00 [WARNING] logs_dir 配下のログ、CSV、PNG は機微情報を含む可能性があります。ローカル保管とし、共有やクラウド同期を避けてください。
 2026-03-28 10:05:00 [INFO] config.yml を読み込みました
-2026-03-28 10:05:00 [INFO] Chrome 稼働チェック: 停止済み
 2026-03-28 10:05:01 [INFO] CSV 読み込み完了: 正常 5件 / 解析失敗 0件
 2026-03-28 10:05:01 [INFO] 除外: 1件
 2026-03-28 10:05:01 [INFO] 重複スキップ: 0件
@@ -270,16 +269,15 @@ mf_account: "PayPay残高"
 | 6 | INFO | `重複スキップ: {skipped}件` |
 | 7 | INFO | `処理対象: {count}件` |
 | 8 | INFO | `ドライラン完了: 登録対象 {count}件` |
-| 9 | INFO | `Chrome 稼働チェック: {status}` |
-| 10 | INFO | `Chrome を起動しました` |
-| 11 | INFO | `MF ページへ遷移しました` |
-| 12 | ERROR | `登録失敗 ({index}/{total}): {error_message}` |
-| 13 | WARNING | `解析エラーCSVを出力しました: {filename}` |
-| 14 | WARNING | `登録失敗CSVを出力しました: {filename}` |
-| 15 | WARNING | `スクリーンショットを保存しました: {filename}` |
-| 16 | WARNING | `Playwright page が未初期化のため、スクリーンショットを保存しませんでした。` |
-| 17 | INFO | `実行完了: 成功 {success}件 / 除外 {excluded}件 / 重複スキップ {skipped}件 / 失敗 {failed}件` |
-| 18 | INFO | `アプリケーションを終了します` |
+| 9 | INFO | `Chrome を起動しました` |
+| 10 | INFO | `MF ページへ遷移しました` |
+| 11 | ERROR | `登録失敗 ({index}/{total}): {error_message}` |
+| 12 | WARNING | `解析エラーCSVを出力しました: {filename}` |
+| 13 | WARNING | `登録失敗CSVを出力しました: {filename}` |
+| 14 | WARNING | `スクリーンショットを保存しました: {filename}` |
+| 15 | WARNING | `Selenium driver が未初期化のため、スクリーンショットを保存しませんでした。` |
+| 16 | INFO | `実行完了: 成功 {success}件 / 除外 {excluded}件 / 重複スキップ {skipped}件 / 失敗 {failed}件` |
+| 17 | INFO | `アプリケーションを終了します` |
 
 ### 解析エラーCSVファイル
 
@@ -303,44 +301,41 @@ mf_account: "PayPay残高"
 | ---- | ---- |
 | ファイル名 | `screenshot_yyyyMMdd_HHmmss.png` |
 | 配置場所 | `log_settings.logs_dir` |
-| 出力条件 | `advanced.screenshot_on_error: true` を明示し、Playwright page が利用可能な状態でエラーが発生した場合 |
+| 出力条件 | `advanced.screenshot_on_error: true` を明示し、Selenium driver が利用可能な状態でエラーが発生した場合 |
 
-> 注意: コンテキスト外誤用などで Playwright page が未初期化の場合、保存済みログは出力されず、スクリーンショットも保存されません。
+> 注意: コンテキスト外誤用などで Selenium driver が未初期化の場合、保存済みログは出力されず、スクリーンショットも保存されません。
 > 注意: 保存物の全体像と運用上の注意は、上部の「注意制限事項」を参照してください。
 
 ## 処理詳細
 
 1. `config.yml` を読み込み、必須項目のバリデーションを行う。
-2. Chrome プロセス稼働チェック（`dry_run: false` の場合のみ）。
-  `chrome_user_data_dir` / `chrome_profile` の存在検証も本番実行時のみ行う。
-3. `input_csv` を文字コード自動判定で読み込む。
-4. 各行をパースし、不正行は `parse_error_*.csv` に記録したうえで、正常行だけに除外ルール・重複検知を適用する。
-5. `dry_run: true` の場合は件数サマリーを出力して終了する（ブラウザ不使用）。
+2. `input_csv` を文字コード自動判定で読み込む。
+3. 各行をパースし、不正行は `parse_error_*.csv` に記録したうえで、正常行だけに除外ルール・重複検知を適用する。
+4. `dry_run: true` の場合は件数サマリーを出力して終了する（ブラウザ不使用）。
   重複履歴の JSON / Firestore は更新しない。
-6. `dry_run: false` の場合は Playwright で Chrome を起動し、MF の手入力フォームに1件ずつ登録する。
+5. `dry_run: false` の場合は Selenium が一時プロファイルで Chrome を起動し、Money Forward トップページを開く。
+6. ユーザーが起動した Chrome 上で手動ログインして Enter を押すと、家計簿タブを経由して `/cf` に遷移し、MF の手入力フォームに1件ずつ登録する。
 7. 実行結果（成功件数・除外件数・重複スキップ件数・失敗件数・解析失敗件数）をログと各種 CSV に出力する。
 
 ```mermaid
 flowchart TD
-    A[config.yml を読み込みバリデーション] --> B{dry_run?}
-    B -->|false| C[Chrome 稼働チェック]
-    C -->|稼働中| D[中断: Chrome を終了するよう通知]
-    C -->|停止済み| E[input_csv を読み込み]
-    B -->|true| E
-    E --> F[CSV 解析・金額の数値化・複合支払いの合算]
-    F --> G[除外ルール適用]
-    G --> H[重複検知]
-    H --> I{dry_run?}
-    I -->|true| J[件数サマリーを標準出力・ログ出力して終了]
-    I -->|false| K[Chrome 起動 / MF ページへ遷移]
-    K --> L[取引1件を手入力フォームに入力・登録]
-    L --> M{エラー発生?}
-    M -->|あり| N[スクリーンショット保存 / エラーCSV記録]
-    N --> O{次の取引?}
-    M -->|なし| O
-    O -->|ある| L
-    O -->|なし| P[実行サマリーをログ出力]
-    P --> Q[アプリケーション終了]
+    A[config.yml を読み込みバリデーション] --> B[input_csv を読み込み]
+    B --> C[CSV 解析・金額の数値化・複合支払いの合算]
+    C --> D[除外ルール適用]
+    D --> E[重複検知]
+    E --> F{dry_run?}
+    F -->|true| G[件数サマリーを標準出力・ログ出力して終了\n重複履歴は更新しない]
+    F -->|false| H[Selenium が一時プロファイルで Chrome を起動]
+    H --> I[ユーザーが手動ログインして Enter]
+    I --> J[家計簿タブ経由で /cf へ遷移]
+    J --> K[取引1件を手入力フォームに入力・登録]
+    K --> L{エラー発生?}
+    L -->|あり| M[スクリーンショット保存 / エラーCSV記録]
+    M --> N{次の取引?}
+    L -->|なし| N
+    N -->|ある| K
+    N -->|なし| O[実行サマリーをログ出力]
+    O --> P[アプリケーション終了]
 ```
 
 ## Google Cloud Firestore バックエンドの設定（任意）
@@ -457,9 +452,8 @@ backfill は `duplicate_detection.backend: "gcloud"` の設定を前提に、
 
 | ライブラリ名 | バージョン | ライセンス |
 | ---- | ---- | ---- |
-| playwright | 1.58.0 | Apache-2.0 |
-| psutil | 7.2.2 | BSD-3-Clause |
-| PyYAML | 6.0.3 | MIT |
+| selenium | 4.30 以上 | Apache-2.0 |
+| PyYAML | 6.0 以上 | MIT |
 | google-cloud-firestore | 任意 | Apache License 2.0 |
 
 ## 開発詳細
@@ -502,9 +496,12 @@ backfill は `duplicate_detection.backend: "gcloud"` の設定を前提に、
 中項目名から大項目名への対応を定義してください。
 指定時は完全置換になるため、必要な中項目をサンプルから削らずに調整してください。
 
-### Playwright スモークテスト
+### Selenium スモークテスト
 
-Money Forward 実サイトに対するスモークテストは通常の `pytest` には含めません。ログイン済み Chrome プロファイルを用意し、必要な環境変数を設定したうえで明示実行してください。
+Money Forward 実サイトに対するスモークテストは通常の `pytest` には含めません。
+必要な環境変数を設定して明示実行すると、Selenium が一時プロファイルで
+Chrome を起動します。起動したブラウザで Money Forward に手動ログインし、
+Enter を押して続行してください。
 標準の `python -m pytest -q` では `smoke_test` マーカー付きテストは skip されます。
 Money Forward の DOM 変更調査時や、しばらくメンテナンスしていない環境では本体実行前にこの smoke test を再実行してください。
 
@@ -512,8 +509,6 @@ PowerShell 例:
 
 ```powershell
 $env:PAYPAY2MF_RUN_SMOKE_TEST = "1"
-$env:PAYPAY2MF_SMOKE_CHROME_USER_DATA_DIR = "<Chrome User Data Dir>"
-$env:PAYPAY2MF_SMOKE_CHROME_PROFILE = "<Chrome Profile>"
 $env:PAYPAY2MF_SMOKE_MF_ACCOUNT = "<MF Account Name>"
 # 任意: スモークテストの出力先を固定したい場合のみ設定
 $env:PAYPAY2MF_SMOKE_LOGS_DIR = "<Optional Smoke Logs Dir>"
