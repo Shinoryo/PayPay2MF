@@ -100,7 +100,7 @@ class MFRegistrar:
             self._manual_form_page = self._build_manual_form_page()
             self._manual_form_page.open()
             self._logger.info(_LOG_MSG_MF_PAGE_OPENED)
-        except Exception:
+        except BaseException:
             self._close()
             raise
 
