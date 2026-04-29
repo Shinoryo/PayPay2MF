@@ -372,3 +372,135 @@ def test_merge_compound_does_not_collide_with_real_transaction_id() -> None:
     assert result[0][1]["取引先"] == "AAA"
     assert result[1][1]["出金金額（円）"] == "200"
     assert result[1][1]["取引先"] == "BBB"
+
+
+def test_merge_compound_sums_three_rows_for_same_transaction_id() -> None:
+    """同一 transaction_id の3行以上も出金・入金を独立に合算する。"""
+    rows = [
+        (
+            2,
+            {
+                "取引番号": "TX-COMPOUND",
+                "出金金額（円）": "100",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "AAA",
+            },
+        ),
+        (
+            3,
+            {
+                "取引番号": "TX-COMPOUND",
+                "出金金額（円）": "200",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "BBB",
+            },
+        ),
+        (
+            4,
+            {
+                "取引番号": "TX-COMPOUND",
+                "出金金額（円）": AppConstants.HYPHEN,
+                "入金金額（円）": "30",
+                "取引先": "CCC",
+            },
+        ),
+    ]
+
+    result = _merge_compound(rows)
+
+    assert len(result) == 1
+    assert result[0][1]["出金金額（円）"] == "300"
+    assert result[0][1]["入金金額（円）"] == "30"
+
+
+def test_merge_compound_preserves_first_row_metadata_and_row_index() -> None:
+    """複合支払では金額以外のメタデータと行番号は最初の行を保持する。"""
+    rows = [
+        (
+            10,
+            {
+                "取引番号": "TX-FIRST",
+                "取引日": "2025/02/10 12:00:00",
+                "出金金額（円）": "70",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "最初の加盟店",
+                "取引方法": "PayPayポイント",
+            },
+        ),
+        (
+            11,
+            {
+                "取引番号": "TX-FIRST",
+                "取引日": "2025/02/10 12:01:00",
+                "出金金額（円）": "30",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "後続の加盟店",
+                "取引方法": "クレジット VISA 4575",
+            },
+        ),
+    ]
+
+    result = _merge_compound(rows)
+
+    assert len(result) == 1
+    assert result[0][0] == 10
+    assert result[0][1]["取引日"] == "2025/02/10 12:00:00"
+    assert result[0][1]["取引先"] == "最初の加盟店"
+    assert result[0][1]["取引方法"] == "PayPayポイント"
+    assert result[0][1]["出金金額（円）"] == "100"
+
+
+def test_merge_compound_keeps_group_order_with_no_id_rows_between_groups() -> None:
+    """複合支払と取引番号なし行が混在しても元のグループ順序を維持する。"""
+    rows = [
+        (
+            2,
+            {
+                "取引番号": "TX-A",
+                "出金金額（円）": "10",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "A-1",
+            },
+        ),
+        (
+            3,
+            {
+                "取引番号": "",
+                "出金金額（円）": "20",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "NO-ID",
+            },
+        ),
+        (
+            4,
+            {
+                "取引番号": "TX-B",
+                "出金金額（円）": "30",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "B-1",
+            },
+        ),
+        (
+            5,
+            {
+                "取引番号": "TX-A",
+                "出金金額（円）": "40",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "A-2",
+            },
+        ),
+        (
+            6,
+            {
+                "取引番号": "TX-B",
+                "出金金額（円）": "50",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "B-2",
+            },
+        ),
+    ]
+
+    result = _merge_compound(rows)
+
+    assert [row[1]["取引先"] for row in result] == ["A-1", "NO-ID", "B-1"]
+    assert [row[1]["出金金額（円）"] for row in result] == ["50", "20", "80"]

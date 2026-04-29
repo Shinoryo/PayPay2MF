@@ -191,14 +191,25 @@ def _parse_amount(s: str | None) -> int:
 def _merge_compound(rows: list[CsvRow]) -> list[CsvRow]:
     """同一取引番号を持つ複数行を1行に集約する。
 
-    同じ取引番号の行は金額を合算し、最初の行の他フィールドを保持する。
-    取引番号が空の行はそのまま通過させる。
+        PayPay CSV の複合支払は、同じ取引番号を持つ複数行として現れる。
+        本関数はそれらを1行へ正規化し、後段の Transaction 変換と
+        重複検知が1件単位で扱えるようにする。
+
+        集約時のルールは以下の通り。
+
+        - 出金金額と入金金額は、それぞれ独立に合算する。
+        - 行番号と金額以外のメタデータは最初の行を保持する。
+            後続行の取引日時、取引方法、利用者などは上書きしない。
+        - 取引番号が空の行は独立行としてそのまま保持する。
+        - 取引番号欠損行の内部キーには tuple を使い、実在する文字列の
+            transaction_id と衝突しないようにする。
 
     Args:
         rows: CSV の行辞書のリスト。
 
     Returns:
-        集約後の行番号付き行辞書のリスト。
+                集約後の行番号付き行辞書のリスト。複合支払が存在する場合、
+                対応する要素の row_index は最初の行の値を維持する。
     """
     seen: dict[object, CsvRow] = {}
     order: list[object] = []
@@ -213,7 +224,7 @@ def _merge_compound(rows: list[CsvRow]) -> list[CsvRow]:
             continue
 
         if tid in seen:
-            # 複合支払: 出金・入金それぞれ合算
+            # 複合支払: 金額だけを合算し、最初の行のメタデータを残す。
             _, existing = seen[tid]
             existing[_COL_OUT_AMOUNT] = str(
                 _parse_amount(existing[_COL_OUT_AMOUNT])
