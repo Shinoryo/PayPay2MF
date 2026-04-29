@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from selenium.common.exceptions import (
@@ -15,7 +16,7 @@ from selenium.common.exceptions import (
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -88,7 +89,7 @@ class MFManualFormPage:
         """入出金ページへ遷移し、手入力ボタンの表示を確認する。"""
         self._driver.get(mf_selectors.MANUAL_FORM_URL)
         self._wait(mf_selectors.NAVIGATION_TIMEOUT_MS).until(
-            EC.presence_of_element_located(
+            expected_conditions.presence_of_element_located(
                 (By.CSS_SELECTOR, mf_selectors.OPEN_MANUAL_FORM_BUTTON),
             )
         )
@@ -97,13 +98,13 @@ class MFManualFormPage:
         """手入力モーダルを開き、表示完了を待つ。"""
         self._close_existing_modal_if_present()
         open_button = self._wait(mf_selectors.NAVIGATION_TIMEOUT_MS).until(
-            EC.presence_of_element_located(
+            expected_conditions.presence_of_element_located(
                 (By.CSS_SELECTOR, mf_selectors.OPEN_MANUAL_FORM_BUTTON),
             )
         )
         self._click_element(open_button)
         return self._wait(mf_selectors.MODAL_TIMEOUT_MS).until(
-            EC.visibility_of_element_located(
+            expected_conditions.visibility_of_element_located(
                 (By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL),
             )
         )
@@ -238,11 +239,18 @@ class MFManualFormPage:
         available_options = [option.text.strip() for option in account_select.options]
         msg = _ACCOUNT_NOT_FOUND_MESSAGE.format(account_name=self._mf_account)
         if available_options:
-            msg = f"{msg} {_ACCOUNT_AVAILABLE_MESSAGE.format(candidates=', '.join(available_options))}"
+            candidates_text = ", ".join(available_options)
+            msg = (
+                f"{msg} {_ACCOUNT_AVAILABLE_MESSAGE.format(candidates=candidates_text)}"
+            )
         raise ValueError(msg)
 
     def _normalize_account_name(self, account_name: str) -> str:
-        return _ACCOUNT_NAME_SUFFIX_PATTERN.sub(AppConstants.EMPTY_STRING, account_name.strip())
+        normalized = account_name.strip()
+        return _ACCOUNT_NAME_SUFFIX_PATTERN.sub(
+            AppConstants.EMPTY_STRING,
+            normalized,
+        )
 
     def _select_category(self, modal: WebElement, category: str) -> None:
         large_name = self._category_map.get(category)
@@ -288,7 +296,7 @@ class MFManualFormPage:
     def _blur_element(self, element: WebElement) -> None:
         execute_script = getattr(self._driver, "execute_script", None)
         if execute_script is not None:
-            try:
+            with suppress(Exception):
                 execute_script(
                     """
                     arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
@@ -297,21 +305,17 @@ class MFManualFormPage:
                     element,
                 )
                 return
-            except Exception:
-                pass
 
         element.send_keys(Keys.TAB)
 
     def _click_element(self, element: WebElement) -> None:
         execute_script = getattr(self._driver, "execute_script", None)
         if execute_script is not None:
-            try:
+            with suppress(Exception):
                 execute_script(
                     "arguments[0].scrollIntoView({block: 'center', inline: 'center'});",
                     element,
                 )
-            except Exception:
-                pass
 
         try:
             element.click()

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Self
 
 from selenium.webdriver import Chrome, ChromeOptions
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
 
 from paypay2mf import mf_selectors
@@ -180,21 +180,26 @@ class MFRegistrar:
         input("Money Forward へログインしたら Enter を押してください: ")
 
     def _open_household_book_tab(self) -> None:
-        driver = self._ensure_driver()
         tab = self._wait(mf_selectors.NAVIGATION_TIMEOUT_MS).until(
             self._find_household_book_tab,
         )
         tab.click()
         self._wait(mf_selectors.NAVIGATION_TIMEOUT_MS).until(
-            EC.url_contains(mf_selectors.MANUAL_FORM_URL),
+            expected_conditions.url_contains(mf_selectors.MANUAL_FORM_URL),
         )
 
     def _find_household_book_tab(self, driver: Chrome) -> WebElement | bool:
-        for element in driver.find_elements(By.CSS_SELECTOR, mf_selectors.HOUSEHOLD_BOOK_TAB_CSS):
+        for element in driver.find_elements(
+            By.CSS_SELECTOR,
+            mf_selectors.HOUSEHOLD_BOOK_TAB_CSS,
+        ):
             if element.is_displayed() and element.is_enabled():
                 return element
 
-        for element in driver.find_elements(By.XPATH, mf_selectors.HOUSEHOLD_BOOK_TAB_XPATH):
+        for element in driver.find_elements(
+            By.XPATH,
+            mf_selectors.HOUSEHOLD_BOOK_TAB_XPATH,
+        ):
             if element.is_displayed() and element.is_enabled():
                 return element
 

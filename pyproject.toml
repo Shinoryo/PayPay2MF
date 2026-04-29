@@ -85,6 +85,9 @@ ignore = ["BLE001", "COM812", "D", "ERA001", "INP001", "T201", "TRY401", "RUF001
     "PLR0913", # factory fixture は引数が多くなりやすい
     "S101",    # assert 文の使用
 ]
+"tests/test_mf_registrar.py" = [
+    "SLF001",  # private helper を直接叩いてスクリーンショット制御を検証する
+]
 
 [tool.ruff.format]
 quote-style = "double"

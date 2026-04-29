@@ -707,7 +707,7 @@ def test_create_detector_gcloud_raises_when_credentials_path_is_none(
 
     with pytest.raises(
         DuplicateHistoryError,
-        match='duplicate_detection.backend: "gcloud" の場合は gcloud_credentials_path の指定が必要です。',
+        match=r'duplicate_detection.backend: "gcloud" の場合は gcloud_credentials_path の指定が必要です。',
     ):
         create_detector(config)
 

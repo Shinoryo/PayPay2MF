@@ -131,9 +131,11 @@ def test_register_logs_warning_without_false_saved_message_when_page_missing(
         logger,
     )
 
-    with caplog.at_level(logging.WARNING, logger=logger.name):
-        with pytest.raises(RuntimeError, match="Selenium driver が初期化されていません。"):
-            registrar.register(transaction_factory(merchant=_DEFAULT_MERCHANT))
+    with (
+        caplog.at_level(logging.WARNING, logger=logger.name),
+        pytest.raises(RuntimeError, match="Selenium driver が初期化されていません。"),
+    ):
+        registrar.register(transaction_factory(merchant=_DEFAULT_MERCHANT))
 
     assert tuple(
         record.message for record in caplog.records if record.name == logger.name
