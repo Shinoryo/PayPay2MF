@@ -277,22 +277,52 @@ def test_registrar_restores_env_after_chrome_boot_failure(
     assert os.environ.get("SE_AVOID_STATS") is None
 
 
+def test_enter_cleans_up_temp_profile_dir_on_chrome_boot_failure(
+    tmp_path: pathlib.Path,
+    app_config_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Chrome 起動失敗時、一時プロファイルディレクトリが削除されることを確認する。"""
+
+    def _failing_chrome(*, options) -> None:
+        del options
+        raise RuntimeError(_BOOT_FAILED)
+
+    monkeypatch.setattr(mf_registrar_module, "Chrome", _failing_chrome)
+
+    registrar = MFRegistrar(
+        app_config_factory(tmp_path, input_csv_name="dummy.csv"),
+        logging.getLogger(_LOGGER_NAME_STARTUP),
+    )
+
+    with pytest.raises(RuntimeError, match=_BOOT_FAILED):
+        registrar.__enter__()
+
+    # _temporary_profile_dir is still set after __enter__ raises, but the dir must be gone
+    assert registrar._temporary_profile_dir is not None
+    assert not registrar._temporary_profile_dir.exists(), "一時プロファイルディレクトリは削除されるべき"
+
+
 def test_close_suppresses_quit_exception_and_logs_warning(
     tmp_path: pathlib.Path,
     app_config_factory,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """quit() が例外を投げても _close() は例外を伝播させず warning をログに残す。"""
+    """quit() が例外を投げても _close() は例外を伝播させず warning をログに残し、一時ディレクトリを削除する。"""
     logger = logging.getLogger(_LOGGER_NAME_CLOSE)
     registrar = MFRegistrar(
         app_config_factory(tmp_path, input_csv_name="dummy.csv"),
         logger,
     )
-    object.__setattr__(registrar, "_driver", _FailingQuitDriver())
+    profile_dir = tmp_path / "fake-profile"
+    profile_dir.mkdir()
+    registrar._driver = _FailingQuitDriver()
+    registrar._temporary_profile_dir = profile_dir
 
     with caplog.at_level(logging.WARNING, logger=logger.name):
-        registrar._close()
+        registrar._close()  # must not raise
 
+    assert not profile_dir.exists(), "一時プロファイルディレクトリは削除されるべき"
     warning_messages = [
         record.message
         for record in caplog.records

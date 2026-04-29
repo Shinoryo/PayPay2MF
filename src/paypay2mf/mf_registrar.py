@@ -85,20 +85,24 @@ class MFRegistrar:
         self._temporary_profile_dir = Path(
             tempfile.mkdtemp(prefix=_TEMP_PROFILE_PREFIX)
         )
-        options = ChromeOptions()
-        options.page_load_strategy = "eager"
-        options.add_argument(f"--user-data-dir={self._temporary_profile_dir}")
-        options.add_argument("--start-maximized")
-        self._driver = create_chrome_driver(options)
-        self._logger.info(_LOG_MSG_CHROME_STARTED)
+        try:
+            options = ChromeOptions()
+            options.page_load_strategy = "eager"
+            options.add_argument(f"--user-data-dir={self._temporary_profile_dir}")
+            options.add_argument("--start-maximized")
+            self._driver = create_chrome_driver(options)
+            self._logger.info(_LOG_MSG_CHROME_STARTED)
 
-        self._open_moneyforward_page()
-        self._wait_for_manual_login()
-        self._open_household_book_tab()
+            self._open_moneyforward_page()
+            self._wait_for_manual_login()
+            self._open_household_book_tab()
 
-        self._manual_form_page = self._build_manual_form_page()
-        self._manual_form_page.open()
-        self._logger.info(_LOG_MSG_MF_PAGE_OPENED)
+            self._manual_form_page = self._build_manual_form_page()
+            self._manual_form_page.open()
+            self._logger.info(_LOG_MSG_MF_PAGE_OPENED)
+        except Exception:
+            self._close()
+            raise
 
         return self
 
