@@ -205,8 +205,37 @@ def test_parse_csv_collects_invalid_rows(tmp_path: Path) -> None:
     assert txs[0].transaction_id == _OK_TRANSACTION_ID
     assert len(failures) == 1
     assert failures[0].transaction_id == _BAD_TRANSACTION_ID
-    assert failures[0].error_type == _PARSE_ERROR_INVALID_DATE
+    assert failures[0].error_type == _PARSE_ERROR_INVALID_VALUE
     assert failures[0].row_index == 3
+
+
+def test_parse_csv_collects_blank_required_values(tmp_path: Path) -> None:
+    """必須値が空文字または空白のみの行は ParseFailure として収集される。"""
+    csv_content = (
+        "取引日,出金金額（円）,入金金額（円）,海外出金金額,通貨,変換レート（円）,"
+        "利用国,取引内容,取引先,取引方法,支払い区分,利用者,取引番号\r\n"
+        "2025/02/11 19:24:02,920,-,-,-,-,-,支払い,モスのネット注文,"
+        "クレジット VISA 4575,-,本人,OK001\r\n"
+        "2025/02/11 19:24:03,500,-,-,-,-,-,支払い,   ,"
+        "PayPay残高,-,本人,BAD002\r\n"
+        "2025/02/11 19:24:04,300,-,-,-,-,-,   ,giftee,"
+        "PayPay残高,-,本人,BAD003\r\n"
+    )
+    csv_file = tmp_path / "blank_required_values.csv"
+    csv_file.write_text(csv_content, encoding=AppConstants.ENCODING_UTF8)
+
+    txs, failures = parse_csv(csv_file, _make_config(csv_file))
+
+    assert len(txs) == 1
+    assert txs[0].transaction_id == _OK_TRANSACTION_ID
+    assert [failure.transaction_id for failure in failures] == ["BAD002", "BAD003"]
+    assert [failure.error_type for failure in failures] == [
+        _PARSE_ERROR_INVALID_VALUE,
+        _PARSE_ERROR_INVALID_VALUE,
+    ]
+    assert [failure.row_index for failure in failures] == [3, 4]
+    assert "取引先" in failures[0].error_message
+    assert "取引内容" in failures[1].error_message
 
 
 def test_parse_csv_rejects_zero_amount_rows(tmp_path: Path) -> None:

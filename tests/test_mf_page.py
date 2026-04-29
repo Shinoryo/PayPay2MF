@@ -505,6 +505,91 @@ def test_register_transaction_accepts_success_confirmation_modal() -> None:
     assert ("click", mf_selectors.CLOSE_BUTTON) in driver.actions
 
 
+def test_register_transaction_accepts_success_confirmation_with_continue_button_only() -> None:
+    driver = _make_driver()
+    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+    success_message = modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.SUBMIT_SUCCESS_MESSAGE,
+        _FakeElement(
+            mf_selectors.SUBMIT_SUCCESS_MESSAGE,
+            text=_SUBMIT_SUCCESS_MESSAGE,
+            displayed=False,
+        ),
+    )
+    continue_button = modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.SUBMIT_CONTINUE_BUTTON,
+        _FakeElement(mf_selectors.SUBMIT_CONTINUE_BUTTON, displayed=False),
+    )
+    continue_button._on_click = lambda: modal.set_displayed(False)
+
+    close_button = modal.find_element(By.CSS_SELECTOR, mf_selectors.CLOSE_BUTTON)
+    close_button.set_displayed(False)
+
+    def _show_success_confirmation() -> None:
+        success_message.set_displayed(True)
+        continue_button.set_displayed(True)
+
+    submit = modal.find_element(By.CSS_SELECTOR, mf_selectors.SUBMIT_BUTTON)
+    submit._on_click = _show_success_confirmation
+
+    form_page = MFManualFormPage(
+        driver,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    form_page.register_transaction(_make_tx())
+
+    assert ("click", mf_selectors.SUBMIT_CONTINUE_BUTTON) in driver.actions
+    assert ("click", mf_selectors.CLOSE_BUTTON) not in driver.actions
+
+
+def test_register_transaction_accepts_success_confirmation_with_fallback_close_selector() -> None:
+    driver = _make_driver()
+    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+    success_message = modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.SUBMIT_SUCCESS_MESSAGE,
+        _FakeElement(
+            mf_selectors.SUBMIT_SUCCESS_MESSAGE,
+            text=_SUBMIT_SUCCESS_MESSAGE,
+            displayed=False,
+        ),
+    )
+    fallback_close_selector = mf_selectors.MODAL_CLOSE_BUTTON_SELECTORS[1]
+    fallback_close_button = modal.add_child(
+        By.CSS_SELECTOR,
+        fallback_close_selector,
+        _FakeElement(fallback_close_selector, displayed=False),
+    )
+    fallback_close_button._on_click = lambda: modal.set_displayed(False)
+
+    close_button = modal.find_element(By.CSS_SELECTOR, mf_selectors.CLOSE_BUTTON)
+    close_button.set_displayed(False)
+
+    def _show_success_confirmation() -> None:
+        success_message.set_displayed(True)
+        fallback_close_button.set_displayed(True)
+
+    submit = modal.find_element(By.CSS_SELECTOR, mf_selectors.SUBMIT_BUTTON)
+    submit._on_click = _show_success_confirmation
+
+    form_page = MFManualFormPage(
+        driver,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    form_page.register_transaction(_make_tx())
+
+    assert ("click", fallback_close_selector) in driver.actions
+    assert ("click", mf_selectors.CLOSE_BUTTON) not in driver.actions
+
+
 def test_register_transaction_raises_when_submit_error_is_reported() -> None:
     driver = _make_driver()
     modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)

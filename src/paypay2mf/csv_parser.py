@@ -359,7 +359,11 @@ def _get_required_value(row: dict[str, str | None], key: str) -> str:
     if value is None:
         raise ValueError(_ERR_REQUIRED_VALUE_MISSING.format(key))
 
-    return value.strip()
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError(_ERR_REQUIRED_VALUE_MISSING.format(key))
+
+    return stripped
 
 
 def _build_parse_failure(

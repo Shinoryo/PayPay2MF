@@ -200,7 +200,10 @@ class MFManualFormPage:
     def _close_submit_success_modal(self, modal: WebElement) -> None:
         close_button = self._find_first_visible_in_modal(
             modal,
-            (mf_selectors.CLOSE_BUTTON,),
+            (
+                *mf_selectors.MODAL_CLOSE_BUTTON_SELECTORS,
+                mf_selectors.SUBMIT_CONTINUE_BUTTON,
+            ),
         )
         if close_button is None:
             return
