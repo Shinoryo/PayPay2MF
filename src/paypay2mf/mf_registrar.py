@@ -183,7 +183,7 @@ class MFRegistrar:
                 rmtree(self._temporary_profile_dir, ignore_errors=True)
 
     def _open_moneyforward_page(self) -> None:
-        self._ensure_driver().get(mf_selectors.TOP_PAGE_URL)
+        self._ensure_driver().get(mf_selectors.SIGN_IN_PAGE_URL)
 
     def _wait_for_manual_login(self) -> None:
         self._logger.info(_LOG_MSG_WAITING_FOR_LOGIN)
