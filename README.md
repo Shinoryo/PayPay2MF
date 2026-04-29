@@ -42,6 +42,12 @@ pip install -e .
 pip install -e ".[dev]"
 ```
 
+CI相当のテスト依存のみを導入する場合:
+
+```bash
+pip install -e ".[ci]"
+```
+
 ## クイックスタート
 
 ### 1. 最小設定
