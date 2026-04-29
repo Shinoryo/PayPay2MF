@@ -11,11 +11,11 @@ from pathlib import Path
 
 from paypay2mf.config_loader import (
     CONFIG_ENV_VAR,
-    _ensure_non_negative_int,
-    _get_optional_dict_section,
-    _load_yaml_dict,
-    _resolve_path,
-    _YamlLoadMessages,
+    ensure_non_negative_int,
+    get_optional_dict_section,
+    load_yaml_dict,
+    resolve_path,
+    YamlLoadMessages,
     resolve_config_path,
 )
 from paypay2mf.constants import AppConstants
@@ -129,9 +129,9 @@ def _load_gcloud_detector(config_path: Path) -> GCloudDuplicateDetector:
 
 
 def _load_backfill_config(config_path: Path) -> _BackfillDetectorConfig:
-    raw = _load_yaml_dict(
+    raw = load_yaml_dict(
         config_path,
-        messages=_YamlLoadMessages(
+        messages=YamlLoadMessages(
             not_found=_MSG_CONFIG_NOT_FOUND,
             not_file=_MSG_CONFIG_NOT_FILE,
             root_type=_MSG_CONFIG_ROOT_TYPE,
@@ -140,12 +140,12 @@ def _load_backfill_config(config_path: Path) -> _BackfillDetectorConfig:
         ),
     )
     try:
-        duplicate_detection_section = _get_optional_dict_section(
+        duplicate_detection_section = get_optional_dict_section(
             raw,
             _KEY_DUPLICATE_DETECTION,
             _MSG_DUPLICATE_DETECTION_TYPE,
         )
-        tolerance = _ensure_non_negative_int(
+        tolerance = ensure_non_negative_int(
             duplicate_detection_section.get(_KEY_DD_TOLERANCE_SECONDS, 60),
             type_message=_MSG_DUPLICATE_TOLERANCE_TYPE,
             range_message=_MSG_DUPLICATE_TOLERANCE_RANGE,
@@ -181,7 +181,7 @@ def _resolve_gcloud_credentials_path(
     if not isinstance(credentials_raw, str) or not credentials_raw.strip():
         raise ValueError(_MSG_GCLOUD_CREDS_REQUIRED)
 
-    credentials_path = _resolve_path(credentials_raw, config_dir)
+    credentials_path = resolve_path(credentials_raw, config_dir)
     if not credentials_path.exists():
         raise ValueError(_MSG_GCLOUD_CREDS_NOT_EXIST.format(path=credentials_path))
     if not credentials_path.is_file():

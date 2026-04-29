@@ -221,7 +221,7 @@ class _ConfigSections:
 
 
 @dataclass(frozen=True)
-class _YamlLoadMessages:
+class YamlLoadMessages:
     not_found: str
     not_file: str
     root_type: str
@@ -333,9 +333,9 @@ def load_config(path: Path) -> AppConfig:
         FileNotFoundError: 設定ファイルが存在しない場合。
         ValueError: 必須項目の欠落・型不正・パス検証エラーの場合。
     """
-    raw = _load_yaml_dict(
+    raw = load_yaml_dict(
         path,
-        messages=_YamlLoadMessages(
+        messages=YamlLoadMessages(
             not_found=_MSG_CONFIG_NOT_FOUND,
             not_file=_MSG_CONFIG_NOT_FILE,
             root_type=_MSG_CONFIG_ROOT_TYPE,
@@ -370,10 +370,10 @@ def load_config(path: Path) -> AppConfig:
     )
 
 
-def _load_yaml_dict(
+def load_yaml_dict(
     path: Path,
     *,
-    messages: _YamlLoadMessages,
+    messages: YamlLoadMessages,
 ) -> dict[str, object]:
     """YAML ファイルを object ルートの辞書として読み込む。"""
     if not path.exists():
@@ -407,18 +407,18 @@ def _load_optional_sections(raw: dict) -> _ConfigSections:
                 _KEY_MAPPING_RULES,
                 _MSG_MAPPING_RULES_TYPE,
             ),
-            duplicate_detection=_get_optional_dict_section(
+            duplicate_detection=get_optional_dict_section(
                 raw,
                 _KEY_DUPLICATE_DETECTION,
                 _MSG_DUPLICATE_DETECTION_TYPE,
             ),
-            parser=_get_optional_dict_section(raw, _KEY_PARSER, _MSG_PARSER_TYPE),
-            log_settings=_get_optional_dict_section(
+            parser=get_optional_dict_section(raw, _KEY_PARSER, _MSG_PARSER_TYPE),
+            log_settings=get_optional_dict_section(
                 raw,
                 _KEY_LOG_SETTINGS,
                 _MSG_LOG_SETTINGS_TYPE,
             ),
-            advanced=_get_optional_dict_section(
+            advanced=get_optional_dict_section(
                 raw,
                 _KEY_ADVANCED,
                 _MSG_ADVANCED_TYPE,
@@ -428,7 +428,7 @@ def _load_optional_sections(raw: dict) -> _ConfigSections:
         raise ValueError(str(exc)) from exc
 
 
-def _get_optional_dict_section(raw: dict, key: str, error_message: str) -> dict:
+def get_optional_dict_section(raw: dict, key: str, error_message: str) -> dict:
     """任意の object セクションを取得し、型不正を検証する。"""
     value = raw.get(key)
     if value is None:
@@ -493,7 +493,7 @@ def _validate_paths(
     """
     errors: list[str] = []
 
-    input_csv = _resolve_path(raw[_KEY_INPUT_CSV], config_dir)
+    input_csv = resolve_path(raw[_KEY_INPUT_CSV], config_dir)
     if not input_csv.exists():
         errors.append(_MSG_INPUT_CSV_NOT_EXIST.format(path=input_csv))
     elif not input_csv.is_file():
@@ -514,7 +514,7 @@ def _validate_paths(
         raise ValueError("\n".join(errors))
 
 
-def _resolve_path(raw_value: object, config_dir: Path) -> Path:
+def resolve_path(raw_value: object, config_dir: Path) -> Path:
     """設定値のパスを config.yml 基準で解決する。"""
     candidate = Path(str(raw_value))
     if candidate.is_absolute():
@@ -526,7 +526,7 @@ def _resolve_optional_path(raw_value: object, config_dir: Path) -> Path | None:
     """任意の設定パスを config.yml 基準で解決する。"""
     if raw_value in (None, ""):
         return None
-    return _resolve_path(raw_value, config_dir)
+    return resolve_path(raw_value, config_dir)
 
 
 def _validate_mapping_rules(rules: list) -> None:
@@ -794,7 +794,7 @@ def _validate_non_negative_int(
 ) -> None:
     """非負整数の型と範囲を検証する。"""
     try:
-        _ensure_non_negative_int(
+        ensure_non_negative_int(
             value,
             type_message=type_message,
             range_message=range_message,
@@ -803,7 +803,7 @@ def _validate_non_negative_int(
         errors.append(str(exc))
 
 
-def _ensure_non_negative_int(
+def ensure_non_negative_int(
     value: object,
     *,
     type_message: str,
@@ -944,7 +944,7 @@ def _build_config(
     exclude_prefixes_raw = raw.get(_KEY_EXCLUDE_PREFIXES)
     return AppConfig(
         dry_run=bool(raw[_KEY_DRY_RUN]),
-        input_csv=_resolve_path(raw[_KEY_INPUT_CSV], config_dir),
+        input_csv=resolve_path(raw[_KEY_INPUT_CSV], config_dir),
         mf_account=raw[_KEY_MF_ACCOUNT],
         mapping_rules=mapping_rules,
         exclude_prefixes=(
