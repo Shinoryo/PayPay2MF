@@ -166,6 +166,9 @@ class _FakeDriver:
         return list(self._registry.get((by, value), []))
 
     def execute_script(self, _script: str, element: _FakeElement):
+        if ".click();" in _script:
+            element.click()
+            return True
         return element._interactable
 
 
@@ -234,9 +237,16 @@ def _make_driver(*, account_options: list[tuple[str, str]] | None = None) -> _Fa
     modal = driver.register(
         By.CSS_SELECTOR,
         mf_selectors.MANUAL_FORM_MODAL,
-        _FakeElement(mf_selectors.MANUAL_FORM_MODAL),
+        _FakeElement(mf_selectors.MANUAL_FORM_MODAL, displayed=False),
     )
     open_button._on_click = lambda: modal.set_displayed(True)
+
+    close_button = modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.CLOSE_BUTTON,
+        _FakeElement(mf_selectors.CLOSE_BUTTON),
+    )
+    close_button._on_click = lambda: modal.set_displayed(False)
 
     modal.add_child(
         By.CSS_SELECTOR,
@@ -335,10 +345,6 @@ def test_register_transaction_uses_selector_contract() -> None:
     form_page.register_transaction(_make_tx())
 
     assert ("click", mf_selectors.OPEN_MANUAL_FORM_BUTTON) in driver.actions
-    assert ("clear", mf_selectors.DATE_INPUT) in driver.actions
-    assert ("send_keys", mf_selectors.DATE_INPUT, _DATE_INPUT_VALUE) in driver.actions
-    assert ("send_keys", mf_selectors.DATE_INPUT, mf_page_module.Keys.TAB) in driver.actions
-    assert ("send_keys", mf_selectors.DATE_INPUT, mf_page_module.Keys.ESCAPE) not in driver.actions
     assert ("clear", mf_selectors.AMOUNT_INPUT) in driver.actions
     assert ("send_keys", mf_selectors.AMOUNT_INPUT, _AMOUNT_INPUT_VALUE) in driver.actions
     assert (
@@ -351,7 +357,17 @@ def test_register_transaction_uses_selector_contract() -> None:
     assert ("click", mf_selectors.MIDDLE_CATEGORY_LINK) in driver.actions
     assert ("clear", mf_selectors.MEMO_INPUT) in driver.actions
     assert ("send_keys", mf_selectors.MEMO_INPUT, _DEFAULT_MEMO) in driver.actions
+    assert ("clear", mf_selectors.DATE_INPUT) in driver.actions
+    assert ("send_keys", mf_selectors.DATE_INPUT, _DATE_INPUT_VALUE) in driver.actions
     assert ("click", mf_selectors.SUBMIT_BUTTON) in driver.actions
+
+    amount_clear_index = driver.actions.index(("clear", mf_selectors.AMOUNT_INPUT))
+    memo_send_index = driver.actions.index(("send_keys", mf_selectors.MEMO_INPUT, _DEFAULT_MEMO))
+    date_clear_index = driver.actions.index(("clear", mf_selectors.DATE_INPUT))
+    submit_click_index = driver.actions.index(("click", mf_selectors.SUBMIT_BUTTON))
+    assert amount_clear_index < date_clear_index
+    assert memo_send_index < date_clear_index
+    assert date_clear_index < submit_click_index
 
 
 def test_register_transaction_waits_until_amount_input_becomes_interactable() -> None:
@@ -373,21 +389,26 @@ def test_register_transaction_waits_until_amount_input_becomes_interactable() ->
     assert ("send_keys", mf_selectors.AMOUNT_INPUT, _AMOUNT_INPUT_VALUE) in driver.actions
 
 
-def test_register_transaction_refetches_amount_input_after_date_input() -> None:
+def test_open_manual_form_closes_existing_modal_before_reopening() -> None:
     driver = _make_driver()
     modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
-    amount_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.AMOUNT_INPUT)
-    replacement_amount_input = _FakeElement("replacement-amount-input")
-    date_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.DATE_INPUT)
+    modal.set_displayed(True)
+    form_page = MFManualFormPage(
+        driver,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
 
-    def _swap_amount_input(value: str) -> None:
-        if value != mf_page_module.Keys.TAB:
-            return
-        amount_input.set_interactable(False)
-        modal._children[(By.CSS_SELECTOR, mf_selectors.AMOUNT_INPUT)] = [replacement_amount_input]
-        replacement_amount_input.bind_driver(driver)
+    returned_modal = form_page.open_manual_form()
 
-    date_input._on_send_keys = _swap_amount_input
+    assert returned_modal is modal
+    assert ("click", mf_selectors.CLOSE_BUTTON) in driver.actions
+    assert ("click", mf_selectors.OPEN_MANUAL_FORM_BUTTON) in driver.actions
+
+
+def test_register_transaction_commits_date_after_other_fields() -> None:
+    driver = _make_driver()
     form_page = MFManualFormPage(
         driver,
         Mock(),
@@ -397,35 +418,13 @@ def test_register_transaction_refetches_amount_input_after_date_input() -> None:
 
     form_page.register_transaction(_make_tx())
 
-    assert ("clear", "replacement-amount-input") in driver.actions
-    assert ("send_keys", "replacement-amount-input", _AMOUNT_INPUT_VALUE) in driver.actions
-
-
-def test_register_transaction_avoids_escape_that_closes_modal_after_date_input() -> None:
-    driver = _make_driver()
-    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
-    amount_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.AMOUNT_INPUT)
-    date_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.DATE_INPUT)
-
-    def _close_modal_on_escape(value: str) -> None:
-        if value != mf_page_module.Keys.ESCAPE:
-            return
-        modal.set_displayed(False)
-        amount_input.set_displayed(False)
-
-    date_input._on_send_keys = _close_modal_on_escape
-    form_page = MFManualFormPage(
-        driver,
-        Mock(),
-        _DEFAULT_ACCOUNT_NAME,
-        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
-    )
-
-    form_page.register_transaction(_make_tx())
-
-    assert ("send_keys", mf_selectors.DATE_INPUT, mf_page_module.Keys.TAB) in driver.actions
+    assert ("send_keys", mf_selectors.DATE_INPUT, _DATE_INPUT_VALUE) in driver.actions
     assert ("send_keys", mf_selectors.DATE_INPUT, mf_page_module.Keys.ESCAPE) not in driver.actions
-    assert ("clear", mf_selectors.AMOUNT_INPUT) in driver.actions
+    amount_send_index = driver.actions.index(("send_keys", mf_selectors.AMOUNT_INPUT, _AMOUNT_INPUT_VALUE))
+    date_send_index = driver.actions.index(("send_keys", mf_selectors.DATE_INPUT, _DATE_INPUT_VALUE))
+    submit_click_index = driver.actions.index(("click", mf_selectors.SUBMIT_BUTTON))
+    assert amount_send_index < date_send_index
+    assert date_send_index < submit_click_index
 
 
 def test_register_transaction_raises_when_amount_input_never_becomes_interactable() -> None:

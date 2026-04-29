@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from selenium.common.exceptions import (
+    ElementClickInterceptedException,
     ElementNotInteractableException,
     NoSuchElementException,
     StaleElementReferenceException,
@@ -82,11 +83,13 @@ class MFManualFormPage:
 
     def open_manual_form(self) -> WebElement:
         """手入力モーダルを開き、表示完了を待つ。"""
-        self._wait(mf_selectors.NAVIGATION_TIMEOUT_MS).until(
-            EC.element_to_be_clickable(
+        self._close_existing_modal_if_present()
+        open_button = self._wait(mf_selectors.NAVIGATION_TIMEOUT_MS).until(
+            EC.presence_of_element_located(
                 (By.CSS_SELECTOR, mf_selectors.OPEN_MANUAL_FORM_BUTTON),
             )
-        ).click()
+        )
+        self._click_element(open_button)
         return self._wait(mf_selectors.MODAL_TIMEOUT_MS).until(
             EC.visibility_of_element_located(
                 (By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL),
@@ -103,10 +106,7 @@ class MFManualFormPage:
             else mf_selectors.MINUS_PAYMENT_INPUT
         )
         modal.find_element(By.CSS_SELECTOR, payment_selector).click()
-        self._wait_for_amount_input(modal)
-
-        date_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.DATE_INPUT)
-        amount_input = self._commit_date_input(modal, date_input, tx.date.strftime(AppConstants.FORM_DATE_FORMAT))
+        amount_input = self._wait_for_amount_input(modal)
         try:
             amount_input.clear()
             amount_input.send_keys(str(tx.amount))
@@ -120,7 +120,15 @@ class MFManualFormPage:
         memo_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.MEMO_INPUT)
         memo_input.clear()
         memo_input.send_keys(tx.memo)
-        modal.find_element(By.CSS_SELECTOR, mf_selectors.SUBMIT_BUTTON).click()
+
+        date_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.DATE_INPUT)
+        self._commit_date_input(
+            date_input,
+            tx.date.strftime(AppConstants.FORM_DATE_FORMAT),
+        )
+        self._click_element(
+            modal.find_element(By.CSS_SELECTOR, mf_selectors.SUBMIT_BUTTON)
+        )
 
         self._wait_for_submit_outcome()
 
@@ -199,14 +207,71 @@ class MFManualFormPage:
 
     def _commit_date_input(
         self,
-        modal: WebElement,
         date_input: WebElement,
         date_value: str,
-    ) -> WebElement:
+    ) -> None:
         date_input.clear()
         date_input.send_keys(date_value)
-        date_input.send_keys(Keys.TAB)
-        return self._wait_for_amount_input(modal)
+        self._blur_element(date_input)
+
+    def _blur_element(self, element: WebElement) -> None:
+        execute_script = getattr(self._driver, "execute_script", None)
+        if execute_script is not None:
+            try:
+                execute_script(
+                    """
+                    arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+                    arguments[0].blur();
+                    """,
+                    element,
+                )
+                return
+            except Exception:
+                pass
+
+        element.send_keys(Keys.TAB)
+
+    def _click_element(self, element: WebElement) -> None:
+        execute_script = getattr(self._driver, "execute_script", None)
+        if execute_script is not None:
+            try:
+                execute_script(
+                    "arguments[0].scrollIntoView({block: 'center', inline: 'center'});",
+                    element,
+                )
+            except Exception:
+                pass
+
+        try:
+            element.click()
+        except ElementClickInterceptedException:
+            if execute_script is None:
+                raise
+            execute_script("arguments[0].click();", element)
+
+    def _close_existing_modal_if_present(self) -> None:
+        modal = self._find_optional(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+        if modal is None or not modal.is_displayed():
+            return
+
+        close_button = self._find_first_visible_in_modal(
+            modal,
+            mf_selectors.MODAL_CLOSE_BUTTON_SELECTORS,
+        )
+        if close_button is None:
+            return
+
+        try:
+            self._click_element(close_button)
+            self._wait(mf_selectors.MODAL_TIMEOUT_MS).until(
+                lambda _driver: not self._is_modal_visible(),
+            )
+        except Exception:
+            return
+
+    def _is_modal_visible(self) -> bool:
+        modal = self._find_optional(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+        return modal is not None and modal.is_displayed()
 
     def _wait_for_amount_input(self, modal: WebElement) -> WebElement:
         try:
@@ -258,6 +323,18 @@ class MFManualFormPage:
         if not matches:
             return None
         return matches[0]
+
+    def _find_first_visible_in_modal(
+        self,
+        modal: WebElement,
+        selectors: tuple[str, ...],
+    ) -> WebElement | None:
+        for selector in selectors:
+            for element in modal.find_elements(By.CSS_SELECTOR, selector):
+                if not element.is_displayed():
+                    continue
+                return element
+        return None
 
     def _find_visible_text_match(
         self,

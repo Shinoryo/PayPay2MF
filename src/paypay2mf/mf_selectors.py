@@ -21,6 +21,11 @@ ACCOUNT_SELECT = "#user_asset_act_sub_account_id_hash"
 MEMO_INPUT = "#js-content-field"
 SUBMIT_BUTTON = "#submit-button"
 CLOSE_BUTTON = "#cancel-button"
+MODAL_CLOSE_BUTTON_SELECTORS = (
+    CLOSE_BUTTON,
+    ".modal-header .close",
+    "button.close",
+)
 
 SUBMIT_SUCCESS_FEEDBACK_SELECTORS = (
     ".flash_notice",
