@@ -6,7 +6,10 @@ from datetime import datetime
 from unittest.mock import Mock
 
 import pytest
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import (
+    ElementNotInteractableException,
+    NoSuchElementException,
+)
 from selenium.webdriver.common.by import By
 
 import paypay2mf.mf_page as mf_page_module
@@ -56,14 +59,18 @@ class _FakeElement:
         text: str = AppConstants.EMPTY_STRING,
         displayed: bool = True,
         enabled: bool = True,
+        interactable: bool = True,
         on_click=None,
+        on_send_keys=None,
         options: list[_FakeOption] | None = None,
     ) -> None:
         self.selector = selector
         self.text = text
         self._displayed = displayed
         self._enabled = enabled
+        self._interactable = interactable
         self._on_click = on_click
+        self._on_send_keys = on_send_keys
         self._children: dict[tuple[str, str], list[_FakeElement]] = {}
         self.options = options or []
         self._driver = None
@@ -93,10 +100,16 @@ class _FakeElement:
             self._on_click()
 
     def clear(self) -> None:
+        if not self._interactable:
+            raise ElementNotInteractableException(f"not interactable: {self.selector}")
         self._driver.actions.append(("clear", self.selector))
 
     def send_keys(self, value: str) -> None:
+        if not self._interactable:
+            raise ElementNotInteractableException(f"not interactable: {self.selector}")
         self._driver.actions.append(("send_keys", self.selector, value))
+        if self._on_send_keys is not None:
+            self._on_send_keys(value)
 
     def find_element(self, by: str, value: str) -> _FakeElement:
         matches = self.find_elements(by, value)
@@ -116,6 +129,9 @@ class _FakeElement:
     def set_displayed(self, displayed: bool) -> None:
         self._displayed = displayed
 
+    def set_interactable(self, interactable: bool) -> None:
+        self._interactable = interactable
+
 
 class _FakeDriver:
     def __init__(self) -> None:
@@ -123,6 +139,7 @@ class _FakeDriver:
         self.current_url = AppConstants.EMPTY_STRING
         self._registry: dict[tuple[str, str], list[_FakeElement]] = {}
         self.wait_failure: Exception | None = None
+        self.on_wait_poll = None
 
     def register(
         self,
@@ -148,6 +165,9 @@ class _FakeDriver:
         self.actions.append(("driver_find", by, value))
         return list(self._registry.get((by, value), []))
 
+    def execute_script(self, _script: str, element: _FakeElement):
+        return element._interactable
+
 
 class _FakeWait:
     def __init__(
@@ -162,12 +182,15 @@ class _FakeWait:
         self._ignored_exceptions = ignored_exceptions
 
     def until(self, condition):
-        try:
-            result = condition(self._driver)
-        except self._ignored_exceptions:
-            result = False
-        if result:
-            return result
+        for _ in range(4):
+            try:
+                result = condition(self._driver)
+            except self._ignored_exceptions:
+                result = False
+            if result:
+                return result
+            if self._driver.on_wait_poll is not None:
+                self._driver.on_wait_poll()
         if self._driver.wait_failure is not None:
             raise self._driver.wait_failure
         raise TimeoutError(_SUBMIT_TIMEOUT_MESSAGE)
@@ -328,6 +351,69 @@ def test_register_transaction_uses_selector_contract() -> None:
     assert ("clear", mf_selectors.MEMO_INPUT) in driver.actions
     assert ("send_keys", mf_selectors.MEMO_INPUT, _DEFAULT_MEMO) in driver.actions
     assert ("click", mf_selectors.SUBMIT_BUTTON) in driver.actions
+
+
+def test_register_transaction_waits_until_amount_input_becomes_interactable() -> None:
+    driver = _make_driver()
+    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+    amount_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.AMOUNT_INPUT)
+    amount_input.set_interactable(False)
+    driver.on_wait_poll = lambda: amount_input.set_interactable(True)
+    form_page = MFManualFormPage(
+        driver,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    form_page.register_transaction(_make_tx())
+
+    assert ("clear", mf_selectors.AMOUNT_INPUT) in driver.actions
+    assert ("send_keys", mf_selectors.AMOUNT_INPUT, _AMOUNT_INPUT_VALUE) in driver.actions
+
+
+def test_register_transaction_refetches_amount_input_after_date_input() -> None:
+    driver = _make_driver()
+    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+    amount_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.AMOUNT_INPUT)
+    replacement_amount_input = _FakeElement("replacement-amount-input")
+    date_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.DATE_INPUT)
+
+    def _swap_amount_input(value: str) -> None:
+        if value != mf_page_module.Keys.ESCAPE:
+            return
+        amount_input.set_interactable(False)
+        modal._children[(By.CSS_SELECTOR, mf_selectors.AMOUNT_INPUT)] = [replacement_amount_input]
+        replacement_amount_input.bind_driver(driver)
+
+    date_input._on_send_keys = _swap_amount_input
+    form_page = MFManualFormPage(
+        driver,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    form_page.register_transaction(_make_tx())
+
+    assert ("clear", "replacement-amount-input") in driver.actions
+    assert ("send_keys", "replacement-amount-input", _AMOUNT_INPUT_VALUE) in driver.actions
+
+
+def test_register_transaction_raises_when_amount_input_never_becomes_interactable() -> None:
+    driver = _make_driver()
+    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+    amount_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.AMOUNT_INPUT)
+    amount_input.set_interactable(False)
+    form_page = MFManualFormPage(
+        driver,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    with pytest.raises(RuntimeError, match="金額入力欄"):
+        form_page.register_transaction(_make_tx())
 
 
 def test_register_transaction_raises_when_submit_does_not_close_modal() -> None:

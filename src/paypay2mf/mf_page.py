@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from selenium.common.exceptions import (
+    ElementNotInteractableException,
     NoSuchElementException,
     StaleElementReferenceException,
+    TimeoutException,
 )
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
@@ -42,6 +44,10 @@ _CATEGORY_NOT_FOUND_WARNING = (
 )
 _SUBMIT_REPORTED_ERROR_MESSAGE = "MF 登録に失敗しました。{detail}"
 _SUBMIT_ERROR_FALLBACK_DETAIL = "送信後にフォームエラーが表示されました。"
+_AMOUNT_INPUT_NOT_READY_MESSAGE = (
+    "手入力フォームの金額入力欄が操作可能になりませんでした。"
+    "フォーム切替の反映待ちに失敗した可能性があります。"
+)
 
 
 class MFManualFormPage:
@@ -97,15 +103,19 @@ class MFManualFormPage:
             else mf_selectors.MINUS_PAYMENT_INPUT
         )
         modal.find_element(By.CSS_SELECTOR, payment_selector).click()
+        self._wait_for_amount_input(modal)
 
         date_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.DATE_INPUT)
         date_input.clear()
         date_input.send_keys(tx.date.strftime(AppConstants.FORM_DATE_FORMAT))
         date_input.send_keys(Keys.ESCAPE)
 
-        amount_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.AMOUNT_INPUT)
-        amount_input.clear()
-        amount_input.send_keys(str(tx.amount))
+        amount_input = self._wait_for_amount_input(modal)
+        try:
+            amount_input.clear()
+            amount_input.send_keys(str(tx.amount))
+        except ElementNotInteractableException as exc:
+            raise RuntimeError(_AMOUNT_INPUT_NOT_READY_MESSAGE) from exc
         self._select_account(modal)
 
         if tx.category not in _SKIP_CATEGORY_VALUES:
@@ -190,6 +200,48 @@ class MFManualFormPage:
             poll_frequency=0.2,
             ignored_exceptions=(NoSuchElementException, StaleElementReferenceException),
         )
+
+    def _wait_for_amount_input(self, modal: WebElement) -> WebElement:
+        try:
+            return self._wait(mf_selectors.MODAL_TIMEOUT_MS).until(
+                lambda _driver: self._find_interactable_amount_input(modal)
+            )
+        except (TimeoutException, TimeoutError) as exc:
+            raise RuntimeError(_AMOUNT_INPUT_NOT_READY_MESSAGE) from exc
+
+    def _find_interactable_amount_input(self, modal: WebElement) -> WebElement | bool:
+        for element in modal.find_elements(By.CSS_SELECTOR, mf_selectors.AMOUNT_INPUT):
+            if not element.is_displayed() or not element.is_enabled():
+                continue
+            if not self._is_element_unobscured(element):
+                continue
+            return element
+        return False
+
+    def _is_element_unobscured(self, element: WebElement) -> bool:
+        execute_script = getattr(self._driver, "execute_script", None)
+        if execute_script is None:
+            return True
+
+        try:
+            return bool(
+                execute_script(
+                    """
+                    const target = arguments[0];
+                    const rect = target.getBoundingClientRect();
+                    if (rect.width === 0 || rect.height === 0) {
+                        return false;
+                    }
+                    const x = rect.left + rect.width / 2;
+                    const y = rect.top + rect.height / 2;
+                    const top = document.elementFromPoint(x, y);
+                    return top === target || target.contains(top);
+                    """,
+                    element,
+                )
+            )
+        except Exception:
+            return True
 
     def _find_optional(self, by: str, value: str) -> WebElement | None:
         matches = self._driver.find_elements(by, value)
