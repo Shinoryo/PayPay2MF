@@ -1,55 +1,150 @@
 ﻿# PayPay2MF
 
-PayPay の利用明細 CSV を Money Forward ME へ登録する Windows 向けローカル CLI ツールです。
+PayPay の利用明細 CSV を Money Forward ME へ登録する
+Windows 向けローカル CLI ツールです。
+
+## ドキュメント
+
+- [docs/基本設計書.md](docs/基本設計書.md): 全体構成、処理フロー、責務分担
+- [docs/設定ファイル仕様書.md](docs/設定ファイル仕様書.md): 設定項目の型、必須条件、パス仕様
+- [docs/テスト仕様書.md](docs/テスト仕様書.md): テストケース、受入手順、確認観点
 
 ## 概要
 
-### 背景・目的
+- PayPay CSV を読込み、除外、カテゴリ付与、重複検知を行ったうえで
+  Money Forward ME の手入力フォームへ登録する
+- dry_run ではブラウザを起動せず、CSV 変換結果と件数サマリーだけを確認できる
+- 本番実行では Selenium が Chrome を起動し、手動ログイン後に登録を続行する
+- 重複検知は local JSON と Firestore backend の両方に対応する
 
-- **背景**：PayPay の利用明細を目視で確認し、Money Forward ME に手動入力しているため、工数が大きい。
-- **目的**：`config.yml` に PayPay CSV のパスを設定するだけで、Money Forward ME への
-  登録を自動化し、入力ミスと作業時間を削減する。
-
-### 機能一覧
-
-| No | 機能名 | 概要 |
-| ---- | -------- | ------ |
-| F01 | CSV取り込み | Shift_JIS / UTF-8 の文字コードを自動判定し、カンマやダブルクォートを含む項目にも対応 |
-| F02 | CSVパーシング | 全13列の抽出、金額の数値化、複合支払いの合算、入出金判定、海外取引時のメモ追記 |
-| F03 | 除外ルール | `exclude_prefixes` に合致する取引番号の行を処理対象から除外する |
-| F04 | 重複検知 | 取引番号を優先し、欠損時は日時＋金額＋取引先を使ってローカルまたは Google Cloud Firestore と照合し、Firestore では date_bucket で候補を事前に絞り込む |
-| F05 | MFへの自動登録 | Selenium で Chrome を起動し、手動ログイン後に MF の手入力フォームへ1件ずつ登録する |
-| F06 | マッピング設定 | キーワードベースのカテゴリマッピングを `config.yml` で定義・編集可能 |
-| F07 | ログイン導線 | Money Forward トップページを開き、ユーザーの手動ログイン完了後に家計簿タブへ遷移する |
-| F08 | ドライランモード | ブラウザを使用せず、CSV の解析結果と変換結果の診断出力のみを行う |
-| F09 | ログ出力 | 実行ログ、エラー CSV、スクリーンショットを `log_settings` の設定に従って出力 |
-| F10 | 設定ファイル | `--config` / 環境変数 / カレントディレクトリ / モジュール同居の順で `config.yml` を解決し、動作設定を一元管理する |
-| F11 | エラーハンドリング | 操作失敗時はスクリーンショットとログを保存し、ユーザーに再実行のための情報を提示 |
-
-## 想定実行環境
+## 動作環境
 
 | 項目 | 内容 |
 | ---- | ---- |
 | OS | Windows 11 |
 | Python | 3.11 以上 |
 | ブラウザ | Google Chrome（最新版） |
-| Python ライブラリ | selenium / PyYAML / google-cloud-firestore（任意） |
+| 主要依存 | selenium / PyYAML / google-cloud-firestore（任意） |
 
-## 依存関係の導入
+## セットアップ
 
-通常利用では、プロジェクトルートで pyproject.toml に定義された依存関係をまとめてインストールしてください。
+通常利用:
 
 ```bash
 pip install -e .
 ```
 
-開発用テストも含める場合は、以下を使用してください。
+開発用依存を含める場合:
 
 ```bash
 pip install -e ".[dev]"
 ```
 
-ローカルで品質ゲートを再現する場合は、以下を順に実行してください。
+## クイックスタート
+
+### 1. 最小設定
+
+必須項目は `dry_run`、`input_csv`、`mf_account` の 3 つです。
+
+```yaml
+dry_run: true
+input_csv: "C:\\Users\\yourname\\Downloads\\paypay_history.csv"
+mf_account: "PayPay"
+```
+
+設定詳細は [docs/設定ファイル仕様書.md](docs/設定ファイル仕様書.md) を参照してください。
+
+### 2. dry_run で確認
+
+```bash
+paypay2mf
+```
+
+- ブラウザは起動しません
+- CSV 読込、変換、除外、重複判定までを実行します
+- 重複履歴は更新しません
+
+### 3. 本番実行
+
+```yaml
+dry_run: false
+```
+
+```bash
+paypay2mf
+```
+
+- Selenium が Chrome を起動します
+- Money Forward ME に手動ログインして Enter を押すと続行します
+- 家計簿タブ経由で `/cf` に遷移し、手入力フォームへ1件ずつ登録します
+
+## 実行時の注意
+
+### パス解決
+
+- `config.yml` は `--config` > `PAYPAY2MF_CONFIG` >
+  カレントディレクトリ > モジュール同居の順で探索します
+- 相対パスは実行時カレントディレクトリではなく
+  `config.yml` の配置ディレクトリ基準で解決します
+
+### 保存物と機微情報
+
+- `logs_dir` 配下には app ログ、解析エラー CSV、登録失敗 CSV、
+  必要時のスクリーンショット、local backend 用 `processed.json` が作成されます
+- app ログは件数サマリー中心ですが、CSV、スクリーンショット、
+  `processed.json`、認証情報 JSON は機微情報を含む可能性があります
+- 共有フォルダやクラウド同期先ではなく、ローカル保管を前提にしてください
+
+### 重複検知
+
+- `duplicate_detection.backend: "local"` は単一インスタンス運用を前提とします
+- `dry_run: true` では local / gcloud いずれの履歴も更新しません
+
+## Smoke Test
+
+UI 契約の一次確認用に smoke test を用意しています。
+
+```powershell
+$env:PAYPAY2MF_RUN_SMOKE_TEST = "1"
+$env:PAYPAY2MF_SMOKE_MF_ACCOUNT = "<MF Account Name>"
+# 任意
+$env:PAYPAY2MF_SMOKE_LOGS_DIR = "<Optional Smoke Logs Dir>"
+python -m pytest -q -m smoke_test tests/test_mf_smoke.py
+```
+
+- Selenium が一時プロファイルで Chrome を起動します
+- 手動ログイン後、手入力モーダルが開けることだけを確認します
+- 実データの送信や保存は行いません
+
+詳細は [docs/テスト仕様書.md](docs/テスト仕様書.md) を参照してください。
+
+## Firestore backend（任意）
+
+Firestore を使う場合は、gcloud extra を導入し、
+`duplicate_detection.backend: "gcloud"` と
+`gcloud_credentials_path` を設定してください。
+
+```bash
+pip install "paypay2mf[gcloud]"
+```
+
+```yaml
+duplicate_detection:
+  backend: "gcloud"
+  tolerance_seconds: 60
+
+gcloud_credentials_path: "./secrets/paypay2mf-credentials.json"
+```
+
+- fallback 検索には `amount`、`merchant`、`date_bucket` の複合インデックスが必要です
+- 既存 Firestore データを使う場合は `paypay2mf-firestore-backfill` で
+  `date_bucket` を補完してください
+
+設計上の背景は [docs/基本設計書.md](docs/基本設計書.md) を参照してください。
+
+## 開発
+
+品質ゲートの再現例:
 
 ```bash
 python -m pytest -q
@@ -59,475 +154,10 @@ markdownlint-cli2 README.md docs/**/*.md
 python -m pip_audit --skip-editable --ignore-vuln CVE-2026-4539
 ```
 
-`pip-audit` は現時点で監査ツール側の依存に起因する `CVE-2026-4539`
-（`pygments`、修正版未提供）を検出するため、修正版が出るまで一時的に
-除外して実行します。
-
-## 実行方法
-
-### 前提条件
-
-1. `config.yml` を作業ディレクトリに配置するか、`--config` または `PAYPAY2MF_CONFIG` で参照先を指定し、必須3項目を設定する。
-2. 本番実行時は、起動した Chrome 上で Money Forward ME に手動ログインできること。
-
-### ドライラン（推奨・初回確認用）
-
-```bash
-# config.yml の dry_run: true を設定してから実行
-paypay2mf
-```
-
-ブラウザは起動しません。CSV の処理件数、除外件数、重複スキップ件数、登録対象件数などのサマリーを標準出力およびログに出力します。
-ドライランでは重複履歴も更新しないため、同じ CSV を後から本番実行しても dry_run の結果だけで重複スキップされることはありません。
-Chrome や Money Forward のログイン状態に依存せず、設定読み込みと CSV 解析だけを確認できます。
-
-### 本番実行
-
-```bash
-# config.yml の dry_run: false を設定してから実行
-paypay2mf
-```
-
-Selenium が Chrome を起動して Money Forward トップページを開きます。
-Chrome 起動時の Selenium Manager 統計送信は既定で抑止しているため、通常は Plausible への接続失敗メッセージは表示されません。
-ユーザーが手動ログインして Enter を押すと、家計簿タブを選択して /cf に遷移し、
-以降は MF の手入力フォームに1件ずつ自動登録します。
-
-## 注意制限事項
-
-### パス指定の基準
-
-- 起動時の `config.yml` は、`--config` > 環境変数 `PAYPAY2MF_CONFIG` >
-  カレントディレクトリ > モジュール同居 の順に探索されます。
-- `input_csv`、`log_settings.logs_dir`、`advanced.mf_categories_path`、
-  `gcloud_credentials_path` に相対パスを指定した場合は、
-  実行時のカレントディレクトリではなく
-  `config.yml` の配置ディレクトリ基準で解決されます。
-- `input_csv`、`advanced.mf_categories_path`、`gcloud_credentials_path` は
-  実在するファイルを指定してください。ディレクトリを指定した場合は
-  起動時エラーになります。`log_settings.logs_dir` だけはディレクトリ指定です。
-- `log_settings.logs_dir` を `null` または未指定にした場合のみ、既定値として
-  `config.yml` と同じディレクトリ配下の `logs` を使用します。
-- `gcloud_credentials_path` は
-  `duplicate_detection.backend: "gcloud"` を明示した場合に認証へ使用します。
-  この項目だけを設定しても backend は自動で切り替わりません。未使用なら未設定のままで構いません。
-
-### 保存される情報と運用上の注意
-
-- `logs_dir` 配下には app ログ、`parse_error_*.csv`、`error_*.csv`、
-  必要時の `screenshot_*.png`、ローカル重複履歴の `processed.json` が
-  保存されます。
-- app ログは件数サマリー中心で、個別取引の日付・金額・加盟店・
-  transaction_id を通常は出力しません。ただし CSV、
-  スクリーンショット、`processed.json` は機微情報を含みます。
-- `duplicate_detection.backend: "local"` では、`processed.json` に
-  `transaction_id` または `datetime` / `amount` / `merchant` の
-  組み合わせが保存されます。`dry_run: true` では更新されません。
-- `duplicate_detection.backend: "gcloud"` では、Firestore に
-  `transaction_id` を document id として、または `datetime` /
-  `amount` / `merchant` / `date_bucket` を重複判定用フィールドとして
-  保存します。利用前に保存項目を許容できることを
-  確認してください。
-- `duplicate_detection.backend: "local"` を複数プロセスから同時に使うことは
-  想定していません。同じ `processed.json` を共有して多重実行すると、
-  後勝ちで履歴が上書きされる可能性があるため単一インスタンスで運用してください。
-- ログや CSV、スクリーンショット、認証情報 JSON は共有フォルダやクラウド同期先に置かず、ローカル保管を前提に運用してください。
-
-### タイムゾーンに関する注意
-
-- PayPay CSV に含まれる `取引日` は、CSV に記載された値をそのまま扱い、
-  アプリ内でタイムゾーン変換は行わない。
-- `duplicate_detection.backend: "local"` は処理済み取引を実行中はメモリに保持し、
-  登録ループ終了時に `processed.json` を 1 回だけ原子的に更新する。
-- `duplicate_detection.backend: "local"` で `processed.json` が破損または不正スキーマだった場合、
-  退避ファイル名 `processed.corrupted_YYYYMMDD_HHMMSS_ffffff.json` の
-  タイムスタンプは UTC で付与する。
-- ログや `parse_error_*.csv`、`error_*.csv` など通常の出力ファイル名は、
-  実行環境のローカル時刻を用いる。
-
-## 入力
-
-### 設定ファイル
-
-| 項目 | 内容 |
-| ---- | ---- |
-| ファイル名 | `config.yml` |
-| 配置場所 | 任意。`--config` 未指定時は `PAYPAY2MF_CONFIG`、カレントディレクトリ、モジュール同居の順で探索 |
-| 形式 | YAML 1.2 |
-| エンコーディング | UTF-8（BOM なし） |
-| 内容概要 | ツール全体の動作設定 |
-
-スキーマの詳細は「設定ファイル仕様書.md」を参照。
-
-#### 必須項目（3項目。未記載の場合は起動エラー）
-
-| キー名 | データ型 | 説明 | 例 |
-| ---- | ---- | ---- | ---- |
-| dry_run | boolean | `true`: CSV診断のみ（ブラウザ不使用）/ `false`: MF 本番登録 | `true` |
-| input_csv | string | 処理対象の PayPay CSV ファイルのパス | `C:\Users\yourname\Downloads\paypay_history.csv` |
-| mf_account | string | MF の手入力フォームで選択する口座名 | `PayPay残高` |
-
-```yaml
-dry_run: true
-input_csv: "C:\\Users\\yourname\\Downloads\\paypay_history.csv"
-mf_account: "PayPay残高"
-```
-
-`input_csv`、`log_settings.logs_dir`、`advanced.mf_categories_path`、
-`gcloud_credentials_path` に相対パスを指定した場合は、
-実行時のカレントディレクトリではなく `config.yml` の配置ディレクトリ基準で解決されます。
-`input_csv`、`advanced.mf_categories_path`、`gcloud_credentials_path` は
-ディレクトリではなくファイルを指定してください。
-
-### 入力CSVファイル（PayPay 利用明細）
-
-| 項目 | 内容 |
-| ---- | ---- |
-| 取得元 | PayPay アプリの「取引履歴」画面からエクスポート |
-| 形式 | CSV |
-| エンコーディング | UTF-8 または Shift_JIS（BOM 付き可） |
-| ヘッダー | あり（1行目） |
-| 区切り文字 | `,` |
-
-| 列名 | データ型 | 説明 |
-| ---- | ---- | ---- |
-| 取引日 | datetime | 例: `2025/02/11 22:32:13` |
-| 出金金額（円） | string | 数値またはハイフン（`-`）。カンマ区切りあり（例: `"1,280"`） |
-| 入金金額（円） | string | 数値またはハイフン（`-`） |
-| 海外出金金額 | string | 海外取引時の現地通貨金額。国内取引は `-` |
-| 通貨 | string | 例: `JPY` / `USD`。国内取引は `-` |
-| 変換レート（円） | string | 円換算レート。国内取引は `-` |
-| 利用国 | string | 例: `JP`。国内取引は `-` |
-| 取引内容 | string | MF メモ欄に転記される |
-| 取引先 | string | マッピングルールのマッチング対象 |
-| 取引方法 | string | 例: `PayPayカード VISA 4575` |
-| 支払い区分 | string | 例: `一回払い` |
-| 利用者 | string | 例: `本人` |
-| 取引番号 | string | 重複検知の主キー。複合支払いは同一番号で複数行 |
-
-```csv
-取引日,出金金額（円）,入金金額（円）,海外出金金額,通貨,変換レート（円）,利用国,取引内容,取引先,取引方法,支払い区分,利用者,取引番号
-2025/02/11 19:24:02,920,-,-,-,-,-,支払い,モスのネット注文,クレジット VISA 4575,-,本人,04639628474580213761
-2025/02/10 12:55:55,330,-,-,-,-,-,支払い,キャンドゥ　横浜橋商店街,"PayPayポイント (73円), クレジット VISA 4575 (257円)",-,本人,04638686270424956930
-2025/02/08 23:59:04,-,120,-,-,-,-,ポイント、残高の獲得,giftee,PayPayポイント,-,-,856574761326657536-a0196d18
-```
-
-## 出力
-
-### ログファイル
-
-| 項目 | 内容 |
-| ---- | ---- |
-| 出力先 | `<logs_dir>\app_yyyyMMdd_HHmmss.log` |
-| ログレベル | INFO / WARNING / ERROR |
-| フォーマット | `yyyy-MM-dd HH:mm:ss [LEVEL] message` |
-
-取引日、金額、加盟店、transaction_id などの個別取引明細は app ログへ出力しません。ログは件数サマリーとエラー状態の把握を主目的とします。
-
-#### ログ出力例（ドライラン）
-
-```text
-2026-03-28 10:00:00 [WARNING] logs_dir 配下のログ、CSV、PNG は機微情報を含む可能性があります。ローカル保管とし、共有やクラウド同期を避けてください。
-2026-03-28 10:00:00 [INFO] DRY RUN: ブラウザを起動しません。CSV診断のみ実行します。
-2026-03-28 10:00:00 [INFO] config.yml を読み込みました
-2026-03-28 10:00:00 [INFO] CSV 読み込み完了: 正常 5件 / 解析失敗 0件
-2026-03-28 10:00:00 [INFO] 除外: 1件
-2026-03-28 10:00:00 [INFO] 重複スキップ: 0件
-2026-03-28 10:00:00 [INFO] 処理対象: 4件
-2026-03-28 10:00:00 [INFO] ドライラン完了: 登録対象 4件
-```
-
-#### ログ出力例（本番実行）
-
-```text
-2026-03-28 10:05:00 [WARNING] logs_dir 配下のログ、CSV、PNG は機微情報を含む可能性があります。ローカル保管とし、共有やクラウド同期を避けてください。
-2026-03-28 10:05:00 [INFO] config.yml を読み込みました
-2026-03-28 10:05:01 [INFO] CSV 読み込み完了: 正常 5件 / 解析失敗 0件
-2026-03-28 10:05:01 [INFO] 除外: 1件
-2026-03-28 10:05:01 [INFO] 重複スキップ: 0件
-2026-03-28 10:05:01 [INFO] 処理対象: 4件
-2026-03-28 10:05:02 [INFO] Chrome を起動しました
-2026-03-28 10:05:05 [INFO] MF ページへ遷移しました
-2026-03-28 10:05:10 [ERROR] 登録失敗 (2/4): セレクタが見つかりません
-2026-03-28 10:05:10 [WARNING] スクリーンショットを保存しました: screenshot_20260328_100510.png
-2026-03-28 10:05:10 [WARNING] スクリーンショットは機微情報を含む可能性があります。共有しないでください。
-2026-03-28 10:05:18 [INFO] 実行完了: 成功 3件 / 除外 1件 / 重複スキップ 0件 / 失敗 1件
-2026-03-28 10:05:18 [WARNING] 登録失敗CSVを出力しました: error_20260328_100518.csv
-2026-03-28 10:05:18 [WARNING] 登録失敗CSVは機微情報を含む可能性があります。共有しないでください。
-2026-03-28 10:05:18 [INFO] アプリケーションを終了します
-```
-
-#### ログメッセージ
-
-| No. | レベル | テンプレート |
-| ---- | ---- | ---- |
-| 1 | WARNING | `logs_dir 配下のログ、CSV、PNG は機微情報を含む可能性があります。ローカル保管とし、共有やクラウド同期を避けてください。` |
-| 2 | INFO | `DRY RUN: ブラウザを起動しません。CSV診断のみ実行します。` |
-| 3 | INFO | `config.yml を読み込みました` |
-| 4 | INFO | `CSV 読み込み完了: 正常 {success}件 / 解析失敗 {parse_failed}件` |
-| 5 | INFO | `除外: {excluded}件` |
-| 6 | INFO | `重複スキップ: {skipped}件` |
-| 7 | INFO | `処理対象: {count}件` |
-| 8 | INFO | `ドライラン完了: 登録対象 {count}件` |
-| 9 | INFO | `Chrome を起動しました` |
-| 10 | INFO | `MF ページへ遷移しました` |
-| 11 | ERROR | `登録失敗 ({index}/{total}): {error_message}` |
-| 12 | WARNING | `解析エラーCSVを出力しました: {filename}` |
-| 13 | WARNING | `登録失敗CSVを出力しました: {filename}` |
-| 14 | WARNING | `スクリーンショットを保存しました: {filename}` |
-| 15 | WARNING | `Selenium driver が未初期化のため、スクリーンショットを保存しませんでした。` |
-| 16 | INFO | `実行完了: 成功 {success}件 / 除外 {excluded}件 / 重複スキップ {skipped}件 / 失敗 {failed}件` |
-| 17 | INFO | `アプリケーションを終了します` |
-
-### 解析エラーCSVファイル
-
-| 項目 | 内容 |
-| ---- | ---- |
-| ファイル名 | `parse_error_yyyyMMdd_HHmmss.csv` |
-| 配置場所 | `log_settings.logs_dir`（デフォルト: `config.yml` と同じディレクトリ配下の `logs`） |
-| 内容概要 | `row_index` / `error_type` / `error_message` の最小列で構成される解析失敗一覧 |
-
-### 登録失敗CSVファイル
-
-| 項目 | 内容 |
-| ---- | ---- |
-| ファイル名 | `error_yyyyMMdd_HHmmss.csv` |
-| 配置場所 | `log_settings.logs_dir`（デフォルト: `config.yml` と同じディレクトリ配下の `logs`） |
-| 内容概要 | `failure_index` / `error_message` の最小列で構成される登録失敗一覧 |
-
-### スクリーンショット
-
-| 項目 | 内容 |
-| ---- | ---- |
-| ファイル名 | `screenshot_yyyyMMdd_HHmmss.png` |
-| 配置場所 | `log_settings.logs_dir` |
-| 出力条件 | `advanced.screenshot_on_error: true` を明示し、Selenium driver が利用可能な状態でエラーが発生した場合 |
-
-> 注意: コンテキスト外誤用などで Selenium driver が未初期化の場合、保存済みログは出力されず、スクリーンショットも保存されません。
-> 注意: 保存物の全体像と運用上の注意は、上部の「注意制限事項」を参照してください。
-
-## 処理詳細
-
-1. `config.yml` を読み込み、必須項目のバリデーションを行う。
-2. `input_csv` を文字コード自動判定で読み込む。
-3. 各行をパースし、不正行は `parse_error_*.csv` に記録したうえで、正常行だけに除外ルール・重複検知を適用する。
-4. `dry_run: true` の場合は件数サマリーを出力して終了する（ブラウザ不使用）。
-  重複履歴の JSON / Firestore は更新しない。
-5. `dry_run: false` の場合は Selenium が一時プロファイルで Chrome を起動し、Money Forward トップページを開く。
-6. ユーザーが起動した Chrome 上で手動ログインして Enter を押すと、家計簿タブを経由して `/cf` に遷移し、MF の手入力フォームに1件ずつ登録する。
-7. 実行結果（成功件数・除外件数・重複スキップ件数・失敗件数・解析失敗件数）をログと各種 CSV に出力する。
-
-```mermaid
-flowchart TD
-    A[config.yml を読み込みバリデーション] --> B[input_csv を読み込み]
-    B --> C[CSV 解析・金額の数値化・複合支払いの合算]
-    C --> D[除外ルール適用]
-    D --> E[重複検知]
-    E --> F{dry_run?}
-    F -->|true| G[件数サマリーを標準出力・ログ出力して終了\n重複履歴は更新しない]
-    F -->|false| H[Selenium が一時プロファイルで Chrome を起動]
-    H --> I[ユーザーが手動ログインして Enter]
-    I --> J[家計簿タブ経由で /cf へ遷移]
-    J --> K[取引1件を手入力フォームに入力・登録]
-    K --> L{エラー発生?}
-    L -->|あり| M[スクリーンショット保存 / エラーCSV記録]
-    M --> N{次の取引?}
-    L -->|なし| N
-    N -->|ある| K
-    N -->|なし| O[実行サマリーをログ出力]
-    O --> P[アプリケーション終了]
-```
-
-## Google Cloud Firestore バックエンドの設定（任意）
-
-`duplicate_detection.backend: "gcloud"` を使用する場合は、以下の手順で GCP 環境を準備してください。
-
-### 0. 事前に必要なパッケージのインストール
-
-```bash
-pip install "paypay2mf[gcloud]"
-# または
-pip install google-cloud-firestore
-```
-
-### 1. GCP プロジェクトの作成
-
-1. [Google Cloud Console](https://console.cloud.google.com/) を開く
-2. 左上のプロジェクト選択メニュー → 「新しいプロジェクト」
-3. プロジェクト名を入力（例: `paypay2mf`）して「作成」
-
-### 2. Firestore の有効化
-
-1. Google Cloud Console の検索バーで「Firestore」と入力 → 「Firestore」を選択
-2. 「データベースの作成」をクリック
-3. **「Native mode」（ネイティブモード）** を選択して「続行」
-4. 任意のリージョンを選択して「データベースを作成」
-
-### 3. サービスアカウントの作成
-
-1. Google Cloud Console → 「IAM と管理」 → 「サービスアカウント」
-2. 「サービスアカウントを作成」をクリック
-3. サービスアカウント名を入力（例: `paypay2mf-sa`） → 「作成して続行」
-4. ロールに **「Cloud Datastore ユーザー」**（`roles/datastore.user`）を付与 → 「続行」 → 「完了」
-
-### 4. JSON キーのダウンロード
-
-1. 作成したサービスアカウントをクリック → 「キー」タブ
-2. 「キーを追加」 → 「新しいキーを作成」 → 「JSON」 → 「作成」
-3. ダウンロードされた JSON ファイルを安全なローカル場所に保存
-  （例: `secrets/paypay2mf-credentials.json` を `config.yml` と同じフォルダ配下に配置）
-
-### 5. config.yml の設定
-
-```yaml
-duplicate_detection:
-  backend: "gcloud"
-  tolerance_seconds: 60
-
-gcloud_credentials_path: "./secrets/paypay2mf-credentials.json"
-```
-
-`gcloud_credentials_path` も絶対パスに加えて `config.yml` 基準の相対パスを指定できます。
-この項目だけを設定しても backend は切り替わらないため、`duplicate_detection.backend: "gcloud"` を必ず併記してください。
-
-### 6. Firestore 複合インデックスの作成（フォールバック検索用）
-
-取引番号が欠損している場合のフォールバック検索では、`amount + merchant + date_bucket` の複合クエリで候補を絞り込み、
-取得した候補に対して `datetime` と `tolerance_seconds` を用いた
-許容幅判定を行います。date_bucket は取引日時を分単位に正規化した
-補助フィールドです。  
-初回実行時にインデックスエラーが発生した場合は、Firestore コンソールで以下の複合インデックスを作成してください。
-
-| コレクション | フィールド 1 | フィールド 2 | フィールド 3 |
-| ---- | ---- | ---- | ---- |
-| `paypay_transactions` | `amount` (昇順) | `merchant` (昇順) | `date_bucket` (昇順) |
-
-### 7. 既存 Firestore データの backfill
-
-この変更以降は、Firestore の既存ドキュメントにも `date_bucket` が必要です。切り替え前に一度だけ backfill を実行してください。
-
-backfill CLI は通常の `config.yml` をそのまま利用できますが、実装上は必要キーだけを読むため、検証用には最小構成の設定ファイルでも実行できます。
-
-```yaml
-duplicate_detection:
-  backend: "gcloud"
-  tolerance_seconds: 60
-
-gcloud_credentials_path: "./secrets/paypay2mf-credentials.json"
-```
-
-```bash
-# まず更新予定件数だけ確認
-paypay2mf-firestore-backfill --dry-run
-
-# 問題なければ反映
-paypay2mf-firestore-backfill
-```
-
-既定では `PAYPAY2MF_CONFIG`、カレントディレクトリ、モジュール同居の順に
-`config.yml` を探索します。`--config` で明示指定も可能です。検証用に
-`--limit 100` のような上限指定も可能です。
-backfill は `duplicate_detection.backend: "gcloud"` の設定を前提に、
-`datetime` から `date_bucket` を算出して補完します。
-
-### 8. 切り替え順序
-
-1. Firestore に `amount` / `merchant` / `date_bucket` の複合インデックスを作成する。
-2. `paypay2mf-firestore-backfill --dry-run` で更新予定件数を確認する。
-3. `paypay2mf-firestore-backfill` を実行し、`date_bucket` を backfill する。
-4. `pytest -q tests/test_duplicate_detector.py` で関連テストを確認する。
-5. アプリ本体を実行して、transaction_id がない既知データで重複判定を確認する。
-
-> 注意: `duplicate_detection.backend: "gcloud"` を使用する場合、
-> Firestore には `transaction_id` がある取引はその値、
-> `transaction_id` がない取引は `datetime` / `amount` / `merchant` / `date_bucket` を重複判定用に保存します。
+`pip-audit` は現時点で監査ツール側依存の
+`CVE-2026-4539` を一時的に除外して実行します。
 
 ## ライセンス
 
-### 本プログラムのライセンス
-
-- このリポジトリのソースコードは MIT ライセンスです。詳細は同梱の LICENSE を参照してください。
-
-### 使用ライブラリのライセンス
-
-| ライブラリ名 | バージョン | ライセンス |
-| ---- | ---- | ---- |
-| selenium | 4.30 以上 | Apache-2.0 |
-| PyYAML | 6.0 以上 | MIT |
-| google-cloud-firestore | 任意 | Apache License 2.0 |
-
-## 開発詳細
-
-### 開発環境
-
-- VS Code 最新版
-- Python 3.11 以上
-
-### 依存関係管理方針
-
-- 直接 import する third-party package は、pyproject.toml の
-  dependencies または optional-dependencies に必ず明示する。
-- Python 3.11 以上を前提とし、[src/paypay2mf/mf_registrar.py](src/paypay2mf/mf_registrar.py)
-  の Self 型注釈は標準ライブラリの typing を使用する。
-- optional dependency は [src/paypay2mf/duplicate_detector.py](src/paypay2mf/duplicate_detector.py)
-  のように遅延 import と案内メッセージを組み合わせ、
-  未導入環境でも基本機能が動作するようにする。
-- GCloud backend の自動テストは、[tests/test_duplicate_detector.py](tests/test_duplicate_detector.py)
-  で Firestore client をモックした単体テストまでを標準範囲とし、
-  実サービス接続は別途手動確認で扱う。
-
-### UI 自動化の保守方針
-
-- Money Forward の DOM セレクタ契約は
-  [src/paypay2mf/mf_selectors.py](src/paypay2mf/mf_selectors.py) に集約する。
-- 手入力モーダルの UI 操作は
-  [src/paypay2mf/mf_page.py](src/paypay2mf/mf_page.py) の `MFManualFormPage` にまとめる。
-- Money Forward のカテゴリ対応表は
-  [src/paypay2mf/mf_categories.yml](src/paypay2mf/mf_categories.yml) を既定とし、
-  必要時のみ `config.yml` の `advanced.mf_categories_path` で差し替える。
-- 独自カテゴリ YAML のひな形として [mf_categories_sample.yml](mf_categories_sample.yml) を同梱している。差し替え時はこの形式をベースに編集する。
-- [src/paypay2mf/mf_registrar.py](src/paypay2mf/mf_registrar.py) はブラウザ起動と
-  コンテキスト管理に専念させる。
-- DOM 変更対応時は、まず selector 定義と Page Object を確認し、registrar 本体へ直接セレクタを増やさない。
-
-`advanced.mf_categories_path` に相対パスを指定した場合は
-`config.yml` の配置ディレクトリ基準で解決されます。
-差し替え先 YAML は `middle_to_large:` をルートに持ち、
-中項目名から大項目名への対応を定義してください。
-指定時は完全置換になるため、必要な中項目をサンプルから削らずに調整してください。
-
-### Selenium スモークテスト
-
-Money Forward 実サイトに対するスモークテストは通常の `pytest` には含めません。
-必要な環境変数を設定して明示実行すると、Selenium が一時プロファイルで
-Chrome を起動します。起動したブラウザで Money Forward に手動ログインし、
-Enter を押して続行してください。
-標準の `python -m pytest -q` では `smoke_test` マーカー付きテストは skip されます。
-Money Forward の DOM 変更調査時や、しばらくメンテナンスしていない環境では本体実行前にこの smoke test を再実行してください。
-
-PowerShell 例:
-
-```powershell
-$env:PAYPAY2MF_RUN_SMOKE_TEST = "1"
-$env:PAYPAY2MF_SMOKE_MF_ACCOUNT = "<MF Account Name>"
-# 任意: スモークテストの出力先を固定したい場合のみ設定
-$env:PAYPAY2MF_SMOKE_LOGS_DIR = "<Optional Smoke Logs Dir>"
-python -m pytest -q -m smoke_test tests/test_mf_smoke.py
-```
-
-このスモークテストは、Money Forward の入出金ページへ遷移し、手入力モーダルが開けることだけを確認します。実データの送信や保存は行いません。
-通常利用時の事前確認は `dry_run: true` の本体実行で十分です。smoke test は UI 契約の確認用途に限定して使ってください。
-
-### 検証環境
-
-| 項目 | 内容 |
-| ---- | ---- |
-| OS | Windows 11 |
-| ブラウザ | Google Chrome（最新版） |
-| Python | 3.11 以上 |
-
-## 改訂履歴
-
-| バージョン | 日付 | 内容 |
-| ----- | ---------- | -------------- |
-| 1.0.0 | 2026-03-31 | 初版作成 |
+- ソースコードは MIT ライセンスです
+- 詳細は LICENSE を参照してください
