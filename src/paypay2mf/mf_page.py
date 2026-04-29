@@ -46,10 +46,15 @@ _CATEGORY_NOT_FOUND_WARNING = (
 )
 _SUBMIT_REPORTED_ERROR_MESSAGE = "MF 登録に失敗しました。{detail}"
 _SUBMIT_ERROR_FALLBACK_DETAIL = "送信後にフォームエラーが表示されました。"
+_SUBMIT_OUTCOME_TIMEOUT_MESSAGE = (
+    "MF 登録結果を確認できませんでした。"
+    "成功モーダルが閉じないか、エラー表示を検知できませんでした。"
+)
 _AMOUNT_INPUT_NOT_READY_MESSAGE = (
     "手入力フォームの金額入力欄が操作可能になりませんでした。"
     "フォーム切替の反映待ちに失敗した可能性があります。"
 )
+_SUBMIT_SUCCESS_MESSAGE_TEXT = "入力を保存しました。"
 _ACCOUNT_NAME_SUFFIX_PATTERN = re.compile(r"\s*\([^()]*円\)\s*$")
 _ACCOUNT_AMBIGUOUS_MESSAGE = (
     "口座 '{account_name}' に一致する MF 口座が複数見つかりました。"
@@ -140,9 +145,13 @@ class MFManualFormPage:
         self._wait_for_submit_outcome()
 
     def _wait_for_submit_outcome(self) -> None:
-        status, detail = self._wait(mf_selectors.SUBMIT_TIMEOUT_MS).until(
-            self._resolve_submit_outcome,
-        )
+        try:
+            status, detail = self._wait(mf_selectors.SUBMIT_TIMEOUT_MS).until(
+                self._resolve_submit_outcome,
+            )
+        except (TimeoutException, TimeoutError) as exc:
+            raise RuntimeError(_SUBMIT_OUTCOME_TIMEOUT_MESSAGE) from exc
+
         if status == "error":
             msg = _SUBMIT_REPORTED_ERROR_MESSAGE.format(detail=detail)
             raise RuntimeError(msg)
@@ -155,6 +164,10 @@ class MFManualFormPage:
         if modal is None or not modal.is_displayed():
             return ("closed", AppConstants.EMPTY_STRING)
 
+        if self._is_submit_success_state(modal):
+            self._close_submit_success_modal(modal)
+            return False
+
         for selector in mf_selectors.SUBMIT_ERROR_FEEDBACK_SELECTORS:
             for element in modal.find_elements(By.CSS_SELECTOR, selector):
                 if not element.is_displayed():
@@ -163,6 +176,35 @@ class MFManualFormPage:
                 return ("error", detail)
 
         return False
+
+    def _is_submit_success_state(self, modal: WebElement) -> bool:
+        for element in modal.find_elements(
+            By.CSS_SELECTOR,
+            mf_selectors.SUBMIT_SUCCESS_MESSAGE,
+        ):
+            if not element.is_displayed():
+                continue
+            if element.text.strip() == _SUBMIT_SUCCESS_MESSAGE_TEXT:
+                return True
+
+        for element in modal.find_elements(
+            By.CSS_SELECTOR,
+            mf_selectors.SUBMIT_CONTINUE_BUTTON,
+        ):
+            if not element.is_displayed():
+                continue
+            return True
+
+        return False
+
+    def _close_submit_success_modal(self, modal: WebElement) -> None:
+        close_button = self._find_first_visible_in_modal(
+            modal,
+            (mf_selectors.CLOSE_BUTTON,),
+        )
+        if close_button is None:
+            return
+        self._click_element(close_button)
 
     def _select_account(self, modal: WebElement) -> None:
         account_select = Select(

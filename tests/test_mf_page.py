@@ -35,6 +35,7 @@ _DEFAULT_MERCHANT = "モスのネット注文"
 _DEFAULT_TRANSACTION_ID = "TX001"
 _SUBMIT_TIMEOUT_MESSAGE = "submit timeout"
 _SUBMIT_ERROR_MESSAGE = "入力エラーです"
+_SUBMIT_SUCCESS_MESSAGE = "入力を保存しました。"
 
 pytestmark = pytest.mark.ui_contract
 
@@ -459,8 +460,49 @@ def test_register_transaction_raises_when_submit_does_not_close_modal() -> None:
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
     )
 
-    with pytest.raises(TimeoutError, match=_SUBMIT_TIMEOUT_MESSAGE):
+    with pytest.raises(RuntimeError, match="MF 登録結果を確認できませんでした"):
         form_page.register_transaction(_make_tx())
+
+
+def test_register_transaction_accepts_success_confirmation_modal() -> None:
+    driver = _make_driver()
+    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+    success_message = modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.SUBMIT_SUCCESS_MESSAGE,
+        _FakeElement(
+            mf_selectors.SUBMIT_SUCCESS_MESSAGE,
+            text=_SUBMIT_SUCCESS_MESSAGE,
+            displayed=False,
+        ),
+    )
+    continue_button = modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.SUBMIT_CONTINUE_BUTTON,
+        _FakeElement(mf_selectors.SUBMIT_CONTINUE_BUTTON, displayed=False),
+    )
+    close_button = modal.find_element(By.CSS_SELECTOR, mf_selectors.CLOSE_BUTTON)
+    close_button.set_displayed(False)
+
+    def _show_success_confirmation() -> None:
+        success_message.set_displayed(True)
+        continue_button.set_displayed(True)
+        close_button.set_displayed(True)
+
+    submit = modal.find_element(By.CSS_SELECTOR, mf_selectors.SUBMIT_BUTTON)
+    submit._on_click = _show_success_confirmation
+    close_button._on_click = lambda: modal.set_displayed(False)
+
+    form_page = MFManualFormPage(
+        driver,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    form_page.register_transaction(_make_tx())
+
+    assert ("click", mf_selectors.CLOSE_BUTTON) in driver.actions
 
 
 def test_register_transaction_raises_when_submit_error_is_reported() -> None:
