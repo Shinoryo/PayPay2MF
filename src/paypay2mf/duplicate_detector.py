@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from bisect import bisect_left, insort
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -236,9 +237,11 @@ class LocalDuplicateDetector:
                 _KEY_MERCHANT: tx.merchant,
             }
             self._data[_KEY_FALLBACK].append(entry)
-            self._fallback_index.setdefault((tx.merchant, tx.amount), []).append(
-                tx.date,
+            fallback_dates = self._fallback_index.setdefault(
+                (tx.merchant, tx.amount),
+                [],
             )
+            insort(fallback_dates, tx.date)
             self._dirty = True
 
     def flush(self) -> None:
@@ -265,10 +268,18 @@ class LocalDuplicateDetector:
             重複と判定すれば True。
         """
         fallback_dates = self._fallback_index.get((tx.merchant, tx.amount), [])
-        for stored_dt in fallback_dates:
-            if abs((tx.date - stored_dt).total_seconds()) <= self._tolerance:
-                return True
-        return False
+        if not fallback_dates:
+            return False
+
+        tolerance = timedelta(seconds=self._tolerance)
+        lower_bound = tx.date - tolerance
+        upper_bound = tx.date + tolerance
+        nearest_index = bisect_left(fallback_dates, lower_bound)
+
+        return (
+            nearest_index < len(fallback_dates)
+            and fallback_dates[nearest_index] <= upper_bound
+        )
 
     def _load(self) -> None:
         """JSON ファイルから処理済みデータを読み込む。
@@ -307,6 +318,8 @@ class LocalDuplicateDetector:
             index.setdefault(key, []).append(
                 datetime.fromisoformat(str(entry[_KEY_DATETIME]))
             )
+        for stored_dates in index.values():
+            stored_dates.sort()
         return index
 
     def _validate_loaded_data(self, loaded_data: object) -> dict:

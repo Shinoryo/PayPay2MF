@@ -38,6 +38,7 @@ _MSG_APP_EXIT = "アプリケーションを終了します"
 _MSG_REGISTRATION_BOOT_FAILED = "Chrome の起動またはMFへの遷移に失敗しました"
 _MSG_CONTEXT_EXIT_FAILED = "context exit failed"
 _MSG_DUPLICATE_HISTORY_SAVE_FAILED = "重複履歴ファイルの保存に失敗しました: %s"
+_MSG_DUPLICATE_HISTORY_UPDATE_FAILED = "重複履歴の更新に失敗しました: %s"
 _MSG_DUPLICATE_BACKEND_INIT_FAILED = "重複検知バックエンドの初期化に失敗しました: %s"
 
 if TYPE_CHECKING:
@@ -486,6 +487,46 @@ def test_run_registration_exits_when_duplicate_history_flush_fails(
     logger.exception.assert_called_once_with(
         _MSG_DUPLICATE_HISTORY_SAVE_FAILED,
         "processed.json の保存に失敗しました",
+    )
+
+
+def test_run_registration_exits_when_duplicate_history_update_fails_after_registration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """MF 登録成功後に履歴更新が失敗した場合は継続せず終了する。"""
+    config = app_config_factory(tmp_path, dry_run=False, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+    registrar = _FakeRegistrar()
+    registrar_factory = Mock(return_value=nullcontext(registrar))
+    tx1 = transaction_factory(transaction_id="TX001", merchant="merchant-TX001")
+    tx2 = transaction_factory(transaction_id="TX002", merchant="merchant-TX002")
+
+    class _BrokenDetector:
+        def __init__(self) -> None:
+            self.mark_processed = Mock(side_effect=[RuntimeError("history write failed")])
+            self.flush = Mock()
+
+    detector = _BrokenDetector()
+    monkeypatch.setattr(app_main, "MFRegistrar", registrar_factory)
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_main.run_registration(
+            config,
+            logger,
+            detector,
+            [tx1, tx2],
+        )
+
+    assert exc_info.value.code == 1
+    assert registrar.registered == ["TX001"]
+    detector.mark_processed.assert_called_once_with(tx1)
+    detector.flush.assert_called_once_with()
+    logger.exception.assert_called_once_with(
+        _MSG_DUPLICATE_HISTORY_UPDATE_FAILED,
+        "処理済み履歴の更新に失敗しました (1/2)",
     )
 
 

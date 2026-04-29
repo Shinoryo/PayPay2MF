@@ -117,6 +117,18 @@ def test_invalid_yaml_syntax_raises_value_error(tmp_path: Path) -> None:
         load_config(config_file)
 
 
+def test_config_path_must_be_file(tmp_path: Path) -> None:
+    """config.yml にディレクトリを指定した場合は ValueError が送出される。"""
+    config_dir = tmp_path / _CONFIG_FILENAME
+    config_dir.mkdir()
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(f"config.yml にはファイルを指定してください: {config_dir}"),
+    ):
+        load_config(config_dir)
+
+
 def test_unknown_top_level_key_raises_value_error(tmp_path: Path) -> None:
     """config.yml 直下の未知キーが黙殺されずに ValueError になることを確認する。"""
     data = _base_data(tmp_path)

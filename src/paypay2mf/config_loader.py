@@ -69,8 +69,10 @@ _DEFAULT_SCREENSHOT_ON_ERROR = False
 
 # エラーメッセージ
 _MSG_CONFIG_NOT_FOUND = "config.yml が見つかりません: {path}"
+_MSG_CONFIG_NOT_FILE = "config.yml にはファイルを指定してください: {path}"
 _MSG_CONFIG_ROOT_TYPE = "config.yml のルート要素は object で指定してください。"
 _MSG_CONFIG_YAML_INVALID = "config.yml の YAML 構文が不正です: {detail}"
+_MSG_CONFIG_OPEN_FAILED = "config.yml を読み込めません: {path} ({detail})"
 _MSG_UNKNOWN_KEYS = "{section} に未定義キーがあります: {keys}"
 _MSG_DRY_RUN_TYPE = "dry_run には true または false を指定してください。"
 _MSG_REQUIRED_STRING_TYPE = "{key} には文字列を指定してください。"
@@ -324,12 +326,18 @@ def load_config(path: Path) -> AppConfig:
     """
     if not path.exists():
         raise FileNotFoundError(_MSG_CONFIG_NOT_FOUND.format(path=path))
+    if not path.is_file():
+        raise ValueError(_MSG_CONFIG_NOT_FILE.format(path=path))
 
     try:
         with path.open(encoding=AppConstants.DEFAULT_TEXT_ENCODING) as f:
             loaded = yaml.safe_load(f)
     except yaml.YAMLError as exc:
         raise ValueError(_MSG_CONFIG_YAML_INVALID.format(detail=str(exc))) from exc
+    except OSError as exc:
+        raise ValueError(
+            _MSG_CONFIG_OPEN_FAILED.format(path=path, detail=str(exc)),
+        ) from exc
 
     if loaded is None:
         raw: dict = {}
