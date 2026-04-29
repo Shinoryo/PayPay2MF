@@ -6,6 +6,7 @@ config.yml を読み込んで CSV パースから MF 登録までのメインフ
 from __future__ import annotations
 
 import argparse
+import csv
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -120,7 +121,7 @@ def build_transactions(
 ) -> PreparedTransactions:
     try:
         transactions, parse_failures = parse_csv(config.input_csv, config)
-    except Exception:
+    except (OSError, UnicodeError, ValueError, csv.Error):
         logger.exception(_LOG_MSG_CSV_READ_FAILED)
         sys.exit(1)
 

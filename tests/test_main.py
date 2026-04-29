@@ -172,14 +172,14 @@ def test_build_transactions_exits_when_parse_csv_raises(
     monkeypatch: pytest.MonkeyPatch,
     app_config_factory,
 ) -> None:
-    """TC-09-01: CSV 読み込み全体が失敗した場合は終了することを確認する。"""
+    """TC-09-01: 想定内の CSV 読み込み失敗は終了することを確認する。"""
     config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
     logger = Mock(spec=logging.Logger)
 
     monkeypatch.setattr(
         app_main,
         "parse_csv",
-        Mock(side_effect=RuntimeError("bad csv")),
+        Mock(side_effect=ValueError("bad csv")),
     )
 
     with pytest.raises(SystemExit) as exc_info:
@@ -187,6 +187,49 @@ def test_build_transactions_exits_when_parse_csv_raises(
 
     assert exc_info.value.code == 1
     logger.exception.assert_called_once_with(_MSG_CSV_READ_FAILED)
+
+
+def test_build_transactions_exits_when_parse_csv_raises_os_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    """入力ファイルの I/O 失敗も明示ログを出して終了する。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+
+    monkeypatch.setattr(
+        app_main,
+        "parse_csv",
+        Mock(side_effect=PermissionError("denied")),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_main.build_transactions(config, logger)
+
+    assert exc_info.value.code == 1
+    logger.exception.assert_called_once_with(_MSG_CSV_READ_FAILED)
+
+
+def test_build_transactions_propagates_unexpected_parse_csv_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    """想定外の実装バグは SystemExit へ変換せず伝播させる。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+
+    monkeypatch.setattr(
+        app_main,
+        "parse_csv",
+        Mock(side_effect=RuntimeError("bug")),
+    )
+
+    with pytest.raises(RuntimeError, match="bug"):
+        app_main.build_transactions(config, logger)
+
+    logger.exception.assert_not_called()
 
 
 def test_build_transactions_exits_when_duplicate_history_is_corrupted(

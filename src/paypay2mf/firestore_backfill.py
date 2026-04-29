@@ -13,7 +13,11 @@ import yaml
 
 from paypay2mf.config_loader import CONFIG_ENV_VAR, resolve_config_path
 from paypay2mf.constants import AppConstants
-from paypay2mf.duplicate_detector import GCloudDuplicateDetector, build_date_bucket
+from paypay2mf.duplicate_detector import (
+    DuplicateHistoryError,
+    GCloudDuplicateDetector,
+    build_date_bucket,
+)
 from paypay2mf.models import DuplicateDetectionConfig
 
 _KEY_DATETIME = "datetime"
@@ -28,8 +32,10 @@ _MSG_BACKEND_REQUIRED = (
     'duplicate_detection.backend: "gcloud" を設定してから実行してください。'
 )
 _MSG_CONFIG_NOT_FOUND = "config.yml が見つかりません: {path}"
+_MSG_CONFIG_NOT_FILE = "config.yml にはファイルを指定してください: {path}"
 _MSG_CONFIG_ROOT_TYPE = "config.yml のルート要素は object で指定してください。"
 _MSG_CONFIG_YAML_INVALID = "config.yml の YAML 構文が不正です: {detail}"
+_MSG_CONFIG_OPEN_FAILED = "config.yml を読み込めません: {path} ({detail})"
 _MSG_DUPLICATE_DETECTION_TYPE = "duplicate_detection は object で指定してください。"
 _MSG_GCLOUD_CREDS_REQUIRED = (
     'duplicate_detection.backend: "gcloud" の場合は '
@@ -138,12 +144,18 @@ def _load_backfill_config(config_path: Path) -> _BackfillDetectorConfig:
 def _load_raw_config(config_path: Path) -> dict[str, object]:
     if not config_path.exists():
         raise FileNotFoundError(_MSG_CONFIG_NOT_FOUND.format(path=config_path))
+    if not config_path.is_file():
+        raise ValueError(_MSG_CONFIG_NOT_FILE.format(path=config_path))
 
     try:
         with config_path.open(encoding=AppConstants.DEFAULT_TEXT_ENCODING) as file_obj:
             loaded = yaml.safe_load(file_obj)
     except yaml.YAMLError as exc:
         raise ValueError(_MSG_CONFIG_YAML_INVALID.format(detail=str(exc))) from exc
+    except OSError as exc:
+        raise ValueError(
+            _MSG_CONFIG_OPEN_FAILED.format(path=config_path, detail=str(exc)),
+        ) from exc
 
     if loaded is None:
         return {}
@@ -274,16 +286,17 @@ def main(argv: list[str] | None = None) -> None:
 
     try:
         detector = _load_gcloud_detector(config_path)
-        logger.info(_MSG_START)
-        summary = backfill_date_buckets(
-            detector,
-            logger,
-            dry_run=args.dry_run,
-            limit=args.limit,
-        )
-    except Exception:
+    except (DuplicateHistoryError, FileNotFoundError, ImportError, ValueError):
         logger.exception(_MSG_FAILED)
         sys.exit(_EXIT_FAILURE)
+
+    logger.info(_MSG_START)
+    summary = backfill_date_buckets(
+        detector,
+        logger,
+        dry_run=args.dry_run,
+        limit=args.limit,
+    )
 
     if args.dry_run:
         logger.info(
