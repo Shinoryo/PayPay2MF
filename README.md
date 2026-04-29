@@ -16,6 +16,8 @@ Windows 向けローカル CLI ツールです。
 - dry_run ではブラウザを起動せず、CSV 変換結果と件数サマリーだけを確認できる
 - 本番実行では Selenium が Chrome を起動し、手動ログイン後に登録を続行する
 - 重複検知は local JSON と Firestore backend の両方に対応する
+- Firestore 既存データの `date_bucket` 補完は、本体とは別の
+  `paypay2mf-firestore-backfill` CLI で行う
 
 ## 動作環境
 
@@ -78,6 +80,10 @@ paypay2mf
 - Money Forward ME に手動ログインして Enter を押すと続行します
 - 家計簿タブ経由で `/cf` に遷移し、手入力フォームへ1件ずつ登録します
 
+登録自体が成功しても重複履歴の更新に失敗した場合は、その場で処理を中断します。
+同じ CSV をそのまま再実行すると重複登録につながる可能性があるため、
+`logs_dir` 配下のログを確認してから再開してください。
+
 ## 実行時の注意
 
 ### パス解決
@@ -99,6 +105,8 @@ paypay2mf
 
 - `duplicate_detection.backend: "local"` は単一インスタンス運用を前提とします
 - `dry_run: true` では local / gcloud いずれの履歴も更新しません
+- Firestore backend の fallback 検索には `amount`、`merchant`、`date_bucket`
+  の複合インデックスが必要です
 
 ## Smoke Test
 
@@ -136,9 +144,26 @@ duplicate_detection:
 gcloud_credentials_path: "./secrets/paypay2mf-credentials.json"
 ```
 
-- fallback 検索には `amount`、`merchant`、`date_bucket` の複合インデックスが必要です
-- 既存 Firestore データを使う場合は `paypay2mf-firestore-backfill` で
-  `date_bucket` を補完してください
+- 本体アプリの `dry_run` は通常実行だけに適用されます
+- backfill CLI の dry-run は `--dry-run` 引数で個別に制御します
+- 既存 Firestore データを使う場合は、本体実行前に
+  `paypay2mf-firestore-backfill` で `date_bucket` を補完してください
+
+backfill の最小設定は次の 2 点です。
+
+- `duplicate_detection.backend: "gcloud"`
+- `gcloud_credentials_path`
+
+最初の確認は dry-run を推奨します。
+
+```bash
+paypay2mf-firestore-backfill --config .\config.yml --dry-run
+paypay2mf-firestore-backfill --config .\config.yml
+```
+
+`--limit` や backfill の詳細な前提条件は
+[docs/基本設計書.md](docs/基本設計書.md) と
+[docs/設定ファイル仕様書.md](docs/設定ファイル仕様書.md) を参照してください。
 
 設計上の背景は [docs/基本設計書.md](docs/基本設計書.md) を参照してください。
 
