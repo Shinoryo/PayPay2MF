@@ -27,20 +27,22 @@ _LOGGER_NAME_NO_PAGE = "test-mf-registrar-no-page"
 _SCREENSHOT_NAME_PATTERN = r"screenshot_\d{8}_\d{6}\.png"
 _SCREENSHOT_SAVED_LOG = "スクリーンショットを保存しました"
 _SCREENSHOT_SKIPPED_LOG = (
-    "Playwright page が未初期化のため、スクリーンショットを保存しませんでした。"
+    "Selenium driver が未初期化のため、スクリーンショットを保存しませんでした。"
 )
 
 pytestmark = pytest.mark.ui_contract
 
 
-class _FakePage:
+class _FailingManualFormPage:
+    def register_transaction(self, _tx) -> None:
+        raise RuntimeError(_SELECTOR_TIMEOUT_MESSAGE)
+
+
+class _FakeDriver:
     def __init__(self) -> None:
         self.screenshot_paths: list[str] = []
 
-    def click(self, _selector: str) -> None:
-        raise RuntimeError(_SELECTOR_TIMEOUT_MESSAGE)
-
-    def screenshot(self, path: str) -> None:
+    def save_screenshot(self, path: str) -> None:
         self.screenshot_paths.append(path)
         pathlib.Path(path).write_text(
             _SCREENSHOT_STUB,
@@ -62,13 +64,12 @@ def test_register_does_not_save_screenshot_when_opted_out(
         ),
         logging.getLogger(_LOGGER_NAME_OPTOUT),
     )
-    fake_page = _FakePage()
-    object.__setattr__(registrar, "_page", fake_page)
+    object.__setattr__(registrar, "_manual_form_page", _FailingManualFormPage())
 
     with pytest.raises(RuntimeError, match=_SELECTOR_TIMEOUT_MESSAGE):
         registrar.register(transaction_factory(merchant=_DEFAULT_MERCHANT))
 
-    assert fake_page.screenshot_paths == []
+    assert registrar._take_screenshot() is None
 
 
 def test_register_saves_redacted_screenshot_name_when_opted_in(
@@ -85,17 +86,18 @@ def test_register_saves_redacted_screenshot_name_when_opted_in(
         ),
         logging.getLogger(_LOGGER_NAME_OPTIN),
     )
-    fake_page = _FakePage()
-    object.__setattr__(registrar, "_page", fake_page)
+    fake_driver = _FakeDriver()
+    object.__setattr__(registrar, "_driver", fake_driver)
+    object.__setattr__(registrar, "_manual_form_page", _FailingManualFormPage())
 
     with pytest.raises(RuntimeError, match=_SELECTOR_TIMEOUT_MESSAGE):
         registrar.register(transaction_factory(merchant=_DEFAULT_MERCHANT))
 
-    assert len(fake_page.screenshot_paths) == 1
-    screenshot_name = pathlib.Path(fake_page.screenshot_paths[0]).name
+    assert len(fake_driver.screenshot_paths) == 1
+    screenshot_name = pathlib.Path(fake_driver.screenshot_paths[0]).name
     assert re.fullmatch(_SCREENSHOT_NAME_PATTERN, screenshot_name)
     assert _DEFAULT_MERCHANT not in screenshot_name
-    assert pathlib.Path(fake_page.screenshot_paths[0]).exists()
+    assert pathlib.Path(fake_driver.screenshot_paths[0]).exists()
 
 
 def test_register_logs_warning_without_false_saved_message_when_page_missing(
@@ -117,12 +119,12 @@ def test_register_logs_warning_without_false_saved_message_when_page_missing(
     )
 
     with caplog.at_level(logging.WARNING, logger=logger.name):
-        with pytest.raises(RuntimeError, match="Playwright page が初期化されていません。"):
+        with pytest.raises(RuntimeError, match="Selenium driver が初期化されていません。"):
             registrar.register(transaction_factory(merchant=_DEFAULT_MERCHANT))
 
-    assert (_SCREENSHOT_SKIPPED_LOG,) == tuple(
+    assert tuple(
         record.message for record in caplog.records if record.name == logger.name
-    )
+    ) == (_SCREENSHOT_SKIPPED_LOG,)
     assert not (tmp_path / "logs").exists()
 
 
@@ -130,7 +132,7 @@ def test_take_screenshot_returns_none_without_creating_files_when_page_missing(
     tmp_path: pathlib.Path,
     app_config_factory,
 ) -> None:
-    """_page が未初期化ならスクリーンショットを保存せず None を返す。"""
+    """_driver が未初期化ならスクリーンショットを保存せず None を返す。"""
     logs_dir = tmp_path / "logs"
     registrar = MFRegistrar(
         app_config_factory(

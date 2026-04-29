@@ -6,8 +6,6 @@
 対応テストケース:
     TC-05-01: ドライラン実行
     TC-05-02: ドライランのログ出力と重複履歴保護
-    TC-06-01: Chrome 起動中の場合の中断
-    TC-06-02: Chrome 終了済みの場合の継続
     TC-09-01: 解析失敗 CSV への分離と正常行継続
     TC-09-03: 登録失敗時の継続処理と終了経路
 """
@@ -40,8 +38,6 @@ _MSG_APP_EXIT = "アプリケーションを終了します"
 _MSG_REGISTRATION_BOOT_FAILED = "Chrome の起動またはMFへの遷移に失敗しました"
 _MSG_CONTEXT_EXIT_FAILED = "context exit failed"
 _MSG_DUPLICATE_HISTORY_SAVE_FAILED = "重複履歴ファイルの保存に失敗しました: %s"
-_MSG_CHROME_RUNNING = "Chrome が起動中です。Chrome を終了してから再実行してください。"
-_MSG_CHROME_STOPPED = "Chrome 稼働チェック: 停止済み"
 _MSG_DUPLICATE_BACKEND_INIT_FAILED = "重複検知バックエンドの初期化に失敗しました: %s"
 
 if TYPE_CHECKING:
@@ -527,8 +523,6 @@ def test_main_dry_run_skips_browser_startup(
 
     monkeypatch.setattr(app_main, "load_config", Mock(return_value=config))
     monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
-    ensure_mock = Mock()
-    monkeypatch.setattr(app_main, "ensure_chrome_stopped", ensure_mock)
     build_mock = Mock(
         return_value=app_main.PreparedTransactions(
             detector=_FakeDetector(),
@@ -547,7 +541,6 @@ def test_main_dry_run_skips_browser_startup(
 
     app_main.main([])
 
-    ensure_mock.assert_called_once_with(config, logger)
     build_mock.assert_called_once_with(config, logger)
     run_dry_run_mock.assert_called_once_with(logger, 1)
     run_registration_mock.assert_not_called()
@@ -593,7 +586,6 @@ def test_main_uses_cli_config_path_before_env_and_cwd(
     monkeypatch.setenv("PAYPAY2MF_CONFIG", str(env_config))
     monkeypatch.setattr(app_main, "load_config", Mock(return_value=config))
     monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
-    monkeypatch.setattr(app_main, "ensure_chrome_stopped", Mock())
     monkeypatch.setattr(
         app_main,
         "build_transactions",
@@ -630,7 +622,6 @@ def test_main_uses_env_config_path_when_cli_is_missing(
     monkeypatch.setenv("PAYPAY2MF_CONFIG", str(env_config))
     monkeypatch.setattr(app_main, "load_config", Mock(return_value=config))
     monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
-    monkeypatch.setattr(app_main, "ensure_chrome_stopped", Mock())
     monkeypatch.setattr(
         app_main,
         "build_transactions",
@@ -667,7 +658,6 @@ def test_main_uses_cwd_config_path_when_cli_and_env_are_missing(
     monkeypatch.delenv("PAYPAY2MF_CONFIG", raising=False)
     monkeypatch.setattr(app_main, "load_config", Mock(return_value=config))
     monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
-    monkeypatch.setattr(app_main, "ensure_chrome_stopped", Mock())
     monkeypatch.setattr(
         app_main,
         "build_transactions",
@@ -707,7 +697,6 @@ def test_main_falls_back_to_module_config_path_when_cwd_config_is_missing(
     monkeypatch.setattr(app_main, "__file__", str(module_dir / "main.py"))
     monkeypatch.setattr(app_main, "load_config", Mock(return_value=config))
     monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
-    monkeypatch.setattr(app_main, "ensure_chrome_stopped", Mock())
     monkeypatch.setattr(
         app_main,
         "build_transactions",
@@ -725,37 +714,3 @@ def test_main_falls_back_to_module_config_path_when_cwd_config_is_missing(
     app_main.main([])
 
     app_main.load_config.assert_called_once_with(module_config)
-
-
-def test_ensure_chrome_stopped_exits_when_chrome_is_running(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    app_config_factory,
-) -> None:
-    """TC-06-01: dry_run ではない状態で Chrome 稼働中なら終了することを確認する。"""
-    config = app_config_factory(tmp_path, dry_run=False, input_csv_text="header\n")
-    logger = Mock(spec=logging.Logger)
-
-    monkeypatch.setattr(app_main, "is_chrome_running", Mock(return_value=True))
-
-    with pytest.raises(SystemExit) as exc_info:
-        app_main.ensure_chrome_stopped(config, logger)
-
-    assert exc_info.value.code == 1
-    logger.error.assert_called_once_with(_MSG_CHROME_RUNNING)
-
-
-def test_ensure_chrome_stopped_allows_when_chrome_is_not_running(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    app_config_factory,
-) -> None:
-    """TC-06-02: Chrome 停止済みなら処理継続できることを確認する。"""
-    config = app_config_factory(tmp_path, dry_run=False, input_csv_text="header\n")
-    logger = Mock(spec=logging.Logger)
-
-    monkeypatch.setattr(app_main, "is_chrome_running", Mock(return_value=False))
-
-    app_main.ensure_chrome_stopped(config, logger)
-
-    logger.info.assert_called_once_with(_MSG_CHROME_STOPPED)

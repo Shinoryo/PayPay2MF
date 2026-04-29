@@ -1,14 +1,19 @@
-"""MoneyForward ME への手動フォーム登録を Playwright で自動化するモジュール。
-
-Chrome プロフィールを継承して起動し、MF 手動入力フォームへ自動入力する。
-"""
+"""MoneyForward ME への手動フォーム登録を Selenium で自動化するモジュール。"""
 
 from __future__ import annotations
 
+import tempfile
 from datetime import datetime
 from pathlib import Path
+from shutil import rmtree
 from typing import TYPE_CHECKING, Self
 
+from selenium.webdriver import Chrome, ChromeOptions
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
+from paypay2mf import mf_selectors
 from paypay2mf.constants import AppConstants
 from paypay2mf.mf_category_map import load_mf_category_map
 from paypay2mf.mf_page import MFManualFormPage
@@ -17,72 +22,53 @@ if TYPE_CHECKING:
     import logging
     from types import TracebackType
 
-    from playwright.sync_api import Locator
+    from selenium.webdriver.remote.webelement import WebElement
 
     from paypay2mf.models import AppConfig, Transaction
 
-# NOTE: Playwright の同期 API はブラウザ起動時に import する
-# playwright install chromium を事前に実行しておくこと
 
-# ブラウザ起動やスクリーンショット保存に使う定数。
 _LOG_MSG_CHROME_STARTED = "Chrome を起動しました"
+_LOG_MSG_WAITING_FOR_LOGIN = (
+    "Money Forward のトップページを開きました。ログイン後に Enter を押してください。"
+)
 _LOG_MSG_MF_PAGE_OPENED = "MF ページへ遷移しました"
 _LOG_MSG_SCREENSHOT_SAVED = "スクリーンショットを保存しました: %s"
 _LOG_MSG_SCREENSHOT_SKIPPED = (
-    "Playwright page が未初期化のため、スクリーンショットを保存しませんでした。"
+    "Selenium driver が未初期化のため、スクリーンショットを保存しませんでした。"
 )
 _LOG_MSG_SCREENSHOT_SENSITIVE = (
     "スクリーンショットは機微情報を含む可能性があります。共有しないでください。"
 )
-_MSG_PAGE_NOT_INITIALIZED = "Playwright page が初期化されていません。"
+_MSG_DRIVER_NOT_INITIALIZED = "Selenium driver が初期化されていません。"
 _SCREENSHOT_FILE_PREFIX = "screenshot_"
+_TEMP_PROFILE_PREFIX = "paypay2mf-selenium-"
 
 
 class MFRegistrar:
-    """MF の手動入力フォームへの登録を管理するコンテキストマネージャー。
-
-    ``with`` 文で使用し、Chrome 起動から登録完了までを管理する。
-    登録常にブラウザを安全にクローズする。
-    """
+    """MF の手動入力フォームへの登録を管理するコンテキストマネージャー。"""
 
     def __init__(self, config: AppConfig, logger: logging.Logger) -> None:
-        """MFRegistrar を初期化する。
-
-        Args:
-            config: アプリケーション設定。
-            logger: ログ出力に使用する Logger インスタンス。
-        """
+        """MFRegistrar を初期化する。"""
         self._config = config
         self._logger = logger
-        self._playwright = None
-        self._context = None
-        self._page = None
+        self._driver = None
+        self._temporary_profile_dir = None
         self._manual_form_page = None
 
     def __enter__(self) -> Self:
-        """Chrome を起動し、MF 手動入力フォームへ移動する。
-
-        Returns:
-            self
-        """
-        from playwright.sync_api import sync_playwright  # noqa: PLC0415
-
-        self._playwright = sync_playwright().start()
-
-        self._context = self._playwright.chromium.launch_persistent_context(
-            user_data_dir=self._config.chrome_user_data_dir,
-            channel=AppConstants.CHROME_CHANNEL,
-            headless=False,
-            args=[
-                AppConstants.CHROME_PROFILE_DIRECTORY_ARG.format(
-                    self._config.chrome_profile,
-                ),
-            ],
+        """Chrome を起動し、MF 手動入力フォームへ移動する。"""
+        self._temporary_profile_dir = Path(
+            tempfile.mkdtemp(prefix=_TEMP_PROFILE_PREFIX)
         )
-        self._page = (
-            self._context.pages[0] if self._context.pages else self._context.new_page()
-        )
+        options = ChromeOptions()
+        options.add_argument(f"--user-data-dir={self._temporary_profile_dir}")
+        options.add_argument("--start-maximized")
+        self._driver = Chrome(options=options)
         self._logger.info(_LOG_MSG_CHROME_STARTED)
+
+        self._open_moneyforward_page()
+        self._wait_for_manual_login()
+        self._open_household_book_tab()
 
         self._manual_form_page = self._build_manual_form_page()
         self._manual_form_page.open()
@@ -96,29 +82,13 @@ class MFRegistrar:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        """ブラウザを安全にクローズする。
-
-        Args:
-            exc_type: 例外の型。なければ None。
-            exc_val: 例外の値。なければ None。
-            exc_tb: トレースバック。なければ None。
-        """
+        """ブラウザを安全にクローズする。"""
         self._close()
 
     def register(self, tx: Transaction) -> None:
-        """1件の取引を MF 手動入力フォームへ登録する。
-
-        Args:
-            tx: 登録する Transaction。
-
-        Raises:
-            ValueError: 口座名が MF で見つからない場合。
-            playwright.sync_api.TimeoutError: ページ操作がタイムアウトした場合。
-            RuntimeError: コンテキスト外で呼び出され、Playwright page が未初期化の場合。
-        """
+        """1件の取引を MF 手動入力フォームへ登録する。"""
         try:
             self._ensure_manual_form_page().register_transaction(tx)
-
         except Exception:
             if self._config.advanced.screenshot_on_error:
                 shot_path = self._take_screenshot()
@@ -129,15 +99,13 @@ class MFRegistrar:
                     self._logger.warning(_LOG_MSG_SCREENSHOT_SENSITIVE)
             raise
 
-    def open_manual_form(self) -> Locator:
+    def open_manual_form(self) -> WebElement:
         """スモークテスト用に手入力モーダルを開く。"""
         return self._ensure_manual_form_page().open_manual_form()
 
     def _build_manual_form_page(self) -> MFManualFormPage:
-        if self._page is None:
-            raise RuntimeError(_MSG_PAGE_NOT_INITIALIZED)
         return MFManualFormPage(
-            self._page,
+            self._ensure_driver(),
             self._logger,
             self._config.mf_account,
             category_map=load_mf_category_map(
@@ -151,15 +119,8 @@ class MFRegistrar:
         return self._manual_form_page
 
     def _take_screenshot(self) -> Path | None:
-        """スクリーンショットを保存する。
-
-        Playwright page が利用可能な場合のみ保存する。
-
-        Returns:
-            保存したスクリーンショットファイルの Path。
-            Playwright page が未初期化の場合は None。
-        """
-        if self._page is None:
+        """スクリーンショットを保存する。"""
+        if self._driver is None:
             return None
 
         timestamp = datetime.now().strftime(AppConstants.TIMESTAMP_FORMAT)  # noqa: DTZ005
@@ -172,14 +133,54 @@ class MFRegistrar:
             logs_dir
             / f"{_SCREENSHOT_FILE_PREFIX}{timestamp}{AppConstants.PNG_EXTENSION}"
         )
-        self._page.screenshot(path=str(out_path))
+        self._driver.save_screenshot(str(out_path))
         return out_path
 
     def _close(self) -> None:
-        """Playwright のブラウザとコンテキストを終了する。"""
+        """Selenium のブラウザを終了する。"""
         try:
-            if self._context is not None:
-                self._context.close()
+            if self._driver is not None:
+                self._driver.quit()
         finally:
-            if self._playwright is not None:
-                self._playwright.stop()
+            if self._temporary_profile_dir is not None:
+                rmtree(self._temporary_profile_dir, ignore_errors=True)
+
+    def _open_moneyforward_page(self) -> None:
+        self._ensure_driver().get(mf_selectors.TOP_PAGE_URL)
+
+    def _wait_for_manual_login(self) -> None:
+        self._logger.info(_LOG_MSG_WAITING_FOR_LOGIN)
+        input("Money Forward へログインしたら Enter を押してください: ")
+
+    def _open_household_book_tab(self) -> None:
+        driver = self._ensure_driver()
+        tab = self._wait(mf_selectors.NAVIGATION_TIMEOUT_MS).until(
+            self._find_household_book_tab,
+        )
+        tab.click()
+        self._wait(mf_selectors.NAVIGATION_TIMEOUT_MS).until(
+            EC.url_contains(mf_selectors.MANUAL_FORM_URL),
+        )
+
+    def _find_household_book_tab(self, driver: Chrome) -> WebElement | bool:
+        for element in driver.find_elements(By.CSS_SELECTOR, mf_selectors.HOUSEHOLD_BOOK_TAB_CSS):
+            if element.is_displayed() and element.is_enabled():
+                return element
+
+        for element in driver.find_elements(By.XPATH, mf_selectors.HOUSEHOLD_BOOK_TAB_XPATH):
+            if element.is_displayed() and element.is_enabled():
+                return element
+
+        return False
+
+    def _ensure_driver(self) -> Chrome:
+        if self._driver is None:
+            raise RuntimeError(_MSG_DRIVER_NOT_INITIALIZED)
+        return self._driver
+
+    def _wait(self, timeout_ms: int) -> WebDriverWait:
+        return WebDriverWait(
+            self._ensure_driver(),
+            timeout_ms / 1000,
+            poll_frequency=0.2,
+        )

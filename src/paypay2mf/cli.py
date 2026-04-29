@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from paypay2mf.chrome_check import is_chrome_running
 from paypay2mf.config_loader import CONFIG_ENV_VAR, load_config, resolve_config_path
 from paypay2mf.csv_parser import parse_csv
 from paypay2mf.duplicate_detector import (
@@ -38,10 +37,6 @@ _CLI_HELP_CONFIG = (
 )
 
 # 実行フローのログ文言に使う定数。
-_LOG_MSG_CHROME_RUNNING = (
-    "Chrome が起動中です。Chrome を終了してから再実行してください。"
-)
-_LOG_MSG_CHROME_STOPPED = "Chrome 稼働チェック: 停止済み"
 _LOG_MSG_PARSE_FAILURE_COUNT = "CSV 解析失敗: %d件"
 _LOG_MSG_PARSE_ERROR_CSV_WRITTEN = "解析エラーCSVを出力しました: %s"
 _LOG_MSG_PARSE_ERROR_CSV_SENSITIVE = (
@@ -101,17 +96,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=_CLI_HELP_CONFIG,
     )
     return parser.parse_args(argv)
-
-
-def ensure_chrome_stopped(config: AppConfig, logger: logging.Logger) -> None:
-    if config.dry_run:
-        return
-
-    if is_chrome_running():
-        logger.error(_LOG_MSG_CHROME_RUNNING)
-        sys.exit(1)
-
-    logger.info(_LOG_MSG_CHROME_STOPPED)
 
 
 def _log_parse_failures(
@@ -304,7 +288,6 @@ def main(argv: list[str] | None = None) -> None:
 
     logger.info(_LOG_MSG_CONFIG_LOADED)
 
-    ensure_chrome_stopped(config, logger)
     prepared = build_transactions(config, logger)
 
     if config.dry_run:

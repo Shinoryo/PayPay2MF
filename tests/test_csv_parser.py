@@ -23,8 +23,6 @@ from paypay2mf.constants import AppConstants
 from paypay2mf.csv_parser import _merge_compound, _parse_amount, parse_csv
 from paypay2mf.models import AppConfig
 
-_DUMMY_CHROME_USER_DATA_DIR = "C:\\dummy"
-_DEFAULT_CHROME_PROFILE = "Default"
 _DEFAULT_MF_ACCOUNT = "PayPay残高"
 _FIXTURE_DIRNAME = "fixtures"
 _INPUT_CSV_FILENAME = "test_input.csv"
@@ -62,8 +60,6 @@ def _make_config(csv_path: Path) -> AppConfig:
         テスト用 AppConfig インスタンス。
     """
     return AppConfig(
-        chrome_user_data_dir=_DUMMY_CHROME_USER_DATA_DIR,
-        chrome_profile=_DEFAULT_CHROME_PROFILE,
         dry_run=True,
         input_csv=csv_path,
         mf_account=_DEFAULT_MF_ACCOUNT,

@@ -4,6 +4,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    StaleElementReferenceException,
+)
+from selenium.webdriver import ActionChains
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.select import Select
+from selenium.webdriver.support.ui import WebDriverWait
+
 from paypay2mf import mf_selectors
 from paypay2mf.constants import AppConstants
 from paypay2mf.mf_category_map import load_mf_category_map
@@ -12,12 +23,12 @@ if TYPE_CHECKING:
     import logging
     from pathlib import Path
 
-    from playwright.sync_api import Locator, Page
+    from selenium.webdriver.remote.webdriver import WebDriver
+    from selenium.webdriver.remote.webelement import WebElement
 
     from paypay2mf.models import Transaction
 
 
-# フォーム入力時の分岐や警告に使う定数。
 _SKIP_CATEGORY_VALUES = {
     AppConstants.DEFAULT_CATEGORY,
     AppConstants.EMPTY_STRING,
@@ -38,14 +49,14 @@ class MFManualFormPage:
 
     def __init__(
         self,
-        page: Page,
+        driver: WebDriver,
         logger: logging.Logger,
         mf_account: str,
         *,
         mf_categories_path: Path | None = None,
         category_map: dict[str, str] | None = None,
     ) -> None:
-        self._page = page
+        self._driver = driver
         self._logger = logger
         self._mf_account = mf_account
         self._category_map = (
@@ -56,88 +67,146 @@ class MFManualFormPage:
 
     def open(self) -> None:
         """入出金ページへ遷移し、手入力ボタンの表示を確認する。"""
-        self._page.goto(mf_selectors.MANUAL_FORM_URL)
-        self._page.wait_for_selector(
-            mf_selectors.OPEN_MANUAL_FORM_BUTTON,
-            timeout=mf_selectors.NAVIGATION_TIMEOUT_MS,
+        self._driver.get(mf_selectors.MANUAL_FORM_URL)
+        self._wait(mf_selectors.NAVIGATION_TIMEOUT_MS).until(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, mf_selectors.OPEN_MANUAL_FORM_BUTTON),
+            )
         )
 
-    def open_manual_form(self) -> Locator:
+    def open_manual_form(self) -> WebElement:
         """手入力モーダルを開き、表示完了を待つ。"""
-        self._page.click(mf_selectors.OPEN_MANUAL_FORM_BUTTON)
-        modal = self._page.locator(mf_selectors.MANUAL_FORM_MODAL)
-        modal.wait_for(
-            state=AppConstants.LOCATOR_STATE_VISIBLE,
-            timeout=mf_selectors.MODAL_TIMEOUT_MS,
+        self._wait(mf_selectors.NAVIGATION_TIMEOUT_MS).until(
+            EC.element_to_be_clickable(
+                (By.CSS_SELECTOR, mf_selectors.OPEN_MANUAL_FORM_BUTTON),
+            )
+        ).click()
+        return self._wait(mf_selectors.MODAL_TIMEOUT_MS).until(
+            EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL),
+            )
         )
-        return modal
 
     def register_transaction(self, tx: Transaction) -> None:
         """1件の取引を手入力フォームへ反映して保存する。"""
         modal = self.open_manual_form()
 
-        if tx.direction == AppConstants.DIRECTION_IN:
-            modal.locator(mf_selectors.PLUS_PAYMENT_INPUT).click()
-        else:
-            modal.locator(mf_selectors.MINUS_PAYMENT_INPUT).click()
+        payment_selector = (
+            mf_selectors.PLUS_PAYMENT_INPUT
+            if tx.direction == AppConstants.DIRECTION_IN
+            else mf_selectors.MINUS_PAYMENT_INPUT
+        )
+        modal.find_element(By.CSS_SELECTOR, payment_selector).click()
 
-        date_input = modal.locator(mf_selectors.DATE_INPUT)
-        date_input.fill(tx.date.strftime(AppConstants.FORM_DATE_FORMAT))
-        date_input.press(AppConstants.KEY_ESCAPE)
+        date_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.DATE_INPUT)
+        date_input.clear()
+        date_input.send_keys(tx.date.strftime(AppConstants.FORM_DATE_FORMAT))
+        date_input.send_keys(Keys.ESCAPE)
 
-        modal.locator(mf_selectors.AMOUNT_INPUT).fill(str(tx.amount))
+        amount_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.AMOUNT_INPUT)
+        amount_input.clear()
+        amount_input.send_keys(str(tx.amount))
         self._select_account(modal)
 
         if tx.category not in _SKIP_CATEGORY_VALUES:
             self._select_category(modal, tx.category)
 
-        modal.locator(mf_selectors.MEMO_INPUT).fill(tx.memo)
-        modal.locator(mf_selectors.SUBMIT_BUTTON).click()
+        memo_input = modal.find_element(By.CSS_SELECTOR, mf_selectors.MEMO_INPUT)
+        memo_input.clear()
+        memo_input.send_keys(tx.memo)
+        modal.find_element(By.CSS_SELECTOR, mf_selectors.SUBMIT_BUTTON).click()
 
-        self._wait_for_submit_outcome(modal)
+        self._wait_for_submit_outcome()
 
-    def _wait_for_submit_outcome(self, modal: Locator) -> None:
-        outcome_handle = self._page.wait_for_function(
-            mf_selectors.SUBMIT_OUTCOME_SCRIPT,
-            {
-                "modalSelector": mf_selectors.MANUAL_FORM_MODAL,
-                "errorSelectors": list(mf_selectors.SUBMIT_ERROR_FEEDBACK_SELECTORS),
-            },
-            timeout=mf_selectors.SUBMIT_TIMEOUT_MS,
+    def _wait_for_submit_outcome(self) -> None:
+        status, detail = self._wait(mf_selectors.SUBMIT_TIMEOUT_MS).until(
+            self._resolve_submit_outcome,
         )
-        outcome = outcome_handle.json_value()
-
-        if isinstance(outcome, dict) and outcome.get("status") == "error":
-            detail = str(
-                outcome.get("text")
-                or outcome.get("selector")
-                or _SUBMIT_ERROR_FALLBACK_DETAIL
-            )
+        if status == "error":
             msg = _SUBMIT_REPORTED_ERROR_MESSAGE.format(detail=detail)
             raise RuntimeError(msg)
 
-        if not isinstance(outcome, dict) or outcome.get("status") != "closed":
-            modal.wait_for(
-                state=AppConstants.LOCATOR_STATE_HIDDEN,
-                timeout=mf_selectors.SUBMIT_TIMEOUT_MS,
-            )
+    def _resolve_submit_outcome(
+        self,
+        _driver: WebDriver,
+    ) -> tuple[str, str] | bool:
+        modal = self._find_optional(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+        if modal is None or not modal.is_displayed():
+            return ("closed", AppConstants.EMPTY_STRING)
 
-    def _select_account(self, modal: Locator) -> None:
-        option_value: str | None = self._page.evaluate(
-            mf_selectors.ACCOUNT_OPTION_LOOKUP_SCRIPT,
-            self._mf_account,
+        for selector in mf_selectors.SUBMIT_ERROR_FEEDBACK_SELECTORS:
+            for element in modal.find_elements(By.CSS_SELECTOR, selector):
+                if not element.is_displayed():
+                    continue
+                detail = element.text.strip() or _SUBMIT_ERROR_FALLBACK_DETAIL
+                return ("error", detail)
+
+        return False
+
+    def _select_account(self, modal: WebElement) -> None:
+        account_select = Select(
+            modal.find_element(By.CSS_SELECTOR, mf_selectors.ACCOUNT_SELECT)
         )
-        if option_value is None:
-            msg = _ACCOUNT_NOT_FOUND_MESSAGE.format(account_name=self._mf_account)
-            raise ValueError(msg)
-        modal.locator(mf_selectors.ACCOUNT_SELECT).select_option(value=option_value)
+        for option in account_select.options:
+            if option.text.strip() != self._mf_account:
+                continue
+            option_value = option.get_attribute("value")
+            if option_value is None:
+                continue
+            account_select.select_by_value(option_value)
+            return
 
-    def _select_category(self, modal: Locator, category: str) -> None:
+        msg = _ACCOUNT_NOT_FOUND_MESSAGE.format(account_name=self._mf_account)
+        raise ValueError(msg)
+
+    def _select_category(self, modal: WebElement, category: str) -> None:
         large_name = self._category_map.get(category)
         if large_name is None:
             self._logger.warning(_CATEGORY_NOT_FOUND_WARNING, category)
             return
 
-        modal.locator(mf_selectors.CATEGORY_DROPDOWN).click()
-        self._page.locator(mf_selectors.large_category_option(large_name)).first.hover()
-        self._page.locator(mf_selectors.middle_category_option(category)).first.click()
+        modal.find_element(By.CSS_SELECTOR, mf_selectors.CATEGORY_DROPDOWN).click()
+        large_option = self._wait(mf_selectors.MODAL_TIMEOUT_MS).until(
+            lambda _driver: self._find_visible_text_match(
+                By.CSS_SELECTOR,
+                mf_selectors.LARGE_CATEGORY_LINK,
+                large_name,
+            )
+        )
+        ActionChains(self._driver).move_to_element(large_option).perform()
+        middle_option = self._wait(mf_selectors.MODAL_TIMEOUT_MS).until(
+            lambda _driver: self._find_visible_text_match(
+                By.CSS_SELECTOR,
+                mf_selectors.MIDDLE_CATEGORY_LINK,
+                category,
+            )
+        )
+        middle_option.click()
+
+    def _wait(self, timeout_ms: int) -> WebDriverWait:
+        return WebDriverWait(
+            self._driver,
+            timeout_ms / 1000,
+            poll_frequency=0.2,
+            ignored_exceptions=(NoSuchElementException, StaleElementReferenceException),
+        )
+
+    def _find_optional(self, by: str, value: str) -> WebElement | None:
+        matches = self._driver.find_elements(by, value)
+        if not matches:
+            return None
+        return matches[0]
+
+    def _find_visible_text_match(
+        self,
+        by: str,
+        selector: str,
+        text: str,
+    ) -> WebElement | bool:
+        for element in self._driver.find_elements(by, selector):
+            if not element.is_displayed():
+                continue
+            if element.text.strip() != text:
+                continue
+            return element
+        return False

@@ -2,13 +2,10 @@
 
 対応テストケース:
     TC-01-01: 正常な設定ファイルの読み込み
-    TC-01-02: chrome_user_data_dir 欠落
-    TC-01-03: chrome_profile 欠落
     TC-01-04: dry_run 欠落
     TC-01-05: input_csv 欠落
     TC-01-06: mf_account 欠落
     TC-01-07: デフォルト値補完の確認
-    TC-01-09: 存在しない chrome_user_data_dir のパス検証
 """
 
 from __future__ import annotations
@@ -24,18 +21,15 @@ from paypay2mf.constants import AppConstants
 
 _CONFIG_FILENAME = "config.yml"
 _YAML_ENCODING = AppConstants.DEFAULT_TEXT_ENCODING
-_DEFAULT_CHROME_PROFILE = "Default"
 _DEFAULT_MF_ACCOUNT = "PayPay残高"
 _INPUT_CSV_FILENAME = "test.csv"
 _HEADER_LINE = "header\n"
-_USER_DATA_DIRNAME = "User Data"
 _OTHER_WORK_DIRNAME = "other-workdir"
 _LOGS_DIRNAME = "custom-logs"
 _CUSTOM_CATEGORIES_FILENAME = "custom_categories.yml"
 _MISSING_CATEGORIES_FILENAME = "missing_categories.yml"
 _GCLOUD_CREDENTIALS_FILENAME = "service-account.json"
 _MISSING_PATH_NAME = "nonexistent"
-_MISSING_PROFILE = "MissingProfile"
 _MATCH_MODE_INVALID = "fuzzy"
 _BACKEND_INVALID = "typo"
 
@@ -64,8 +58,8 @@ def _write_config(tmp_path: Path, data: object) -> Path:
 def _base_data(tmp_path: Path) -> dict:
     """最小有効設定データの辞書を生成する。
 
-    chrome_user_data_dir、chrome_profile、dry_run、input_csv、mf_accountの
-    5 項目を含む辞書を返す。
+    dry_run、input_csv、mf_account の
+    3 項目を含む辞書を返す。
 
     Args:
         tmp_path: pytest の tmp_path フィクスチャ。
@@ -73,14 +67,9 @@ def _base_data(tmp_path: Path) -> dict:
     Returns:
         必須項目をすべて含む設定辞書。
     """
-    user_data = tmp_path / _USER_DATA_DIRNAME
-    user_data.mkdir()
-    (user_data / _DEFAULT_CHROME_PROFILE).mkdir()
     csv_file = tmp_path / _INPUT_CSV_FILENAME
     csv_file.write_text(_HEADER_LINE, encoding=_YAML_ENCODING)
     return {
-        "chrome_user_data_dir": str(user_data),
-        "chrome_profile": _DEFAULT_CHROME_PROFILE,
         "dry_run": True,
         "input_csv": str(csv_file),
         "mf_account": _DEFAULT_MF_ACCOUNT,
@@ -122,7 +111,7 @@ def test_invalid_yaml_root_type_raises_value_error(
 def test_invalid_yaml_syntax_raises_value_error(tmp_path: Path) -> None:
     """壊れた YAML 構文が ValueError に正規化されることを確認する。"""
     config_file = tmp_path / _CONFIG_FILENAME
-    config_file.write_text("chrome_user_data_dir: [\n", encoding=_YAML_ENCODING)
+    config_file.write_text("dry_run: [\n", encoding=_YAML_ENCODING)
 
     with pytest.raises(ValueError, match="YAML 構文"):
         load_config(config_file)
@@ -138,26 +127,6 @@ def test_unknown_top_level_key_raises_value_error(tmp_path: Path) -> None:
         match=r"config\.yml に未定義キーがあります: unknown_key",
     ):
         load_config(_write_config(tmp_path, data))
-
-
-# TC-01-02: 必須項目欠落（chrome_user_data_dir）
-def test_missing_chrome_user_data_dir(tmp_path: Path) -> None:
-    """TC-01-02: chrome_user_data_dir 欠落時に ValueError が送出されることを確認する。"""
-    data = _base_data(tmp_path)
-    del data["chrome_user_data_dir"]
-    cfg_path = _write_config(tmp_path, data)
-    with pytest.raises(ValueError, match="chrome_user_data_dir"):
-        load_config(cfg_path)
-
-
-# TC-01-03: 必須項目欠落（chrome_profile）
-def test_missing_chrome_profile(tmp_path: Path) -> None:
-    """TC-01-03: chrome_profile 欠落時に ValueError が送出されることを確認する。"""
-    data = _base_data(tmp_path)
-    del data["chrome_profile"]
-    cfg_path = _write_config(tmp_path, data)
-    with pytest.raises(ValueError, match="chrome_profile"):
-        load_config(cfg_path)
 
 
 # TC-01-04: 必須項目欠落（dry_run）
@@ -193,14 +162,8 @@ def test_missing_mf_account(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("key", "value"),
     [
-        pytest.param("chrome_user_data_dir", "", id="chrome_user_data_dir-empty"),
-        pytest.param("chrome_profile", "", id="chrome_profile-empty"),
         pytest.param("input_csv", "", id="input_csv-empty"),
         pytest.param("mf_account", "", id="mf_account-empty"),
-        pytest.param(
-            "chrome_user_data_dir", "   ", id="chrome_user_data_dir-whitespace"
-        ),
-        pytest.param("chrome_profile", "   ", id="chrome_profile-whitespace"),
         pytest.param("input_csv", "   ", id="input_csv-whitespace"),
         pytest.param("mf_account", "   ", id="mf_account-whitespace"),
     ],
@@ -221,8 +184,6 @@ def test_blank_required_string_value_raises_value_error(
 @pytest.mark.parametrize(
     ("key", "value"),
     [
-        pytest.param("chrome_user_data_dir", 123, id="chrome_user_data_dir-int"),
-        pytest.param("chrome_profile", False, id="chrome_profile-bool"),
         pytest.param("input_csv", 999, id="input_csv-int"),
         pytest.param("mf_account", True, id="mf_account-bool"),
     ],
@@ -629,52 +590,6 @@ def test_mf_categories_path_type_must_be_string_or_null(
         ),
     ):
         load_config(_write_config(tmp_path, data))
-
-
-# TC-01-09: 存在しない chrome_user_data_dir（本番実行）
-def test_nonexistent_chrome_user_data_dir_when_not_dry_run(tmp_path: Path) -> None:
-    """TC-01-09: dry_run=False で存在しない chrome_user_data_dir を指定した場合に ValueError が送出されることを確認する。"""
-    data = _base_data(tmp_path)
-    data["dry_run"] = False
-    data["chrome_user_data_dir"] = str(tmp_path / _MISSING_PATH_NAME)
-    cfg_path = _write_config(tmp_path, data)
-    with pytest.raises(ValueError, match="chrome_user_data_dir のパスが存在しません"):
-        load_config(cfg_path)
-
-
-def test_nonexistent_chrome_user_data_dir_is_allowed_in_dry_run(tmp_path: Path) -> None:
-    """dry_run=True では存在しない chrome_user_data_dir を指定しても設定読み込みが成功することを確認する。"""
-    data = _base_data(tmp_path)
-    data["chrome_user_data_dir"] = str(tmp_path / _MISSING_PATH_NAME)
-    cfg_path = _write_config(tmp_path, data)
-
-    config = load_config(cfg_path)
-
-    assert config.dry_run is True
-    assert config.chrome_user_data_dir == str(tmp_path / _MISSING_PATH_NAME)
-
-
-def test_nonexistent_chrome_profile_when_not_dry_run(tmp_path: Path) -> None:
-    """dry_run=False で存在しない chrome_profile を指定した場合に ValueError が送出されることを確認する。"""
-    data = _base_data(tmp_path)
-    data["dry_run"] = False
-    data["chrome_profile"] = _MISSING_PROFILE
-    cfg_path = _write_config(tmp_path, data)
-
-    with pytest.raises(ValueError, match="chrome_profile のディレクトリが存在しません"):
-        load_config(cfg_path)
-
-
-def test_nonexistent_chrome_profile_is_allowed_in_dry_run(tmp_path: Path) -> None:
-    """dry_run=True では存在しない chrome_profile を指定しても設定読み込みが成功することを確認する。"""
-    data = _base_data(tmp_path)
-    data["chrome_profile"] = _MISSING_PROFILE
-    cfg_path = _write_config(tmp_path, data)
-
-    config = load_config(cfg_path)
-
-    assert config.dry_run is True
-    assert config.chrome_profile == _MISSING_PROFILE
 
 
 # dry_run の型不正

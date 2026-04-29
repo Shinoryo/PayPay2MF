@@ -21,8 +21,6 @@ from paypay2mf.models import (
     Transaction,
 )
 
-_DUMMY_CHROME_USER_DATA_DIR = "C:\\dummy"
-_DEFAULT_CHROME_PROFILE = "Default"
 _DEFAULT_MF_ACCOUNT = "PayPay残高"
 _DEFAULT_INPUT_CSV_FILENAME = "input.csv"
 _DEFAULT_TRANSACTION_ID = "TX001"
@@ -30,8 +28,6 @@ _DEFAULT_MERCHANT = "テスト商店"
 _DEFAULT_MEMO = "支払い"
 
 _RUN_SMOKE_ENV = "PAYPAY2MF_RUN_SMOKE_TEST"
-_CHROME_USER_DATA_ENV = "PAYPAY2MF_SMOKE_CHROME_USER_DATA_DIR"
-_CHROME_PROFILE_ENV = "PAYPAY2MF_SMOKE_CHROME_PROFILE"
 _MF_ACCOUNT_ENV = "PAYPAY2MF_SMOKE_MF_ACCOUNT"
 _LOGS_DIR_ENV = "PAYPAY2MF_SMOKE_LOGS_DIR"
 _SMOKE_MARK_NAME = "smoke_test"
@@ -69,16 +65,6 @@ def pytest_collection_modifyitems(
 @pytest.fixture
 def mf_smoke_config(tmp_path_factory: pytest.TempPathFactory) -> AppConfig:
     """Money Forward スモークテスト用の AppConfig を返す。"""
-    missing = [
-        env_name
-        for env_name in (_CHROME_USER_DATA_ENV, _CHROME_PROFILE_ENV, _MF_ACCOUNT_ENV)
-        if not os.getenv(env_name)
-    ]
-    if missing:
-        pytest.skip(
-            "smoke_test 用の環境変数が不足しています: " + ", ".join(missing),
-        )
-
     logs_dir_raw = os.getenv(_LOGS_DIR_ENV)
     logs_dir = (
         Path(logs_dir_raw)
@@ -92,11 +78,9 @@ def mf_smoke_config(tmp_path_factory: pytest.TempPathFactory) -> AppConfig:
     )
 
     return AppConfig(
-        chrome_user_data_dir=os.environ[_CHROME_USER_DATA_ENV],
-        chrome_profile=os.environ[_CHROME_PROFILE_ENV],
         dry_run=False,
         input_csv=input_csv,
-        mf_account=os.environ[_MF_ACCOUNT_ENV],
+        mf_account=os.getenv(_MF_ACCOUNT_ENV, _DEFAULT_MF_ACCOUNT),
         log_settings=LogSettings(logs_dir=logs_dir),
         advanced=AdvancedConfig(screenshot_on_error=False),
     )
@@ -114,8 +98,6 @@ def app_config_factory() -> AppConfigFactory:
         logs_dir: Path | None = None,
         input_csv_name: str = _DEFAULT_INPUT_CSV_FILENAME,
         input_csv_text: str = AppConstants.EMPTY_STRING,
-        chrome_user_data_dir: str = _DUMMY_CHROME_USER_DATA_DIR,
-        chrome_profile: str = _DEFAULT_CHROME_PROFILE,
         mf_account: str = _DEFAULT_MF_ACCOUNT,
     ) -> AppConfig:
         csv_file = tmp_path / input_csv_name
@@ -124,8 +106,6 @@ def app_config_factory() -> AppConfigFactory:
             encoding=AppConstants.DEFAULT_TEXT_ENCODING,
         )
         return AppConfig(
-            chrome_user_data_dir=chrome_user_data_dir,
-            chrome_profile=chrome_profile,
             dry_run=dry_run,
             input_csv=csv_file,
             mf_account=mf_account,

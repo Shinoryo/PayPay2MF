@@ -3,13 +3,14 @@
 # このファイルを config.yml にコピーして使用してください。
 # ============================================================
 
-# ------ 必須設定（5項目。未記載で起動エラー） ------
+# ------ 必須設定（3項目。未記載で起動エラー） ------
 
-chrome_user_data_dir: "C:\\Users\\yourname\\AppData\\Local\\Google\\Chrome\\User Data"
-chrome_profile: "Default"
 dry_run: true          # true: ドライラン（書き込みなし） / false: 本番実行
 input_csv: "C:\\Users\\yourname\\Downloads\\paypay_history.csv"
 mf_account: "PayPay残高"
+
+# 本番実行時は Selenium が Chrome を起動し、Money Forward トップページで待機します。
+# ユーザーが手動ログインしたあと Enter を押すと、家計簿タブの選択と /cf 以降の登録処理を続行します。
 
 # ------ 任意設定 ------
 

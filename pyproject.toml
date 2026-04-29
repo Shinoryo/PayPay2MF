@@ -8,9 +8,8 @@ version = "0.1.0"
 requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
-    "playwright>=1.40",
-    "psutil>=5.9",
     "PyYAML>=6.0",
+    "selenium>=4.30",
 ]
 
 [project.optional-dependencies]
@@ -41,7 +40,7 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
     "integration_flow: orchestration and side-effect tests around the main application flow",
-    "smoke_test: explicit Playwright smoke tests against a logged-in Money Forward profile",
+    "smoke_test: explicit Selenium smoke tests with manual Money Forward login",
     "ui_contract: fake-based UI contract tests for Money Forward page and registrar interactions",
 ]
 

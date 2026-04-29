@@ -1,13 +1,4 @@
-"""mf_page モジュールのテスト。
-
-対応テストレイヤー:
-    ui_contract: Fake Page を使った UI 操作契約の検証
-
-対応テストケース:
-    TC-07-00: 手入力モーダル起動確認の前提契約
-    TC-07-01: 取引登録操作のフォーム契約
-    TC-08-01: 未対応カテゴリ時の warning 契約
-"""
+"""mf_page モジュールのテスト。"""
 
 from __future__ import annotations
 
@@ -15,7 +6,10 @@ from datetime import datetime
 from unittest.mock import Mock
 
 import pytest
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.by import By
 
+import paypay2mf.mf_page as mf_page_module
 from paypay2mf import mf_selectors
 from paypay2mf.constants import AppConstants
 from paypay2mf.mf_page import MFManualFormPage
@@ -35,127 +29,249 @@ _DEFAULT_MERCHANT = "モスのネット注文"
 _DEFAULT_TRANSACTION_ID = "TX001"
 _SUBMIT_TIMEOUT_MESSAGE = "submit timeout"
 _SUBMIT_ERROR_MESSAGE = "入力エラーです"
-_UNEXPECTED_ACCOUNT_LOOKUP_SCRIPT = "Unexpected account lookup script"
 
 pytestmark = pytest.mark.ui_contract
 
 
-class _FakeJSHandle:
-    def __init__(self, value: dict[str, str]) -> None:
+class _FakeOption:
+    def __init__(self, text: str, value: str) -> None:
+        self.text = text
         self._value = value
+        self._driver = None
 
-    def json_value(self) -> dict[str, str]:
-        return dict(self._value)
+    def bind_driver(self, driver: _FakeDriver) -> None:
+        self._driver = driver
+
+    def get_attribute(self, name: str) -> str | None:
+        if name == "value":
+            return self._value
+        return None
 
 
-class _FakeLocator:
+class _FakeElement:
     def __init__(
         self,
         selector: str,
-        actions: list[tuple],
         *,
-        wait_failures: dict[tuple[str, str], Exception] | None = None,
+        text: str = AppConstants.EMPTY_STRING,
+        displayed: bool = True,
+        enabled: bool = True,
+        on_click=None,
+        options: list[_FakeOption] | None = None,
     ) -> None:
-        self._selector = selector
-        self._actions = actions
-        self._wait_failures = wait_failures or {}
-        self.first = self
+        self.selector = selector
+        self.text = text
+        self._displayed = displayed
+        self._enabled = enabled
+        self._on_click = on_click
+        self._children: dict[tuple[str, str], list[_FakeElement]] = {}
+        self.options = options or []
+        self._driver = None
+
+    def bind_driver(self, driver: _FakeDriver) -> None:
+        self._driver = driver
+        for child_list in self._children.values():
+            for child in child_list:
+                child.bind_driver(driver)
+        for option in self.options:
+            option.bind_driver(driver)
+
+    def add_child(
+        self,
+        by: str,
+        value: str,
+        element: _FakeElement,
+    ) -> _FakeElement:
+        self._children.setdefault((by, value), []).append(element)
+        if self._driver is not None:
+            element.bind_driver(self._driver)
+        return element
 
     def click(self) -> None:
-        self._actions.append(("locator_click", self._selector))
+        self._driver.actions.append(("click", self.selector))
+        if self._on_click is not None:
+            self._on_click()
 
-    def fill(self, value: str) -> None:
-        self._actions.append(("fill", self._selector, value))
+    def clear(self) -> None:
+        self._driver.actions.append(("clear", self.selector))
 
-    def press(self, key: str) -> None:
-        self._actions.append(("press", self._selector, key))
+    def send_keys(self, value: str) -> None:
+        self._driver.actions.append(("send_keys", self.selector, value))
 
-    def hover(self) -> None:
-        self._actions.append(("hover", self._selector))
+    def find_element(self, by: str, value: str) -> _FakeElement:
+        matches = self.find_elements(by, value)
+        if not matches:
+            raise NoSuchElementException(f"missing child: {by}={value}")
+        return matches[0]
 
-    def locator(self, selector: str) -> _FakeLocator:
-        self._actions.append(("locator", self._selector, selector))
-        return _FakeLocator(
-            f"{self._selector} >> {selector}",
-            self._actions,
-            wait_failures=self._wait_failures,
-        )
+    def find_elements(self, by: str, value: str) -> list[_FakeElement]:
+        return list(self._children.get((by, value), []))
 
-    def select_option(self, **kwargs: str) -> None:
-        self._actions.append(("select_option", self._selector, kwargs))
+    def is_displayed(self) -> bool:
+        return self._displayed
 
-    def wait_for(self, **kwargs: str | int) -> None:
-        self._actions.append(("wait_for", self._selector, kwargs))
-        state = kwargs.get("state")
-        failure = self._wait_failures.get((self._selector, str(state)))
-        if failure is not None:
-            raise failure
+    def is_enabled(self) -> bool:
+        return self._enabled
+
+    def set_displayed(self, displayed: bool) -> None:
+        self._displayed = displayed
 
 
-class _FakePage:
+class _FakeDriver:
+    def __init__(self) -> None:
+        self.actions: list[tuple] = []
+        self.current_url = AppConstants.EMPTY_STRING
+        self._registry: dict[tuple[str, str], list[_FakeElement]] = {}
+        self.wait_failure: Exception | None = None
+
+    def register(
+        self,
+        by: str,
+        value: str,
+        element: _FakeElement,
+    ) -> _FakeElement:
+        self._registry.setdefault((by, value), []).append(element)
+        element.bind_driver(self)
+        return element
+
+    def get(self, url: str) -> None:
+        self.current_url = url
+        self.actions.append(("get", url))
+
+    def find_element(self, by: str, value: str) -> _FakeElement:
+        matches = self.find_elements(by, value)
+        if not matches:
+            raise NoSuchElementException(f"missing element: {by}={value}")
+        return matches[0]
+
+    def find_elements(self, by: str, value: str) -> list[_FakeElement]:
+        self.actions.append(("driver_find", by, value))
+        return list(self._registry.get((by, value), []))
+
+
+class _FakeWait:
     def __init__(
         self,
+        driver: _FakeDriver,
+        _timeout: float,
         *,
-        option_value: str | None = _DEFAULT_OPTION_VALUE,
-        account_options: list[tuple[str, str]] | None = None,
-        wait_failures: dict[tuple[str, str], Exception] | None = None,
-        submit_outcome: dict[str, str] | None = None,
-        wait_for_function_failure: Exception | None = None,
+        poll_frequency: float,
+        ignored_exceptions: tuple[type[Exception], ...],
     ) -> None:
-        self.actions: list[tuple] = []
-        self._option_value = option_value
-        self._account_options = account_options
-        self._wait_failures = wait_failures or {}
-        self._submit_outcome = submit_outcome or {"status": "closed"}
-        self._wait_for_function_failure = wait_for_function_failure
+        self._driver = driver
+        self._ignored_exceptions = ignored_exceptions
 
-    def click(self, selector: str) -> None:
-        self.actions.append(("page_click", selector))
+    def until(self, condition):
+        try:
+            result = condition(self._driver)
+        except self._ignored_exceptions:
+            result = False
+        if result:
+            return result
+        if self._driver.wait_failure is not None:
+            raise self._driver.wait_failure
+        raise TimeoutError(_SUBMIT_TIMEOUT_MESSAGE)
 
-    def evaluate(self, script: str, account_name: str) -> str | None:
-        self.actions.append(("evaluate", script, account_name))
-        if self._account_options is None:
-            return self._option_value
 
-        for option_name, option_value in self._account_options:
-            normalized_name = option_name.strip()
-            if "startsWith(name)" in script and normalized_name.startswith(
-                account_name
-            ):
-                return option_value
-            if "=== name" in script and normalized_name == account_name:
-                return option_value
+class _FakeSelect:
+    def __init__(self, element: _FakeElement) -> None:
+        self._element = element
+        self.options = list(element.options)
 
-        if "startsWith(name)" not in script and "=== name" not in script:
-            raise AssertionError(_UNEXPECTED_ACCOUNT_LOOKUP_SCRIPT)
+    def select_by_value(self, value: str) -> None:
+        self._element._driver.actions.append(("select_by_value", self._element.selector, value))
 
-        return None
 
-    def goto(self, url: str) -> None:
-        self.actions.append(("goto", url))
+class _FakeActionChains:
+    def __init__(self, driver: _FakeDriver) -> None:
+        self._driver = driver
 
-    def locator(self, selector: str) -> _FakeLocator:
-        self.actions.append(("page_locator", selector))
-        return _FakeLocator(
-            selector,
-            self.actions,
-            wait_failures=self._wait_failures,
-        )
+    def move_to_element(self, element: _FakeElement) -> _FakeActionChains:
+        self._driver.actions.append(("move_to_element", element.selector))
+        return self
 
-    def wait_for_function(
-        self,
-        script: str,
-        arg: dict[str, object],
-        *,
-        timeout: int,
-    ) -> _FakeJSHandle:
-        self.actions.append(("wait_for_function", script, arg, timeout))
-        if self._wait_for_function_failure is not None:
-            raise self._wait_for_function_failure
-        return _FakeJSHandle(self._submit_outcome)
+    def perform(self) -> None:
+        self._driver.actions.append(("perform_action_chain",))
 
-    def wait_for_selector(self, selector: str, timeout: int) -> None:
-        self.actions.append(("wait_for_selector", selector, timeout))
+
+@pytest.fixture(autouse=True)
+def patch_selenium_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mf_page_module, "WebDriverWait", _FakeWait)
+    monkeypatch.setattr(mf_page_module, "Select", _FakeSelect)
+    monkeypatch.setattr(mf_page_module, "ActionChains", _FakeActionChains)
+
+
+def _make_driver(*, account_options: list[tuple[str, str]] | None = None) -> _FakeDriver:
+    driver = _FakeDriver()
+    open_button = driver.register(
+        By.CSS_SELECTOR,
+        mf_selectors.OPEN_MANUAL_FORM_BUTTON,
+        _FakeElement(mf_selectors.OPEN_MANUAL_FORM_BUTTON),
+    )
+    modal = driver.register(
+        By.CSS_SELECTOR,
+        mf_selectors.MANUAL_FORM_MODAL,
+        _FakeElement(mf_selectors.MANUAL_FORM_MODAL),
+    )
+    open_button._on_click = lambda: modal.set_displayed(True)
+
+    modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.MINUS_PAYMENT_INPUT,
+        _FakeElement(mf_selectors.MINUS_PAYMENT_INPUT),
+    )
+    modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.PLUS_PAYMENT_INPUT,
+        _FakeElement(mf_selectors.PLUS_PAYMENT_INPUT),
+    )
+    modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.DATE_INPUT,
+        _FakeElement(mf_selectors.DATE_INPUT),
+    )
+    modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.AMOUNT_INPUT,
+        _FakeElement(mf_selectors.AMOUNT_INPUT),
+    )
+    modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.MEMO_INPUT,
+        _FakeElement(mf_selectors.MEMO_INPUT),
+    )
+    modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.CATEGORY_DROPDOWN,
+        _FakeElement(mf_selectors.CATEGORY_DROPDOWN),
+    )
+    options = [
+        _FakeOption(text, value)
+        for text, value in (account_options or [(_DEFAULT_ACCOUNT_NAME, _DEFAULT_OPTION_VALUE)])
+    ]
+    modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.ACCOUNT_SELECT,
+        _FakeElement(mf_selectors.ACCOUNT_SELECT, options=options),
+    )
+    submit = modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.SUBMIT_BUTTON,
+        _FakeElement(mf_selectors.SUBMIT_BUTTON),
+    )
+    submit._on_click = lambda: modal.set_displayed(False)
+
+    driver.register(
+        By.CSS_SELECTOR,
+        mf_selectors.LARGE_CATEGORY_LINK,
+        _FakeElement(mf_selectors.LARGE_CATEGORY_LINK, text=_DEFAULT_LARGE_CATEGORY),
+    )
+    driver.register(
+        By.CSS_SELECTOR,
+        mf_selectors.MIDDLE_CATEGORY_LINK,
+        _FakeElement(mf_selectors.MIDDLE_CATEGORY_LINK, text=_DEFAULT_CATEGORY),
+    )
+    return driver
 
 
 def _make_tx(*, category: str = _DEFAULT_CATEGORY) -> Transaction:
@@ -171,10 +287,9 @@ def _make_tx(*, category: str = _DEFAULT_CATEGORY) -> Transaction:
 
 
 def test_open_navigates_to_moneyforward_page() -> None:
-    """TC-07-00: open が Money Forward 入出金ページへ遷移し、手入力ボタンを待つことを確認する。"""
-    page = _FakePage()
+    driver = _make_driver()
     form_page = MFManualFormPage(
-        page,
+        driver,
         Mock(),
         _DEFAULT_ACCOUNT_NAME,
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
@@ -182,19 +297,13 @@ def test_open_navigates_to_moneyforward_page() -> None:
 
     form_page.open()
 
-    assert ("goto", mf_selectors.MANUAL_FORM_URL) in page.actions
-    assert (
-        "wait_for_selector",
-        mf_selectors.OPEN_MANUAL_FORM_BUTTON,
-        mf_selectors.NAVIGATION_TIMEOUT_MS,
-    ) in page.actions
+    assert ("get", mf_selectors.MANUAL_FORM_URL) in driver.actions
 
 
 def test_register_transaction_uses_selector_contract() -> None:
-    """TC-07-01: register_transaction がセレクタ定義経由でフォーム入力を進めることを確認する。"""
-    page = _FakePage(submit_outcome={"status": "success"})
+    driver = _make_driver()
     form_page = MFManualFormPage(
-        page,
+        driver,
         Mock(),
         _DEFAULT_ACCOUNT_NAME,
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
@@ -202,81 +311,33 @@ def test_register_transaction_uses_selector_contract() -> None:
 
     form_page.register_transaction(_make_tx())
 
-    assert ("page_click", mf_selectors.OPEN_MANUAL_FORM_BUTTON) in page.actions
-    assert ("page_locator", mf_selectors.MANUAL_FORM_MODAL) in page.actions
+    assert ("click", mf_selectors.OPEN_MANUAL_FORM_BUTTON) in driver.actions
+    assert ("clear", mf_selectors.DATE_INPUT) in driver.actions
+    assert ("send_keys", mf_selectors.DATE_INPUT, _DATE_INPUT_VALUE) in driver.actions
+    assert ("send_keys", mf_selectors.DATE_INPUT, mf_page_module.Keys.ESCAPE) in driver.actions
+    assert ("clear", mf_selectors.AMOUNT_INPUT) in driver.actions
+    assert ("send_keys", mf_selectors.AMOUNT_INPUT, _AMOUNT_INPUT_VALUE) in driver.actions
     assert (
-        "fill",
-        f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.DATE_INPUT}",
-        _DATE_INPUT_VALUE,
-    ) in page.actions
-    assert (
-        "fill",
-        f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.AMOUNT_INPUT}",
-        _AMOUNT_INPUT_VALUE,
-    ) in page.actions
-    assert (
-        "select_option",
-        f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.ACCOUNT_SELECT}",
-        {"value": _DEFAULT_OPTION_VALUE},
-    ) in page.actions
-    assert (
-        "locator_click",
-        f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.CATEGORY_DROPDOWN}",
-    ) in page.actions
-    assert (
-        "locator_click",
-        f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.SUBMIT_BUTTON}",
-    ) in page.actions
-    wait_for_function_calls = [
-        action for action in page.actions if action[0] == "wait_for_function"
-    ]
-    assert len(wait_for_function_calls) == 1
-    _, _, wait_arg, wait_timeout = wait_for_function_calls[0]
-    assert wait_arg == {
-        "modalSelector": mf_selectors.MANUAL_FORM_MODAL,
-        "errorSelectors": list(mf_selectors.SUBMIT_ERROR_FEEDBACK_SELECTORS),
-    }
-    assert wait_timeout == mf_selectors.SUBMIT_TIMEOUT_MS
-    assert (
-        "wait_for",
-        mf_selectors.MANUAL_FORM_MODAL,
-        {
-            "state": AppConstants.LOCATOR_STATE_HIDDEN,
-            "timeout": mf_selectors.SUBMIT_TIMEOUT_MS,
-        },
-    ) in page.actions
-    assert (
-        "page_locator",
-        mf_selectors.CLOSE_BUTTON,
-    ) not in page.actions
-
-
-def test_register_transaction_wait_does_not_depend_on_global_success_feedback() -> None:
-    """submit 判定はページ全体の success 要素ではなく modal close/error に依存する。"""
-    page = _FakePage(submit_outcome={"status": "closed"})
-    form_page = MFManualFormPage(
-        page,
-        Mock(),
-        _DEFAULT_ACCOUNT_NAME,
-        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
-    )
-
-    form_page.register_transaction(_make_tx())
-
-    wait_for_function_call = next(
-        action for action in page.actions if action[0] == "wait_for_function"
-    )
-    _, _, wait_arg, _ = wait_for_function_call
-    assert "successSelectors" not in wait_arg
+        "select_by_value",
+        mf_selectors.ACCOUNT_SELECT,
+        _DEFAULT_OPTION_VALUE,
+    ) in driver.actions
+    assert ("click", mf_selectors.CATEGORY_DROPDOWN) in driver.actions
+    assert ("move_to_element", mf_selectors.LARGE_CATEGORY_LINK) in driver.actions
+    assert ("click", mf_selectors.MIDDLE_CATEGORY_LINK) in driver.actions
+    assert ("clear", mf_selectors.MEMO_INPUT) in driver.actions
+    assert ("send_keys", mf_selectors.MEMO_INPUT, _DEFAULT_MEMO) in driver.actions
+    assert ("click", mf_selectors.SUBMIT_BUTTON) in driver.actions
 
 
 def test_register_transaction_raises_when_submit_does_not_close_modal() -> None:
-    """TC-08-01: submit 後にモーダルが閉じなければ例外を送出することを確認する。"""
-    page = _FakePage(
-        wait_for_function_failure=TimeoutError(_SUBMIT_TIMEOUT_MESSAGE),
-    )
+    driver = _make_driver()
+    driver.wait_failure = TimeoutError(_SUBMIT_TIMEOUT_MESSAGE)
+    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+    submit = modal.find_element(By.CSS_SELECTOR, mf_selectors.SUBMIT_BUTTON)
+    submit._on_click = lambda: None
     form_page = MFManualFormPage(
-        page,
+        driver,
         Mock(),
         _DEFAULT_ACCOUNT_NAME,
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
@@ -285,27 +346,19 @@ def test_register_transaction_raises_when_submit_does_not_close_modal() -> None:
     with pytest.raises(TimeoutError, match=_SUBMIT_TIMEOUT_MESSAGE):
         form_page.register_transaction(_make_tx())
 
-    assert (
-        "locator_click",
-        f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.SUBMIT_BUTTON}",
-    ) in page.actions
-    wait_for_function_calls = [
-        action for action in page.actions if action[0] == "wait_for_function"
-    ]
-    assert len(wait_for_function_calls) == 1
-
 
 def test_register_transaction_raises_when_submit_error_is_reported() -> None:
-    """submit 後にフォームエラー要素が出た場合は明示的な RuntimeError を送出する。"""
-    page = _FakePage(
-        submit_outcome={
-            "status": "error",
-            "selector": ".alert-danger",
-            "text": _SUBMIT_ERROR_MESSAGE,
-        }
+    driver = _make_driver()
+    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+    error_element = modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.SUBMIT_ERROR_FEEDBACK_SELECTORS[0],
+        _FakeElement(mf_selectors.SUBMIT_ERROR_FEEDBACK_SELECTORS[0], text=_SUBMIT_ERROR_MESSAGE, displayed=False),
     )
+    submit = modal.find_element(By.CSS_SELECTOR, mf_selectors.SUBMIT_BUTTON)
+    submit._on_click = lambda: error_element.set_displayed(True)
     form_page = MFManualFormPage(
-        page,
+        driver,
         Mock(),
         _DEFAULT_ACCOUNT_NAME,
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
@@ -314,28 +367,11 @@ def test_register_transaction_raises_when_submit_error_is_reported() -> None:
     with pytest.raises(RuntimeError, match=_SUBMIT_ERROR_MESSAGE):
         form_page.register_transaction(_make_tx())
 
-    hidden_wait_calls = [
-        action
-        for action in page.actions
-        if action[0] == "wait_for" and action[1] == mf_selectors.MANUAL_FORM_MODAL
-    ]
-    assert hidden_wait_calls == [
-        (
-            "wait_for",
-            mf_selectors.MANUAL_FORM_MODAL,
-            {
-                "state": AppConstants.LOCATOR_STATE_VISIBLE,
-                "timeout": mf_selectors.MODAL_TIMEOUT_MS,
-            },
-        )
-    ]
-
 
 def test_register_transaction_accepts_closed_modal_without_success_feedback() -> None:
-    """成功通知が取れなくても、モーダル閉鎖を検知できれば成功として扱う。"""
-    page = _FakePage(submit_outcome={"status": "closed"})
+    driver = _make_driver()
     form_page = MFManualFormPage(
-        page,
+        driver,
         Mock(),
         _DEFAULT_ACCOUNT_NAME,
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
@@ -343,27 +379,18 @@ def test_register_transaction_accepts_closed_modal_without_success_feedback() ->
 
     form_page.register_transaction(_make_tx())
 
-    hidden_wait_calls = [
-        action
-        for action in page.actions
-        if action[0] == "wait_for"
-        and action[1] == mf_selectors.MANUAL_FORM_MODAL
-        and action[2].get("state") == AppConstants.LOCATOR_STATE_HIDDEN
-    ]
-    assert hidden_wait_calls == []
+    assert ("click", mf_selectors.SUBMIT_BUTTON) in driver.actions
 
 
 def test_register_transaction_selects_exact_account_match_when_prefix_exists() -> None:
-    """mf_account は前方一致ではなく完全一致で選択する。"""
-    page = _FakePage(
+    driver = _make_driver(
         account_options=[
             (_PREFIX_ACCOUNT_NAME, _LEGACY_OPTION_VALUE),
             (f"  {_DEFAULT_ACCOUNT_NAME}  ", _DEFAULT_OPTION_VALUE),
-        ],
-        submit_outcome={"status": "closed"},
+        ]
     )
     form_page = MFManualFormPage(
-        page,
+        driver,
         Mock(),
         _DEFAULT_ACCOUNT_NAME,
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
@@ -372,24 +399,21 @@ def test_register_transaction_selects_exact_account_match_when_prefix_exists() -
     form_page.register_transaction(_make_tx())
 
     assert (
-        "select_option",
-        f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.ACCOUNT_SELECT}",
-        {"value": _DEFAULT_OPTION_VALUE},
-    ) in page.actions
+        "select_by_value",
+        mf_selectors.ACCOUNT_SELECT,
+        _DEFAULT_OPTION_VALUE,
+    ) in driver.actions
     assert (
-        "select_option",
-        f"{mf_selectors.MANUAL_FORM_MODAL} >> {mf_selectors.ACCOUNT_SELECT}",
-        {"value": _LEGACY_OPTION_VALUE},
-    ) not in page.actions
+        "select_by_value",
+        mf_selectors.ACCOUNT_SELECT,
+        _LEGACY_OPTION_VALUE,
+    ) not in driver.actions
 
 
 def test_register_transaction_raises_when_exact_account_match_is_missing() -> None:
-    """完全一致の口座候補がなければ即失敗する。"""
-    page = _FakePage(
-        account_options=[(_PREFIX_ACCOUNT_NAME, _LEGACY_OPTION_VALUE)],
-    )
+    driver = _make_driver(account_options=[(_PREFIX_ACCOUNT_NAME, _LEGACY_OPTION_VALUE)])
     form_page = MFManualFormPage(
-        page,
+        driver,
         Mock(),
         _DEFAULT_ACCOUNT_NAME,
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
@@ -398,18 +422,15 @@ def test_register_transaction_raises_when_exact_account_match_is_missing() -> No
     with pytest.raises(ValueError, match=_DEFAULT_ACCOUNT_NAME):
         form_page.register_transaction(_make_tx())
 
-    select_option_calls = [
-        action for action in page.actions if action[0] == "select_option"
-    ]
-    assert select_option_calls == []
+    select_calls = [action for action in driver.actions if action[0] == "select_by_value"]
+    assert select_calls == []
 
 
 def test_register_transaction_warns_for_unknown_category() -> None:
-    """TC-08-01: 未対応カテゴリでは warning を出し、カテゴリ操作をスキップすることを確認する。"""
     logger = Mock()
-    page = _FakePage(submit_outcome={"status": "closed"})
+    driver = _make_driver()
     form_page = MFManualFormPage(
-        page,
+        driver,
         logger,
         _DEFAULT_ACCOUNT_NAME,
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},

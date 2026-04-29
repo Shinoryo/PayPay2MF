@@ -28,8 +28,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 # 設定ファイル キー名 トップレベル
-_KEY_CHROME_USER_DATA_DIR = "chrome_user_data_dir"
-_KEY_CHROME_PROFILE = "chrome_profile"
 _KEY_DRY_RUN = "dry_run"
 _KEY_INPUT_CSV = "input_csv"
 _KEY_MF_ACCOUNT = "mf_account"
@@ -77,12 +75,6 @@ _MSG_UNKNOWN_KEYS = "{section} に未定義キーがあります: {keys}"
 _MSG_DRY_RUN_TYPE = "dry_run には true または false を指定してください。"
 _MSG_REQUIRED_STRING_TYPE = "{key} には文字列を指定してください。"
 
-_MSG_REQUIRED_CHROME_USER_DATA_DIR = (
-    "chrome_user_data_dir が設定されていません。config.yml に記載してください。"
-)
-_MSG_REQUIRED_CHROME_PROFILE = (
-    "chrome_profile が設定されていません。config.yml に記載してください。"
-)
 _MSG_REQUIRED_DRY_RUN = (
     "dry_run が設定されていません。true または false を config.yml に記載してください。"
 )
@@ -93,10 +85,6 @@ _MSG_REQUIRED_MF_ACCOUNT = (
     "mf_account が設定されていません。config.yml に記載してください。"
 )
 
-_MSG_CHROME_USER_DATA_DIR_NOT_EXIST = (
-    "chrome_user_data_dir のパスが存在しません: {path}"
-)
-_MSG_CHROME_PROFILE_NOT_EXIST = "chrome_profile のディレクトリが存在しません: {path}"
 _MSG_INPUT_CSV_NOT_EXIST = "input_csv のファイルが存在しません: {path}"
 _MSG_INPUT_CSV_NOT_FILE = "input_csv にはファイルを指定してください: {path}"
 _MSG_INPUT_CSV_BAD_EXT = "input_csv の拡張子が .csv ではありません: {path}"
@@ -199,16 +187,12 @@ _MSG_MF_CATEGORIES_NOT_FILE = (
 )
 
 _REQUIRED_KEYS: dict[str, str] = {
-    _KEY_CHROME_USER_DATA_DIR: _MSG_REQUIRED_CHROME_USER_DATA_DIR,
-    _KEY_CHROME_PROFILE: _MSG_REQUIRED_CHROME_PROFILE,
     _KEY_DRY_RUN: _MSG_REQUIRED_DRY_RUN,
     _KEY_INPUT_CSV: _MSG_REQUIRED_INPUT_CSV,
     _KEY_MF_ACCOUNT: _MSG_REQUIRED_MF_ACCOUNT,
 }
 
 _REQUIRED_STRING_KEYS = {
-    _KEY_CHROME_USER_DATA_DIR,
-    _KEY_CHROME_PROFILE,
     _KEY_INPUT_CSV,
     _KEY_MF_ACCOUNT,
 }
@@ -255,8 +239,6 @@ _EXCLUDE_PREFIXES_MESSAGES = _StringListValidationMessages(
 
 _ALLOWED_TOP_LEVEL_KEYS = frozenset(
     {
-        _KEY_CHROME_USER_DATA_DIR,
-        _KEY_CHROME_PROFILE,
         _KEY_DRY_RUN,
         _KEY_INPUT_CSV,
         _KEY_MF_ACCOUNT,
@@ -367,7 +349,6 @@ def load_config(path: Path) -> AppConfig:
     _validate_advanced(sections.advanced)
     _validate_paths(
         raw,
-        skip_chrome_validation=raw[_KEY_DRY_RUN],
         config_dir=path.parent,
         advanced_raw=sections.advanced,
     )
@@ -464,7 +445,6 @@ def _validate_required(raw: dict) -> None:
 def _validate_paths(
     raw: dict,
     *,
-    skip_chrome_validation: bool,
     config_dir: Path,
     advanced_raw: dict,
 ) -> None:
@@ -472,27 +452,12 @@ def _validate_paths(
 
     Args:
         raw: YAML から読み込んだ辞書。
-        skip_chrome_validation: True の場合、Chrome 関連のパス検証を
-            スキップする。
         config_dir: config.yml が置かれたディレクトリ。
 
     Raises:
-        ValueError: chrome_user_data_dir が存在しない場合、または
-            input_csv が存在しない場合。
+        ValueError: input_csv が存在しない場合。
     """
     errors: list[str] = []
-
-    if not skip_chrome_validation:
-        user_data_dir = Path(str(raw[_KEY_CHROME_USER_DATA_DIR]))
-
-        if user_data_dir.exists():
-            profile_dir = user_data_dir / str(raw[_KEY_CHROME_PROFILE])
-            if not profile_dir.exists():
-                errors.append(_MSG_CHROME_PROFILE_NOT_EXIST.format(path=profile_dir))
-        else:
-            errors.append(
-                _MSG_CHROME_USER_DATA_DIR_NOT_EXIST.format(path=user_data_dir)
-            )
 
     input_csv = _resolve_path(raw[_KEY_INPUT_CSV], config_dir)
     if not input_csv.exists():
@@ -927,8 +892,6 @@ def _build_config(
     creds = _resolve_optional_path(raw.get(_KEY_GCLOUD_CREDENTIALS_PATH), config_dir)
     exclude_prefixes_raw = raw.get(_KEY_EXCLUDE_PREFIXES)
     return AppConfig(
-        chrome_user_data_dir=raw[_KEY_CHROME_USER_DATA_DIR],
-        chrome_profile=raw[_KEY_CHROME_PROFILE],
         dry_run=bool(raw[_KEY_DRY_RUN]),
         input_csv=_resolve_path(raw[_KEY_INPUT_CSV], config_dir),
         mf_account=raw[_KEY_MF_ACCOUNT],
