@@ -16,6 +16,10 @@ dependencies = [
 gcloud = [
     "google-cloud-firestore>=2.13",
 ]
+ci = [
+    "pytest>=7.0",
+    "pytest-mock>=3.0",
+]
 dev = [
     "pip-audit>=2.7",
     "pytest>=7.0",
