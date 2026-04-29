@@ -9,9 +9,6 @@ dry_run: true          # true: ドライラン（書き込みなし） / false: 
 input_csv: "C:\\Users\\yourname\\Downloads\\paypay_history.csv"
 mf_account: "PayPay残高"
 
-# 本番実行時は Selenium が Chrome を起動し、Money Forward トップページで待機します。
-# ユーザーが手動ログインしたあと Enter を押すと、家計簿タブの選択と /cf 以降の登録処理を続行します。
-
 # ------ 任意設定 ------
 
 mapping_rules:

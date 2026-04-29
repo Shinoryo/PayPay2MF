@@ -42,6 +42,11 @@ _LOG_MSG_SCREENSHOT_SENSITIVE = (
     "スクリーンショットは機微情報を含む可能性があります。共有しないでください。"
 )
 _MSG_DRIVER_NOT_INITIALIZED = "Selenium driver が初期化されていません。"
+_MSG_MANUAL_LOGIN_NON_INTERACTIVE = (
+    "手動ログイン待機に失敗しました。"
+    "PowerShell やコマンドプロンプト等の対話的なコンソールから実行してください。"
+)
+_PROMPT_MANUAL_LOGIN = "Money Forward へログインしたら Enter を押してください: "
 _SCREENSHOT_FILE_PREFIX = "screenshot_"
 _SELENIUM_MANAGER_AVOID_STATS_ENV_VAR = "SE_AVOID_STATS"
 _SELENIUM_MANAGER_AVOID_STATS_ENABLED = "true"
@@ -182,7 +187,10 @@ class MFRegistrar:
 
     def _wait_for_manual_login(self) -> None:
         self._logger.info(_LOG_MSG_WAITING_FOR_LOGIN)
-        input("Money Forward へログインしたら Enter を押してください: ")
+        try:
+            input(_PROMPT_MANUAL_LOGIN)
+        except (EOFError, ValueError) as exc:
+            raise RuntimeError(_MSG_MANUAL_LOGIN_NON_INTERACTIVE) from exc
 
     def _open_household_book_tab(self) -> None:
         tab = self._wait(mf_selectors.NAVIGATION_TIMEOUT_MS).until(

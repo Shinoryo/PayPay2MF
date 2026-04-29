@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import builtins
 import logging
 import os
 import pathlib
@@ -27,6 +28,8 @@ _LOGGER_NAME_OPTOUT = "test-mf-registrar-optout"
 _LOGGER_NAME_OPTIN = "test-mf-registrar-optin"
 _LOGGER_NAME_NO_PAGE = "test-mf-registrar-no-page"
 _LOGGER_NAME_STARTUP = "test-mf-registrar-startup"
+_LOGGER_NAME_WAIT = "test-mf-registrar-wait"
+_MSG_MANUAL_LOGIN_NON_INTERACTIVE = "対話的なコンソールから実行してください"
 _SCREENSHOT_NAME_PATTERN = r"screenshot_\d{8}_\d{6}\.png"
 _SCREENSHOT_SAVED_LOG = "スクリーンショットを保存しました"
 _SCREENSHOT_SKIPPED_LOG = (
@@ -329,3 +332,35 @@ def test_close_suppresses_quit_exception_and_logs_warning(
         if record.name == logger.name and record.levelno == logging.WARNING
     ]
     assert any(_CHROME_QUIT_FAILED_LOG in msg for msg in warning_messages)
+
+
+def test_wait_for_manual_login_raises_on_eoferror(
+    tmp_path: pathlib.Path,
+    app_config_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """stdin が閉じていて EOFError が発生した場合、利用者向け RuntimeError に正規化される。"""
+    monkeypatch.setattr(builtins, "input", lambda _prompt: (_ for _ in ()).throw(EOFError()))
+    registrar = MFRegistrar(
+        app_config_factory(tmp_path, input_csv_name="dummy.csv"),
+        logging.getLogger(_LOGGER_NAME_WAIT),
+    )
+
+    with pytest.raises(RuntimeError, match=_MSG_MANUAL_LOGIN_NON_INTERACTIVE):
+        registrar._wait_for_manual_login()
+
+
+def test_wait_for_manual_login_raises_on_valueerror(
+    tmp_path: pathlib.Path,
+    app_config_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """stdin I/O エラーで ValueError が発生した場合、利用者向け RuntimeError に正規化される。"""
+    monkeypatch.setattr(builtins, "input", lambda _prompt: (_ for _ in ()).throw(ValueError()))
+    registrar = MFRegistrar(
+        app_config_factory(tmp_path, input_csv_name="dummy.csv"),
+        logging.getLogger(_LOGGER_NAME_WAIT),
+    )
+
+    with pytest.raises(RuntimeError, match=_MSG_MANUAL_LOGIN_NON_INTERACTIVE):
+        registrar._wait_for_manual_login()
