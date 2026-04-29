@@ -40,7 +40,7 @@ class Transaction:
         date: 取引日時。
         amount: 取引金額（円・整数）。
         direction: 入出金方向。"out"（出金）または "in"（入金）。
-        memo: MF メモ欄に転記する文字列 (取引内容 + 海外情報)。
+        memo: MF メモ欄に転記する文字列 (取引先 + 海外情報)。
         merchant: 取引先名 (マッピングルールのマッチング対象)。
         transaction_id: 取引番号。複数行に分割された場合でも同一 ID を共有する。
             取引番号が存在しない行は None。

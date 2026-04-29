@@ -303,7 +303,9 @@ def test_enter_cleans_up_temp_profile_dir_on_chrome_boot_failure(
 
     # _temporary_profile_dir is still set after __enter__ raises, but the dir must be gone
     assert registrar._temporary_profile_dir is not None
-    assert not registrar._temporary_profile_dir.exists(), "一時プロファイルディレクトリは削除されるべき"
+    assert not registrar._temporary_profile_dir.exists(), (
+        "一時プロファイルディレクトリは削除されるべき"
+    )
 
 
 def test_close_suppresses_quit_exception_and_logs_warning(
@@ -340,7 +342,9 @@ def test_wait_for_manual_login_raises_on_eoferror(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """stdin が閉じていて EOFError が発生した場合、利用者向け RuntimeError に正規化される。"""
-    monkeypatch.setattr(builtins, "input", lambda _prompt: (_ for _ in ()).throw(EOFError()))
+    monkeypatch.setattr(
+        builtins, "input", lambda _prompt: (_ for _ in ()).throw(EOFError())
+    )
     registrar = MFRegistrar(
         app_config_factory(tmp_path, input_csv_name="dummy.csv"),
         logging.getLogger(_LOGGER_NAME_WAIT),
@@ -356,7 +360,9 @@ def test_wait_for_manual_login_raises_on_valueerror(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """stdin I/O エラーで ValueError が発生した場合、利用者向け RuntimeError に正規化される。"""
-    monkeypatch.setattr(builtins, "input", lambda _prompt: (_ for _ in ()).throw(ValueError()))
+    monkeypatch.setattr(
+        builtins, "input", lambda _prompt: (_ for _ in ()).throw(ValueError())
+    )
     registrar = MFRegistrar(
         app_config_factory(tmp_path, input_csv_name="dummy.csv"),
         logging.getLogger(_LOGGER_NAME_WAIT),

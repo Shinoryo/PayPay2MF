@@ -39,7 +39,7 @@ _DEFAULT_LARGE_CATEGORY = "食費"
 _UNKNOWN_CATEGORY = "未知カテゴリ"
 _DATE_INPUT_VALUE = "2025/01/01"
 _AMOUNT_INPUT_VALUE = "920"
-_DEFAULT_MEMO = "支払い"
+_DEFAULT_MEMO = "セブン-イレブン"
 _DEFAULT_MERCHANT = "モスのネット注文"
 _DEFAULT_TRANSACTION_ID = "TX001"
 _SUBMIT_TIMEOUT_MESSAGE = "submit timeout"
@@ -509,14 +509,20 @@ def test_blur_element_falls_back_to_tab_when_js_blur_fails(exc: Exception) -> No
         _DEFAULT_ACCOUNT_NAME,
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
     )
-    date_input = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL).find_element(
+    date_input = driver.find_element(
+        By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL
+    ).find_element(
         By.CSS_SELECTOR,
         mf_selectors.DATE_INPUT,
     )
 
     form_page._blur_element(date_input)  # noqa: SLF001
 
-    assert ("send_keys", mf_selectors.DATE_INPUT, mf_page_module.Keys.TAB) in driver.actions
+    assert (
+        "send_keys",
+        mf_selectors.DATE_INPUT,
+        mf_page_module.Keys.TAB,
+    ) in driver.actions
 
 
 @pytest.mark.parametrize(
@@ -536,7 +542,9 @@ def test_click_element_continues_when_scroll_script_fails(exc: Exception) -> Non
         _DEFAULT_ACCOUNT_NAME,
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
     )
-    open_button = driver.find_element(By.CSS_SELECTOR, mf_selectors.OPEN_MANUAL_FORM_BUTTON)
+    open_button = driver.find_element(
+        By.CSS_SELECTOR, mf_selectors.OPEN_MANUAL_FORM_BUTTON
+    )
 
     form_page._click_element(open_button)  # noqa: SLF001
 
@@ -560,7 +568,9 @@ def test_is_element_unobscured_returns_true_when_probe_fails(exc: Exception) -> 
         _DEFAULT_ACCOUNT_NAME,
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
     )
-    amount_input = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL).find_element(
+    amount_input = driver.find_element(
+        By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL
+    ).find_element(
         By.CSS_SELECTOR,
         mf_selectors.AMOUNT_INPUT,
     )
