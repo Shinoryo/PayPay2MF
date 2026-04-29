@@ -292,6 +292,56 @@ def test_load_backfill_config_rejects_credentials_directory(tmp_path: Path) -> N
         load_backfill_config(config_path)
 
 
+def test_load_backfill_config_rejects_config_directory(tmp_path: Path) -> None:
+    """config.yml 自体がディレクトリなら ValueError になる。"""
+    config_dir = tmp_path / "config.yml"
+    config_dir.mkdir()
+    load_backfill_config = firestore_backfill._load_backfill_config  # noqa: SLF001
+
+    with pytest.raises(ValueError, match=r"config\.yml にはファイルを指定してください"):
+        load_backfill_config(config_dir)
+
+
+def test_load_backfill_config_rejects_invalid_yaml_syntax(tmp_path: Path) -> None:
+    """backfill 設定の YAML 構文エラーは ValueError に正規化される。"""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text("duplicate_detection: [\n", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+    load_backfill_config = firestore_backfill._load_backfill_config  # noqa: SLF001
+
+    with pytest.raises(ValueError, match=r"YAML 構文"):
+        load_backfill_config(config_path)
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "message"),
+    [
+        pytest.param("sixty", "整数を指定してください", id="string"),
+        pytest.param(True, "整数を指定してください", id="bool"),
+        pytest.param(-1, "0 以上の整数", id="negative"),
+    ],
+)
+def test_load_backfill_config_validates_tolerance_seconds(
+    tmp_path: Path,
+    raw_value: object,
+    message: str,
+) -> None:
+    """backfill 設定でも tolerance_seconds の型と範囲を検証する。"""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        (
+            "duplicate_detection:\n"
+            "  backend: 'gcloud'\n"
+            f"  tolerance_seconds: {raw_value!r}\n"
+            "gcloud_credentials_path: 'service-account.json'"
+        ),
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
+    load_backfill_config = firestore_backfill._load_backfill_config  # noqa: SLF001
+
+    with pytest.raises(ValueError, match=message):
+        load_backfill_config(config_path)
+
+
 def test_main_uses_cli_config_path_before_env_and_cwd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -436,3 +486,34 @@ def test_main_falls_back_to_module_config_path_when_cwd_config_is_missing(
     firestore_backfill.main([])
 
     load_gcloud_detector_mock.assert_called_once_with(module_config)
+
+
+def test_main_propagates_unexpected_backfill_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """想定外の backfill 実行時エラーは握り潰さず伝播させる。"""
+    logger = Mock(spec=logging.Logger)
+    config_path = tmp_path / "config.yml"
+
+    monkeypatch.setattr(firestore_backfill.logging, "basicConfig", Mock())
+    monkeypatch.setattr(
+        firestore_backfill.logging,
+        "getLogger",
+        Mock(return_value=logger),
+    )
+    monkeypatch.setattr(
+        firestore_backfill,
+        "_load_gcloud_detector",
+        Mock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        firestore_backfill,
+        "backfill_date_buckets",
+        Mock(side_effect=RuntimeError("bug")),
+    )
+
+    with pytest.raises(RuntimeError, match="bug"):
+        firestore_backfill.main(["--config", str(config_path)])
+
+    logger.exception.assert_not_called()

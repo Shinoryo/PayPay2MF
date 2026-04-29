@@ -6,12 +6,12 @@ config.yml を読み込んで CSV パースから MF 登録までのメインフ
 from __future__ import annotations
 
 import argparse
+import csv
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from paypay2mf.chrome_check import is_chrome_running
 from paypay2mf.config_loader import CONFIG_ENV_VAR, load_config, resolve_config_path
 from paypay2mf.csv_parser import parse_csv
 from paypay2mf.duplicate_detector import (
@@ -38,10 +38,6 @@ _CLI_HELP_CONFIG = (
 )
 
 # 実行フローのログ文言に使う定数。
-_LOG_MSG_CHROME_RUNNING = (
-    "Chrome が起動中です。Chrome を終了してから再実行してください。"
-)
-_LOG_MSG_CHROME_STOPPED = "Chrome 稼働チェック: 停止済み"
 _LOG_MSG_PARSE_FAILURE_COUNT = "CSV 解析失敗: %d件"
 _LOG_MSG_PARSE_ERROR_CSV_WRITTEN = "解析エラーCSVを出力しました: %s"
 _LOG_MSG_PARSE_ERROR_CSV_SENSITIVE = (
@@ -55,6 +51,7 @@ _LOG_MSG_DUPLICATE_BACKEND_INIT_FAILED = (
     "重複検知バックエンドの初期化に失敗しました: %s"
 )
 _LOG_MSG_DUPLICATE_HISTORY_SAVE_FAILED = "重複履歴ファイルの保存に失敗しました: %s"
+_LOG_MSG_DUPLICATE_HISTORY_UPDATE_FAILED = "重複履歴の更新に失敗しました: %s"
 _LOG_MSG_DUPLICATE_SKIP_COUNT = "重複スキップ: %d件"
 _LOG_MSG_TO_PROCESS_COUNT = "処理対象: %d件"
 _LOG_MSG_DRY_RUN_COMPLETE = "ドライラン完了: 登録対象 %d件"
@@ -73,6 +70,7 @@ _LOG_MSG_LOG_DIR_SENSITIVE = (
 _LOG_MSG_DRY_RUN_MODE = "DRY RUN: ブラウザを起動しません。CSV診断のみ実行します。"
 _LOG_MSG_CONFIG_LOADED = "config.yml を読み込みました"
 _LOG_MSG_NO_TRANSACTIONS = "登録対象がないためブラウザを起動しません。"
+_ERR_MARK_PROCESSED_FAILED = "処理済み履歴の更新に失敗しました ({}/{})"
 
 
 @dataclass(slots=True)
@@ -103,17 +101,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def ensure_chrome_stopped(config: AppConfig, logger: logging.Logger) -> None:
-    if config.dry_run:
-        return
-
-    if is_chrome_running():
-        logger.error(_LOG_MSG_CHROME_RUNNING)
-        sys.exit(1)
-
-    logger.info(_LOG_MSG_CHROME_STOPPED)
-
-
 def _log_parse_failures(
     parse_failures: list[ParseFailure],
     config: AppConfig,
@@ -134,7 +121,7 @@ def build_transactions(
 ) -> PreparedTransactions:
     try:
         transactions, parse_failures = parse_csv(config.input_csv, config)
-    except Exception:
+    except (OSError, UnicodeError, ValueError, csv.Error):
         logger.exception(_LOG_MSG_CSV_READ_FAILED)
         sys.exit(1)
 
@@ -199,10 +186,16 @@ def _register_transaction(
 
     try:
         registrar.register(tx)
-        detector.mark_processed(tx)
     except Exception as exc:
         logger.exception(_LOG_MSG_REGISTER_FAILED, index, total_count, exc)
         return str(exc)
+
+    try:
+        detector.mark_processed(tx)
+    except Exception as exc:
+        raise DuplicateHistorySaveError(
+            _ERR_MARK_PROCESSED_FAILED.format(index, total_count),
+        ) from exc
 
     return None
 
@@ -220,13 +213,18 @@ def run_registration(
     try:
         with MFRegistrar(config, logger) as registrar:
             for index, tx in enumerate(to_process, start=1):
-                error_message = _register_transaction(
-                    registrar,
-                    detector,
-                    logger,
-                    tx,
-                    progress=(index, len(to_process)),
-                )
+                try:
+                    error_message = _register_transaction(
+                        registrar,
+                        detector,
+                        logger,
+                        tx,
+                        progress=(index, len(to_process)),
+                    )
+                except DuplicateHistorySaveError as exc:
+                    logger.exception(_LOG_MSG_DUPLICATE_HISTORY_UPDATE_FAILED, str(exc))
+                    should_exit = True
+                    break
                 if error_message is None:
                     success_count += 1
                     continue
@@ -304,7 +302,6 @@ def main(argv: list[str] | None = None) -> None:
 
     logger.info(_LOG_MSG_CONFIG_LOADED)
 
-    ensure_chrome_stopped(config, logger)
     prepared = build_transactions(config, logger)
 
     if config.dry_run:

@@ -23,8 +23,6 @@ from paypay2mf.constants import AppConstants
 from paypay2mf.csv_parser import _merge_compound, _parse_amount, parse_csv
 from paypay2mf.models import AppConfig
 
-_DUMMY_CHROME_USER_DATA_DIR = "C:\\dummy"
-_DEFAULT_CHROME_PROFILE = "Default"
 _DEFAULT_MF_ACCOUNT = "PayPay残高"
 _FIXTURE_DIRNAME = "fixtures"
 _INPUT_CSV_FILENAME = "test_input.csv"
@@ -62,8 +60,6 @@ def _make_config(csv_path: Path) -> AppConfig:
         テスト用 AppConfig インスタンス。
     """
     return AppConfig(
-        chrome_user_data_dir=_DUMMY_CHROME_USER_DATA_DIR,
-        chrome_profile=_DEFAULT_CHROME_PROFILE,
         dry_run=True,
         input_csv=csv_path,
         mf_account=_DEFAULT_MF_ACCOUNT,
@@ -209,8 +205,37 @@ def test_parse_csv_collects_invalid_rows(tmp_path: Path) -> None:
     assert txs[0].transaction_id == _OK_TRANSACTION_ID
     assert len(failures) == 1
     assert failures[0].transaction_id == _BAD_TRANSACTION_ID
-    assert failures[0].error_type == _PARSE_ERROR_INVALID_DATE
+    assert failures[0].error_type == _PARSE_ERROR_INVALID_VALUE
     assert failures[0].row_index == 3
+
+
+def test_parse_csv_collects_blank_required_values(tmp_path: Path) -> None:
+    """必須値が空文字または空白のみの行は ParseFailure として収集される。"""
+    csv_content = (
+        "取引日,出金金額（円）,入金金額（円）,海外出金金額,通貨,変換レート（円）,"
+        "利用国,取引内容,取引先,取引方法,支払い区分,利用者,取引番号\r\n"
+        "2025/02/11 19:24:02,920,-,-,-,-,-,支払い,モスのネット注文,"
+        "クレジット VISA 4575,-,本人,OK001\r\n"
+        "2025/02/11 19:24:03,500,-,-,-,-,-,支払い,   ,"
+        "PayPay残高,-,本人,BAD002\r\n"
+        "2025/02/11 19:24:04,300,-,-,-,-,-,   ,giftee,"
+        "PayPay残高,-,本人,BAD003\r\n"
+    )
+    csv_file = tmp_path / "blank_required_values.csv"
+    csv_file.write_text(csv_content, encoding=AppConstants.ENCODING_UTF8)
+
+    txs, failures = parse_csv(csv_file, _make_config(csv_file))
+
+    assert len(txs) == 1
+    assert txs[0].transaction_id == _OK_TRANSACTION_ID
+    assert [failure.transaction_id for failure in failures] == ["BAD002", "BAD003"]
+    assert [failure.error_type for failure in failures] == [
+        _PARSE_ERROR_INVALID_VALUE,
+        _PARSE_ERROR_INVALID_VALUE,
+    ]
+    assert [failure.row_index for failure in failures] == [3, 4]
+    assert "取引先" in failures[0].error_message
+    assert "取引内容" in failures[1].error_message
 
 
 def test_parse_csv_rejects_zero_amount_rows(tmp_path: Path) -> None:
@@ -347,3 +372,135 @@ def test_merge_compound_does_not_collide_with_real_transaction_id() -> None:
     assert result[0][1]["取引先"] == "AAA"
     assert result[1][1]["出金金額（円）"] == "200"
     assert result[1][1]["取引先"] == "BBB"
+
+
+def test_merge_compound_sums_three_rows_for_same_transaction_id() -> None:
+    """同一 transaction_id の3行以上も出金・入金を独立に合算する。"""
+    rows = [
+        (
+            2,
+            {
+                "取引番号": "TX-COMPOUND",
+                "出金金額（円）": "100",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "AAA",
+            },
+        ),
+        (
+            3,
+            {
+                "取引番号": "TX-COMPOUND",
+                "出金金額（円）": "200",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "BBB",
+            },
+        ),
+        (
+            4,
+            {
+                "取引番号": "TX-COMPOUND",
+                "出金金額（円）": AppConstants.HYPHEN,
+                "入金金額（円）": "30",
+                "取引先": "CCC",
+            },
+        ),
+    ]
+
+    result = _merge_compound(rows)
+
+    assert len(result) == 1
+    assert result[0][1]["出金金額（円）"] == "300"
+    assert result[0][1]["入金金額（円）"] == "30"
+
+
+def test_merge_compound_preserves_first_row_metadata_and_row_index() -> None:
+    """複合支払では金額以外のメタデータと行番号は最初の行を保持する。"""
+    rows = [
+        (
+            10,
+            {
+                "取引番号": "TX-FIRST",
+                "取引日": "2025/02/10 12:00:00",
+                "出金金額（円）": "70",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "最初の加盟店",
+                "取引方法": "PayPayポイント",
+            },
+        ),
+        (
+            11,
+            {
+                "取引番号": "TX-FIRST",
+                "取引日": "2025/02/10 12:01:00",
+                "出金金額（円）": "30",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "後続の加盟店",
+                "取引方法": "クレジット VISA 4575",
+            },
+        ),
+    ]
+
+    result = _merge_compound(rows)
+
+    assert len(result) == 1
+    assert result[0][0] == 10
+    assert result[0][1]["取引日"] == "2025/02/10 12:00:00"
+    assert result[0][1]["取引先"] == "最初の加盟店"
+    assert result[0][1]["取引方法"] == "PayPayポイント"
+    assert result[0][1]["出金金額（円）"] == "100"
+
+
+def test_merge_compound_keeps_group_order_with_no_id_rows_between_groups() -> None:
+    """複合支払と取引番号なし行が混在しても元のグループ順序を維持する。"""
+    rows = [
+        (
+            2,
+            {
+                "取引番号": "TX-A",
+                "出金金額（円）": "10",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "A-1",
+            },
+        ),
+        (
+            3,
+            {
+                "取引番号": "",
+                "出金金額（円）": "20",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "NO-ID",
+            },
+        ),
+        (
+            4,
+            {
+                "取引番号": "TX-B",
+                "出金金額（円）": "30",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "B-1",
+            },
+        ),
+        (
+            5,
+            {
+                "取引番号": "TX-A",
+                "出金金額（円）": "40",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "A-2",
+            },
+        ),
+        (
+            6,
+            {
+                "取引番号": "TX-B",
+                "出金金額（円）": "50",
+                "入金金額（円）": AppConstants.HYPHEN,
+                "取引先": "B-2",
+            },
+        ),
+    ]
+
+    result = _merge_compound(rows)
+
+    assert [row[1]["取引先"] for row in result] == ["A-1", "NO-ID", "B-1"]
+    assert [row[1]["出金金額（円）"] for row in result] == ["50", "20", "80"]

@@ -630,6 +630,49 @@ def test_local_reload_rebuilds_fallback_index_from_json_list(
     assert detector.is_duplicate(duplicate_tx) is True
 
 
+def test_local_reload_rebuilds_sorted_fallback_index_from_unsorted_json_list(
+    tmp_path: Path,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """再読込時に fallback index がソートされ、近傍探索で重複判定できることを確認する。"""
+    config = app_config_factory(tmp_path, input_csv_name="dummy.csv")
+    base = datetime(2025, 1, 1, 12, 0, 0)  # noqa: DTZ001
+    processed_file = tmp_path / AppConstants.PROCESSED_FILENAME
+    processed_file.write_text(
+        json.dumps(
+            {
+                "transaction_ids": [],
+                "fallback_keys": [
+                    {
+                        "datetime": (base + timedelta(seconds=50)).isoformat(),
+                        "amount": 300,
+                        "merchant": "テスト商店",
+                    },
+                    {
+                        "datetime": base.isoformat(),
+                        "amount": 300,
+                        "merchant": "テスト商店",
+                    },
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
+
+    detector = LocalDuplicateDetector(config)
+    duplicate_tx = transaction_factory(
+        transaction_id=None,
+        amount=300,
+        merchant="テスト商店",
+        date=base + timedelta(seconds=20),
+    )
+
+    assert detector.is_duplicate(duplicate_tx) is True
+
+
 def test_local_mark_processed_does_not_duplicate_stored_transaction_ids(
     tmp_path: Path,
     app_config_factory,
@@ -707,7 +750,7 @@ def test_create_detector_gcloud_raises_when_credentials_path_is_none(
 
     with pytest.raises(
         DuplicateHistoryError,
-        match='duplicate_detection.backend: "gcloud" の場合は gcloud_credentials_path の指定が必要です。',
+        match=r'duplicate_detection.backend: "gcloud" の場合は gcloud_credentials_path の指定が必要です。',
     ):
         create_detector(config)
 

@@ -16,9 +16,6 @@ from paypay2mf.models import (
     Transaction,
 )
 
-_DUMMY_CHROME_USER_DATA_DIR = "C:\\dummy"
-_DEFAULT_CHROME_PROFILE = "Default"
-_DEFAULT_MF_ACCOUNT = "PayPay残高"
 _INPUT_CSV_FILENAME = "dummy.csv"
 _DEFAULT_KEYWORD = "keyword"
 _DEFAULT_RULE_CATEGORY = "category"

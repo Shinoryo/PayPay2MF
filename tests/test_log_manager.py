@@ -73,8 +73,6 @@ def test_setup_logger_defaults_to_runtime_base_dir_logs_when_logs_dir_is_unset(
     input_csv = tmp_path / "dummy.csv"
     input_csv.write_text("", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
     config = AppConfig(
-        chrome_user_data_dir="C:\\dummy",
-        chrome_profile="Default",
         dry_run=True,
         input_csv=input_csv,
         mf_account="PayPay残高",

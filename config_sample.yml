@@ -3,10 +3,8 @@
 # このファイルを config.yml にコピーして使用してください。
 # ============================================================
 
-# ------ 必須設定（5項目。未記載で起動エラー） ------
+# ------ 必須設定（3項目。未記載で起動エラー） ------
 
-chrome_user_data_dir: "C:\\Users\\yourname\\AppData\\Local\\Google\\Chrome\\User Data"
-chrome_profile: "Default"
 dry_run: true          # true: ドライラン（書き込みなし） / false: 本番実行
 input_csv: "C:\\Users\\yourname\\Downloads\\paypay_history.csv"
 mf_account: "PayPay残高"

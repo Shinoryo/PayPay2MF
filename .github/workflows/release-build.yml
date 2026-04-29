@@ -1,4 +1,4 @@
-name: Build and Release
+﻿name: Release Build
 
 permissions:
   contents: write
@@ -9,7 +9,20 @@ on:
 
 jobs:
   build:
+    name: Build ${{ matrix.variant_name }}
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant_name: core
+            extras: ".[dev]"
+            asset_suffix: ""
+            verify_module: ""
+          - variant_name: gcloud
+            extras: ".[dev,gcloud]"
+            asset_suffix: "-gcloud"
+            verify_module: google.cloud.firestore
 
     steps:
       - uses: actions/checkout@v6.0.2
@@ -23,7 +36,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e .[dev]
+          python -m pip install -e "${{ matrix.extras }}"
+
+      - name: Verify variant dependency
+        if: ${{ matrix.verify_module != '' }}
+        run: |
+          python -c "import ${{ matrix.verify_module }}"
 
       - name: Build with Nuitka
         uses: Nuitka/Nuitka-Action@v1.4
@@ -37,7 +55,7 @@ jobs:
       - name: Zip artifact
         run: |
           $TAG = "${{ github.event.release.tag_name }}"
-          $ZIP_NAME = "paypay2mf-$TAG.zip"
+          $ZIP_NAME = "paypay2mf-$TAG${{ matrix.asset_suffix }}.zip"
           $ARTIFACTS = @(
             "build/main.dist/*"
             "README.md"
@@ -50,4 +68,4 @@ jobs:
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: paypay2mf-${{ github.event.release.tag_name }}.zip
+          files: paypay2mf-${{ github.event.release.tag_name }}${{ matrix.asset_suffix }}.zip

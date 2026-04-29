@@ -9,11 +9,21 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-import yaml
-
-from paypay2mf.config_loader import CONFIG_ENV_VAR, resolve_config_path
+from paypay2mf.config_loader import (
+    CONFIG_ENV_VAR,
+    YamlLoadMessages,
+    ensure_non_negative_int,
+    get_optional_dict_section,
+    load_yaml_dict,
+    resolve_config_path,
+    resolve_path,
+)
 from paypay2mf.constants import AppConstants
-from paypay2mf.duplicate_detector import GCloudDuplicateDetector, build_date_bucket
+from paypay2mf.duplicate_detector import (
+    DuplicateHistoryError,
+    GCloudDuplicateDetector,
+    build_date_bucket,
+)
 from paypay2mf.models import DuplicateDetectionConfig
 
 _KEY_DATETIME = "datetime"
@@ -28,8 +38,10 @@ _MSG_BACKEND_REQUIRED = (
     'duplicate_detection.backend: "gcloud" を設定してから実行してください。'
 )
 _MSG_CONFIG_NOT_FOUND = "config.yml が見つかりません: {path}"
+_MSG_CONFIG_NOT_FILE = "config.yml にはファイルを指定してください: {path}"
 _MSG_CONFIG_ROOT_TYPE = "config.yml のルート要素は object で指定してください。"
 _MSG_CONFIG_YAML_INVALID = "config.yml の YAML 構文が不正です: {detail}"
+_MSG_CONFIG_OPEN_FAILED = "config.yml を読み込めません: {path} ({detail})"
 _MSG_DUPLICATE_DETECTION_TYPE = "duplicate_detection は object で指定してください。"
 _MSG_GCLOUD_CREDS_REQUIRED = (
     'duplicate_detection.backend: "gcloud" の場合は '
@@ -117,13 +129,30 @@ def _load_gcloud_detector(config_path: Path) -> GCloudDuplicateDetector:
 
 
 def _load_backfill_config(config_path: Path) -> _BackfillDetectorConfig:
-    raw = _load_raw_config(config_path)
-    duplicate_detection_section = _get_duplicate_detection_section(raw)
-    _validate_backfill_backend(duplicate_detection_section)
+    raw = load_yaml_dict(
+        config_path,
+        messages=YamlLoadMessages(
+            not_found=_MSG_CONFIG_NOT_FOUND,
+            not_file=_MSG_CONFIG_NOT_FILE,
+            root_type=_MSG_CONFIG_ROOT_TYPE,
+            yaml_invalid=_MSG_CONFIG_YAML_INVALID,
+            open_failed=_MSG_CONFIG_OPEN_FAILED,
+        ),
+    )
     try:
-        tolerance = _get_tolerance_seconds(duplicate_detection_section)
+        duplicate_detection_section = get_optional_dict_section(
+            raw,
+            _KEY_DUPLICATE_DETECTION,
+            _MSG_DUPLICATE_DETECTION_TYPE,
+        )
+        tolerance = ensure_non_negative_int(
+            duplicate_detection_section.get(_KEY_DD_TOLERANCE_SECONDS, 60),
+            type_message=_MSG_DUPLICATE_TOLERANCE_TYPE,
+            range_message=_MSG_DUPLICATE_TOLERANCE_RANGE,
+        )
     except TypeError as exc:
         raise ValueError(str(exc)) from exc
+    _validate_backfill_backend(duplicate_detection_section)
     credentials_path = _resolve_gcloud_credentials_path(raw, config_path.parent)
 
     return _BackfillDetectorConfig(
@@ -135,32 +164,6 @@ def _load_backfill_config(config_path: Path) -> _BackfillDetectorConfig:
     )
 
 
-def _load_raw_config(config_path: Path) -> dict[str, object]:
-    if not config_path.exists():
-        raise FileNotFoundError(_MSG_CONFIG_NOT_FOUND.format(path=config_path))
-
-    try:
-        with config_path.open(encoding=AppConstants.DEFAULT_TEXT_ENCODING) as file_obj:
-            loaded = yaml.safe_load(file_obj)
-    except yaml.YAMLError as exc:
-        raise ValueError(_MSG_CONFIG_YAML_INVALID.format(detail=str(exc))) from exc
-
-    if loaded is None:
-        return {}
-    if isinstance(loaded, dict):
-        return loaded
-    raise ValueError(_MSG_CONFIG_ROOT_TYPE)
-
-
-def _get_duplicate_detection_section(raw: dict[str, object]) -> dict[str, object]:
-    duplicate_detection = raw.get(_KEY_DUPLICATE_DETECTION)
-    if duplicate_detection is None:
-        return {}
-    if isinstance(duplicate_detection, dict):
-        return duplicate_detection
-    raise ValueError(_MSG_DUPLICATE_DETECTION_TYPE)
-
-
 def _validate_backfill_backend(duplicate_detection_section: dict[str, object]) -> None:
     backend = duplicate_detection_section.get(
         _KEY_DD_BACKEND,
@@ -168,15 +171,6 @@ def _validate_backfill_backend(duplicate_detection_section: dict[str, object]) -
     )
     if backend != AppConstants.BACKEND_GCLOUD:
         raise ValueError(_MSG_BACKEND_REQUIRED)
-
-
-def _get_tolerance_seconds(duplicate_detection_section: dict[str, object]) -> int:
-    tolerance = duplicate_detection_section.get(_KEY_DD_TOLERANCE_SECONDS, 60)
-    if isinstance(tolerance, bool) or not isinstance(tolerance, int):
-        raise TypeError(_MSG_DUPLICATE_TOLERANCE_TYPE)
-    if tolerance < 0:
-        raise ValueError(_MSG_DUPLICATE_TOLERANCE_RANGE.format(value=tolerance))
-    return tolerance
 
 
 def _resolve_gcloud_credentials_path(
@@ -187,19 +181,12 @@ def _resolve_gcloud_credentials_path(
     if not isinstance(credentials_raw, str) or not credentials_raw.strip():
         raise ValueError(_MSG_GCLOUD_CREDS_REQUIRED)
 
-    credentials_path = _resolve_path(credentials_raw, config_dir)
+    credentials_path = resolve_path(credentials_raw, config_dir)
     if not credentials_path.exists():
         raise ValueError(_MSG_GCLOUD_CREDS_NOT_EXIST.format(path=credentials_path))
     if not credentials_path.is_file():
         raise ValueError(_MSG_GCLOUD_CREDS_NOT_FILE.format(path=credentials_path))
     return credentials_path
-
-
-def _resolve_path(raw_value: str, config_dir: Path) -> Path:
-    candidate = Path(raw_value)
-    if candidate.is_absolute():
-        return candidate
-    return config_dir / candidate
 
 
 def backfill_date_buckets(
@@ -274,16 +261,17 @@ def main(argv: list[str] | None = None) -> None:
 
     try:
         detector = _load_gcloud_detector(config_path)
-        logger.info(_MSG_START)
-        summary = backfill_date_buckets(
-            detector,
-            logger,
-            dry_run=args.dry_run,
-            limit=args.limit,
-        )
-    except Exception:
+    except (DuplicateHistoryError, FileNotFoundError, ImportError, ValueError):
         logger.exception(_MSG_FAILED)
         sys.exit(_EXIT_FAILURE)
+
+    logger.info(_MSG_START)
+    summary = backfill_date_buckets(
+        detector,
+        logger,
+        dry_run=args.dry_run,
+        limit=args.limit,
+    )
 
     if args.dry_run:
         logger.info(
