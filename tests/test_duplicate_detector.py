@@ -192,10 +192,10 @@ class _FakeFirestoreClient:
         self,
         *,
         credentials: object,
-        database_id: str = AppConstants.DEFAULT_FIRESTORE_DATABASE_ID,
+        database: str = AppConstants.DEFAULT_FIRESTORE_DATABASE_ID,
     ) -> None:
         self.credentials = credentials
-        self.database_id = database_id
+        self.database = database
         self.store: dict[str, dict] = {}
         self.executed_queries: list[tuple[tuple[str, object], ...]] = []
         self.batch_commits: list[list[dict[str, object]]] = []
@@ -746,7 +746,7 @@ def test_create_detector_gcloud_returns_gcloud_detector(
     detector = create_detector(config)
 
     assert isinstance(detector, GCloudDuplicateDetector)
-    assert detector.client.database_id == AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
+    assert detector.client.database == AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
 
 
 def test_create_detector_gcloud_passes_configured_database_id(
@@ -764,7 +764,7 @@ def test_create_detector_gcloud_passes_configured_database_id(
 
     detector = create_detector(config)
 
-    assert detector.client.database_id == "paypay2mf"
+    assert detector.client.database == "paypay2mf"
 
 
 def test_create_detector_gcloud_raises_when_credentials_path_is_none(
