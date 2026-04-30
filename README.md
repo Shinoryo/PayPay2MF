@@ -204,6 +204,7 @@ python -m pip_audit --skip-editable --ignore-vuln CVE-2026-4539
 
 | 版 | 日付 | 変更概要 |
 | ---- | ------ | --------- |
+| 1.1.5 | 2026-04-30 | Firestore gcloud backend の DB 指定処理を修正し、Client 初期化時の引数名不一致による起動失敗を解消 |
 | 1.1.4 | 2026-04-30 | gcloud backend 利用時に Firestore の database_id を明示指定できるように修正 |
 | 1.1.3 | 2026-04-30 | import を明示的なモジュールパスに変更し、起動時に Selenium のモジュール解決に失敗する問題を修正 |
 | 1.1.2 | 2026-04-30 | ビルドアーティファクトにドキュメントを追加 |
