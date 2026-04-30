@@ -60,6 +60,7 @@ jobs:
           $ZIP_NAME = "paypay2mf-$TAG${{ matrix.asset_suffix }}.zip"
           $ARTIFACTS = @(
             "build/main.dist/*"
+            "docs/*"
             "README.md"
             "LICENSE"
             "config_sample.yml"
