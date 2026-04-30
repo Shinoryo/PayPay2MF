@@ -437,7 +437,7 @@ class GCloudDuplicateDetector:
             )
             self._client = _firestore.Client(
                 credentials=creds,
-                database_id=database_id,
+                database=database_id,
             )
         except Exception as exc:
             msg = f"GCloud 認証情報の初期化に失敗しました: {credentials_path}"

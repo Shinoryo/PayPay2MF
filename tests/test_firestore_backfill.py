@@ -268,7 +268,7 @@ def test_load_gcloud_detector_accepts_minimal_backfill_config(
     assert len(captured_detectors) == 1
     detector = captured_detectors[0]
     assert detector.client.credentials == ("creds", str(credentials_file))
-    assert detector.client.database_id == AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
+    assert detector.client.database == AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
 
 
 def test_load_gcloud_detector_accepts_configured_database_id(
@@ -320,7 +320,7 @@ def test_load_gcloud_detector_accepts_configured_database_id(
 
     assert len(captured_detectors) == 1
     detector = captured_detectors[0]
-    assert detector.client.database_id == "paypay2mf"
+    assert detector.client.database == "paypay2mf"
 
 
 def test_load_backfill_config_rejects_credentials_directory(tmp_path: Path) -> None:
