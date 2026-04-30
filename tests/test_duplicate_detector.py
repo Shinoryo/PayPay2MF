@@ -188,8 +188,14 @@ class _FakeFirestoreCollection:
 
 
 class _FakeFirestoreClient:
-    def __init__(self, *, credentials: object) -> None:
+    def __init__(
+        self,
+        *,
+        credentials: object,
+        database_id: str = AppConstants.DEFAULT_FIRESTORE_DATABASE_ID,
+    ) -> None:
         self.credentials = credentials
+        self.database_id = database_id
         self.store: dict[str, dict] = {}
         self.executed_queries: list[tuple[tuple[str, object], ...]] = []
         self.batch_commits: list[list[dict[str, object]]] = []
@@ -236,11 +242,13 @@ def _build_gcloud_config(
     app_config_factory,
     *,
     dry_run: bool = False,
+    database_id: str = AppConstants.DEFAULT_FIRESTORE_DATABASE_ID,
 ) -> AppConfig:
     config = app_config_factory(tmp_path, dry_run=dry_run, input_csv_name="dummy.csv")
     credentials_file = tmp_path / "service-account.json"
     credentials_file.write_text("{}", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
     config.duplicate_detection.backend = AppConstants.BACKEND_GCLOUD
+    config.duplicate_detection.database_id = database_id
     config.gcloud_credentials_path = credentials_file
     return config
 
@@ -738,6 +746,25 @@ def test_create_detector_gcloud_returns_gcloud_detector(
     detector = create_detector(config)
 
     assert isinstance(detector, GCloudDuplicateDetector)
+    assert detector.client.database_id == AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
+
+
+def test_create_detector_gcloud_passes_configured_database_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    """create_detector は指定した Firestore database_id を Client 初期化へ伝播する。"""
+    _install_fake_gcloud_modules(monkeypatch)
+    config = _build_gcloud_config(
+        tmp_path,
+        app_config_factory,
+        database_id="paypay2mf",
+    )
+
+    detector = create_detector(config)
+
+    assert detector.client.database_id == "paypay2mf"
 
 
 def test_create_detector_gcloud_raises_when_credentials_path_is_none(

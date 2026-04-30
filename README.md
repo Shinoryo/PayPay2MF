@@ -149,6 +149,7 @@ pip install "paypay2mf[gcloud]"
 duplicate_detection:
   backend: "gcloud"
   tolerance_seconds: 60
+  database_id: "paypay2mf"  # 未指定時は "(default)"
 
 gcloud_credentials_path: "./secrets/paypay2mf-credentials.json"
 ```
@@ -162,6 +163,9 @@ backfill の最小設定は次の 2 点です。
 
 - `duplicate_detection.backend: "gcloud"`
 - `gcloud_credentials_path`
+
+`duplicate_detection.database_id` は任意です。複数データベース運用時は
+対象 DB ID（例: `paypay2mf`）を明示指定してください。
 
 最初の確認は dry-run を推奨します。
 
@@ -200,6 +204,7 @@ python -m pip_audit --skip-editable --ignore-vuln CVE-2026-4539
 
 | 版 | 日付 | 変更概要 |
 | ---- | ------ | --------- |
+| 1.1.4 | 2026-04-30 | gcloud backend 利用時に Firestore の database_id を明示指定できるように修正 |
 | 1.1.3 | 2026-04-30 | import を明示的なモジュールパスに変更し、起動時に Selenium のモジュール解決に失敗する問題を修正 |
 | 1.1.2 | 2026-04-30 | ビルドアーティファクトにドキュメントを追加 |
 | 1.1.1 | 2026-04-30 | Release Buildの依存最適化とpipキャッシュ導入により、配布フローを軽量化 |

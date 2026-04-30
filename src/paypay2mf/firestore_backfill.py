@@ -31,6 +31,7 @@ _KEY_DATE_BUCKET = "date_bucket"
 _KEY_DUPLICATE_DETECTION = "duplicate_detection"
 _KEY_DD_BACKEND = "backend"
 _KEY_DD_TOLERANCE_SECONDS = "tolerance_seconds"
+_KEY_DD_DATABASE_ID = "database_id"
 _KEY_GCLOUD_CREDENTIALS_PATH = "gcloud_credentials_path"
 _WRITE_BATCH_SIZE = 500
 _LOG_FORMAT = "[%(levelname)s] %(message)s"
@@ -56,6 +57,12 @@ _MSG_DUPLICATE_TOLERANCE_TYPE = (
 )
 _MSG_DUPLICATE_TOLERANCE_RANGE = (
     "duplicate_detection.tolerance_seconds には 0 以上の整数を指定してください: {value}"
+)
+_MSG_DUPLICATE_DATABASE_ID_TYPE = (
+    "duplicate_detection.database_id には文字列または null を指定してください。"
+)
+_MSG_DUPLICATE_DATABASE_ID_EMPTY = (
+    "duplicate_detection.database_id は空文字を許可しません。"
 )
 _MSG_LIMIT_NON_NEGATIVE = "--limit には 0 以上の整数を指定してください。"
 _MSG_START = "Firestore date_bucket backfill を開始します"
@@ -124,6 +131,7 @@ def _load_gcloud_detector(config_path: Path) -> GCloudDuplicateDetector:
     return GCloudDuplicateDetector(
         credentials_path=config.gcloud_credentials_path,
         tolerance_seconds=config.duplicate_detection.tolerance_seconds,
+        database_id=config.duplicate_detection.database_id,
         dry_run=config.dry_run,
     )
 
@@ -150,6 +158,12 @@ def _load_backfill_config(config_path: Path) -> _BackfillDetectorConfig:
             type_message=_MSG_DUPLICATE_TOLERANCE_TYPE,
             range_message=_MSG_DUPLICATE_TOLERANCE_RANGE,
         )
+        database_id = _parse_database_id(
+            duplicate_detection_section.get(
+                _KEY_DD_DATABASE_ID,
+                AppConstants.DEFAULT_FIRESTORE_DATABASE_ID,
+            )
+        )
     except TypeError as exc:
         raise ValueError(str(exc)) from exc
     _validate_backfill_backend(duplicate_detection_section)
@@ -160,8 +174,19 @@ def _load_backfill_config(config_path: Path) -> _BackfillDetectorConfig:
         duplicate_detection=DuplicateDetectionConfig(
             backend=AppConstants.BACKEND_GCLOUD,
             tolerance_seconds=tolerance,
+            database_id=database_id,
         ),
     )
+
+
+def _parse_database_id(raw_value: object) -> str:
+    if raw_value is None:
+        return AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
+    if not isinstance(raw_value, str):
+        raise TypeError(_MSG_DUPLICATE_DATABASE_ID_TYPE)
+    if not raw_value.strip():
+        raise TypeError(_MSG_DUPLICATE_DATABASE_ID_EMPTY)
+    return raw_value
 
 
 def _validate_backfill_backend(duplicate_detection_section: dict[str, object]) -> None:
