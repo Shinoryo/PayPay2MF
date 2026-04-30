@@ -756,7 +756,10 @@ def test_duplicate_detection_database_id_null_normalizes_to_default(
 
     config = load_config(_write_config(tmp_path, data))
 
-    assert config.duplicate_detection.database_id == AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
+    assert (
+        config.duplicate_detection.database_id
+        == AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
+    )
 
 
 @pytest.mark.parametrize("value", [123, False, []], ids=["int", "bool", "list"])
