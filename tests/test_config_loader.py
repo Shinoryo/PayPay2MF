@@ -747,6 +747,18 @@ def test_duplicate_detection_database_id_is_loaded_when_specified(
     assert config.duplicate_detection.database_id == "paypay2mf"
 
 
+def test_duplicate_detection_database_id_null_normalizes_to_default(
+    tmp_path: Path,
+) -> None:
+    """duplicate_detection.database_id に null を明示した場合は DEFAULT_FIRESTORE_DATABASE_ID に正規化される。"""
+    data = _base_data(tmp_path)
+    data["duplicate_detection"] = {"database_id": None}
+
+    config = load_config(_write_config(tmp_path, data))
+
+    assert config.duplicate_detection.database_id == AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
+
+
 @pytest.mark.parametrize("value", [123, False, []], ids=["int", "bool", "list"])
 def test_duplicate_detection_database_id_type_must_be_string_or_null(
     tmp_path: Path,

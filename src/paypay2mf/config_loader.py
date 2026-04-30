@@ -925,10 +925,8 @@ def _build_config(
             _KEY_DD_TOLERANCE_SECONDS,
             _DEFAULT_TOLERANCE_SECONDS,
         ),
-        database_id=sections.duplicate_detection.get(
-            _KEY_DD_DATABASE_ID,
-            _DEFAULT_FIRESTORE_DATABASE_ID,
-        ),
+        database_id=sections.duplicate_detection.get(_KEY_DD_DATABASE_ID)
+        or _DEFAULT_FIRESTORE_DATABASE_ID,
     )
 
     parser = ParserConfig(
