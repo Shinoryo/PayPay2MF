@@ -10,7 +10,8 @@ from pathlib import Path
 from shutil import rmtree
 from typing import TYPE_CHECKING, Self
 
-from selenium.webdriver import Chrome, ChromeOptions
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.chrome.webdriver import WebDriver as Chrome
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
