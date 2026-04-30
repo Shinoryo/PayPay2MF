@@ -149,6 +149,7 @@ pip install "paypay2mf[gcloud]"
 duplicate_detection:
   backend: "gcloud"
   tolerance_seconds: 60
+  database_id: "paypay2mf"  # 未指定時は "(default)"
 
 gcloud_credentials_path: "./secrets/paypay2mf-credentials.json"
 ```
@@ -162,6 +163,9 @@ backfill の最小設定は次の 2 点です。
 
 - `duplicate_detection.backend: "gcloud"`
 - `gcloud_credentials_path`
+
+`duplicate_detection.database_id` は任意です。複数データベース運用時は
+対象 DB ID（例: `paypay2mf`）を明示指定してください。
 
 最初の確認は dry-run を推奨します。
 

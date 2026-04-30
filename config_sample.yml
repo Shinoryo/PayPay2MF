@@ -59,6 +59,7 @@ exclude_prefixes:
 duplicate_detection:
   backend: "local"          # "local" または "gcloud"
   tolerance_seconds: 60
+  # database_id: "paypay2mf"  # Firestore DB ID。未指定時は "(default)"
 
 parser:
   encoding_priority:
