@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock
@@ -267,6 +268,59 @@ def test_load_gcloud_detector_accepts_minimal_backfill_config(
     assert len(captured_detectors) == 1
     detector = captured_detectors[0]
     assert detector.client.credentials == ("creds", str(credentials_file))
+    assert detector.client.database_id == AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
+
+
+def test_load_gcloud_detector_accepts_configured_database_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """backfill は duplicate_detection.database_id を detector へ伝播する。"""
+    _install_fake_gcloud_modules(monkeypatch)
+    credentials_file = tmp_path / "service-account.json"
+    credentials_file.write_text("{}", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        (
+            "duplicate_detection:\n"
+            "  backend: 'gcloud'\n"
+            "  tolerance_seconds: 60\n"
+            "  database_id: 'paypay2mf'\n"
+            "gcloud_credentials_path: 'service-account.json'"
+        ),
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
+    logger = Mock(spec=logging.Logger)
+    captured_detectors: list[object] = []
+
+    def _capture_backfill(
+        detector: object,
+        logger: object,
+        *,
+        dry_run: bool,
+        limit: int | None,
+    ) -> firestore_backfill.BackfillSummary:
+        _ = (logger, dry_run, limit)
+        captured_detectors.append(detector)
+        return firestore_backfill.BackfillSummary(0, 0, 0)
+
+    monkeypatch.setattr(
+        firestore_backfill,
+        "backfill_date_buckets",
+        _capture_backfill,
+    )
+    monkeypatch.setattr(firestore_backfill.logging, "basicConfig", Mock())
+    monkeypatch.setattr(
+        firestore_backfill.logging,
+        "getLogger",
+        Mock(return_value=logger),
+    )
+
+    firestore_backfill.main(["--config", str(config_path), "--dry-run"])
+
+    assert len(captured_detectors) == 1
+    detector = captured_detectors[0]
+    assert detector.client.database_id == "paypay2mf"
 
 
 def test_load_backfill_config_rejects_credentials_directory(tmp_path: Path) -> None:
@@ -311,6 +365,64 @@ def test_load_backfill_config_rejects_invalid_yaml_syntax(tmp_path: Path) -> Non
     load_backfill_config = firestore_backfill._load_backfill_config  # noqa: SLF001
 
     with pytest.raises(ValueError, match=r"YAML 構文"):
+        load_backfill_config(config_path)
+
+
+@pytest.mark.parametrize("value", [123, False, []], ids=["int", "bool", "list"])
+def test_load_backfill_config_rejects_invalid_database_id_type(
+    tmp_path: Path,
+    value: object,
+) -> None:
+    """backfill 設定の duplicate_detection.database_id は string|null のみ許可する。"""
+    credentials_file = tmp_path / "service-account.json"
+    credentials_file.write_text("{}", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        (
+            "duplicate_detection:\n"
+            "  backend: 'gcloud'\n"
+            "  tolerance_seconds: 60\n"
+            f"  database_id: {value!r}\n"
+            "gcloud_credentials_path: 'service-account.json'"
+        ),
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
+    load_backfill_config = firestore_backfill._load_backfill_config  # noqa: SLF001
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "duplicate_detection.database_id には文字列または null を指定してください。"
+        ),
+    ):
+        load_backfill_config(config_path)
+
+
+@pytest.mark.parametrize("value", ["", "   "], ids=["empty", "whitespace"])
+def test_load_backfill_config_rejects_blank_database_id(
+    tmp_path: Path,
+    value: str,
+) -> None:
+    """backfill 設定の duplicate_detection.database_id は空文字を許可しない。"""
+    credentials_file = tmp_path / "service-account.json"
+    credentials_file.write_text("{}", encoding=AppConstants.DEFAULT_TEXT_ENCODING)
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        (
+            "duplicate_detection:\n"
+            "  backend: 'gcloud'\n"
+            "  tolerance_seconds: 60\n"
+            f"  database_id: {value!r}\n"
+            "gcloud_credentials_path: 'service-account.json'"
+        ),
+        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
+    )
+    load_backfill_config = firestore_backfill._load_backfill_config  # noqa: SLF001
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("duplicate_detection.database_id は空文字を許可しません。"),
+    ):
         load_backfill_config(config_path)
 
 

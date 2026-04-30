@@ -42,6 +42,7 @@ _KEY_ADVANCED = "advanced"
 # 設定ファイル キー名 duplicate_detection サブキー
 _KEY_DD_BACKEND = "backend"
 _KEY_DD_TOLERANCE_SECONDS = "tolerance_seconds"
+_KEY_DD_DATABASE_ID = "database_id"
 
 # 設定ファイル キー名 parser サブキー
 _KEY_PARSER_ENCODING_PRIORITY = "encoding_priority"
@@ -66,6 +67,7 @@ _KEY_RULE_PRIORITY = "priority"
 _DEFAULT_PRIORITY = 0
 _DEFAULT_TOLERANCE_SECONDS = 60
 _DEFAULT_SCREENSHOT_ON_ERROR = False
+_DEFAULT_FIRESTORE_DATABASE_ID = AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
 
 # エラーメッセージ
 _MSG_CONFIG_NOT_FOUND = "config.yml が見つかりません: {path}"
@@ -123,6 +125,12 @@ _MSG_DUPLICATE_TOLERANCE_TYPE = (
 )
 _MSG_DUPLICATE_TOLERANCE_RANGE = (
     "duplicate_detection.tolerance_seconds には 0 以上の整数を指定してください: {value}"
+)
+_MSG_DUPLICATE_DATABASE_ID_TYPE = (
+    "duplicate_detection.database_id には文字列または null を指定してください。"
+)
+_MSG_DUPLICATE_DATABASE_ID_EMPTY = (
+    "duplicate_detection.database_id は空文字を許可しません。"
 )
 
 _MSG_PARSER_TYPE = "parser は object で指定してください。"
@@ -274,6 +282,7 @@ _ALLOWED_DUPLICATE_DETECTION_KEYS = frozenset(
     {
         _KEY_DD_BACKEND,
         _KEY_DD_TOLERANCE_SECONDS,
+        _KEY_DD_DATABASE_ID,
     },
 )
 _ALLOWED_PARSER_KEYS = frozenset(
@@ -690,6 +699,13 @@ def _validate_duplicate_detection(section: dict) -> None:
             errors=errors,
         )
 
+    database_id = section.get(_KEY_DD_DATABASE_ID)
+    if database_id is not None:
+        if not isinstance(database_id, str):
+            errors.append(_MSG_DUPLICATE_DATABASE_ID_TYPE)
+        elif not database_id.strip():
+            errors.append(_MSG_DUPLICATE_DATABASE_ID_EMPTY)
+
     if errors:
         raise ValueError("\n".join(errors))
 
@@ -908,6 +924,10 @@ def _build_config(
         tolerance_seconds=sections.duplicate_detection.get(
             _KEY_DD_TOLERANCE_SECONDS,
             _DEFAULT_TOLERANCE_SECONDS,
+        ),
+        database_id=sections.duplicate_detection.get(
+            _KEY_DD_DATABASE_ID,
+            _DEFAULT_FIRESTORE_DATABASE_ID,
         ),
     )
 

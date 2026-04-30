@@ -76,10 +76,13 @@ class DuplicateDetectionConfig:
         backend: 重複履歴の保存先。
             "local"（JSON ファイル）または "gcloud"（Firestore）。
         tolerance_seconds: 取引番号欠損時の日時比較許容幅（秒）。
+        database_id: Firestore のデータベース ID。
+            未指定時は "(default)" を使用する。
     """
 
     backend: str = AppConstants.DEFAULT_BACKEND
     tolerance_seconds: int = 60
+    database_id: str = AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
 
 
 @dataclass

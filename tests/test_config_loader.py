@@ -223,6 +223,10 @@ def test_defaults_applied(tmp_path: Path) -> None:
     config = load_config(cfg_path)
     assert config.log_settings.logs_dir is None
     assert config.duplicate_detection.backend == AppConstants.DEFAULT_BACKEND
+    assert (
+        config.duplicate_detection.database_id
+        == AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
+    )
     assert config.parser.encoding_priority == list(
         AppConstants.DEFAULT_ENCODING_PRIORITY
     )
@@ -721,6 +725,58 @@ def test_duplicate_detection_backend_must_be_valid_enum(tmp_path: Path) -> None:
         match=re.escape(
             "duplicate_detection.backend が無効です: 'typo' （有効値: gcloud, local）"
         ),
+    ):
+        load_config(_write_config(tmp_path, data))
+
+
+def test_duplicate_detection_database_id_is_loaded_when_specified(
+    tmp_path: Path,
+) -> None:
+    """duplicate_detection.database_id を指定した場合は設定値として取り込まれる。"""
+    data = _base_data(tmp_path)
+    data["duplicate_detection"] = {
+        "backend": AppConstants.BACKEND_GCLOUD,
+        "database_id": "paypay2mf",
+    }
+    credentials_file = tmp_path / _GCLOUD_CREDENTIALS_FILENAME
+    credentials_file.write_text("{}", encoding=_YAML_ENCODING)
+    data["gcloud_credentials_path"] = _GCLOUD_CREDENTIALS_FILENAME
+
+    config = load_config(_write_config(tmp_path, data))
+
+    assert config.duplicate_detection.database_id == "paypay2mf"
+
+
+@pytest.mark.parametrize("value", [123, False, []], ids=["int", "bool", "list"])
+def test_duplicate_detection_database_id_type_must_be_string_or_null(
+    tmp_path: Path,
+    value: object,
+) -> None:
+    """duplicate_detection.database_id が string|null 以外の場合は ValueError になる。"""
+    data = _base_data(tmp_path)
+    data["duplicate_detection"] = {"database_id": value}
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "duplicate_detection.database_id には文字列または null を指定してください。"
+        ),
+    ):
+        load_config(_write_config(tmp_path, data))
+
+
+@pytest.mark.parametrize("value", ["", "   "], ids=["empty", "whitespace"])
+def test_duplicate_detection_database_id_must_not_be_blank(
+    tmp_path: Path,
+    value: str,
+) -> None:
+    """duplicate_detection.database_id の空文字は拒否する。"""
+    data = _base_data(tmp_path)
+    data["duplicate_detection"] = {"database_id": value}
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("duplicate_detection.database_id は空文字を許可しません。"),
     ):
         load_config(_write_config(tmp_path, data))
 

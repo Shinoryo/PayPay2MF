@@ -34,6 +34,7 @@ class AppConstants:
     BACKEND_LOCAL = "local"
     BACKEND_GCLOUD = "gcloud"
     DEFAULT_BACKEND = BACKEND_LOCAL
+    DEFAULT_FIRESTORE_DATABASE_ID = "(default)"
 
     # 文字コード判定と既定値に使う定数。
     ENCODING_UTF8 = "utf-8"

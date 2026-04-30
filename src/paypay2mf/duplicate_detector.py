@@ -107,6 +107,7 @@ def create_detector(config: AppConfig) -> DuplicateDetector:
         return GCloudDuplicateDetector(
             credentials_path=config.gcloud_credentials_path,
             tolerance_seconds=config.duplicate_detection.tolerance_seconds,
+            database_id=config.duplicate_detection.database_id,
             dry_run=config.dry_run,
         )
     return LocalDuplicateDetector(config)
@@ -402,6 +403,7 @@ class GCloudDuplicateDetector:
         *,
         credentials_path: Path,
         tolerance_seconds: int,
+        database_id: str,
         dry_run: bool,
     ) -> None:
         """GCloudDuplicateDetector を初期化する。
@@ -411,6 +413,7 @@ class GCloudDuplicateDetector:
         Args:
             credentials_path: サービスアカウント JSON のパス。
             tolerance_seconds: fallback 重複判定の許容秒数。
+            database_id: Firestore のデータベース ID。
             dry_run: True の場合は Firestore 書き込みを抑止する。
 
         Raises:
@@ -432,7 +435,10 @@ class GCloudDuplicateDetector:
             creds = service_account.Credentials.from_service_account_file(
                 str(credentials_path),
             )
-            self._client = _firestore.Client(credentials=creds)
+            self._client = _firestore.Client(
+                credentials=creds,
+                database_id=database_id,
+            )
         except Exception as exc:
             msg = f"GCloud 認証情報の初期化に失敗しました: {credentials_path}"
             raise DuplicateHistoryError(msg) from exc
