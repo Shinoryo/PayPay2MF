@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -97,7 +97,6 @@ def create_detector(config: AppConfig) -> DuplicateDetector:
             raise DuplicateHistoryError(_MSG_GCLOUD_CREDS_REQUIRED)
         return GCloudDuplicateDetector(
             credentials_path=config.gcloud_credentials_path,
-            tolerance_seconds=config.duplicate_detection.tolerance_seconds,
             database_id=config.duplicate_detection.database_id,
             dry_run=config.dry_run,
         )
@@ -107,24 +106,6 @@ def create_detector(config: AppConfig) -> DuplicateDetector:
 def build_date_bucket(value: datetime) -> str:
     """指定日時を分単位の date_bucket 文字列に変換する。"""
     return value.replace(second=0, microsecond=0).strftime(_DATE_BUCKET_FORMAT)
-
-
-def list_date_bucket_candidates(
-    value: datetime,
-    tolerance_seconds: int,
-) -> list[str]:
-    """許容幅に含まれる date_bucket 候補を列挙する。"""
-    bounded_tolerance = max(tolerance_seconds, 0)
-    lower_bound = value - timedelta(seconds=bounded_tolerance)
-    upper_bound = value + timedelta(seconds=bounded_tolerance)
-    current_bucket = lower_bound.replace(second=0, microsecond=0)
-    last_bucket = upper_bound.replace(second=0, microsecond=0)
-
-    buckets: list[str] = []
-    while current_bucket <= last_bucket:
-        buckets.append(build_date_bucket(current_bucket))
-        current_bucket += timedelta(minutes=1)
-    return buckets
 
 
 def build_firestore_duplicate_payload(tx: Transaction) -> dict[str, str | int]:
@@ -363,7 +344,6 @@ class GCloudDuplicateDetector:
         self,
         *,
         credentials_path: Path,
-        tolerance_seconds: int,
         database_id: str,
         dry_run: bool,
     ) -> None:
@@ -373,7 +353,6 @@ class GCloudDuplicateDetector:
 
         Args:
             credentials_path: サービスアカウント JSON のパス。
-            tolerance_seconds: fallback 重複判定の許容秒数。
             database_id: Firestore のデータベース ID。
             dry_run: True の場合は Firestore 書き込みを抑止する。
 
@@ -404,7 +383,6 @@ class GCloudDuplicateDetector:
             msg = f"GCloud 認証情報の初期化に失敗しました: {credentials_path}"
             raise DuplicateHistoryError(msg) from exc
         self._dry_run = dry_run
-        self._tolerance = tolerance_seconds
 
     def is_duplicate(self, tx: Transaction) -> bool:
         """指定した取引が Firestore に処理済みとして登録済みかどうかを確認する。

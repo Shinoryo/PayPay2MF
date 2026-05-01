@@ -232,7 +232,6 @@ def test_load_gcloud_detector_accepts_minimal_backfill_config(
         (
             "duplicate_detection:\n"
             "  backend: 'gcloud'\n"
-            "  tolerance_seconds: 60\n"
             "gcloud_credentials_path: 'service-account.json'"
         ),
         encoding=AppConstants.DEFAULT_TEXT_ENCODING,
@@ -284,7 +283,6 @@ def test_load_gcloud_detector_accepts_configured_database_id(
         (
             "duplicate_detection:\n"
             "  backend: 'gcloud'\n"
-            "  tolerance_seconds: 60\n"
             "  database_id: 'paypay2mf'\n"
             "gcloud_credentials_path: 'service-account.json'"
         ),
@@ -332,7 +330,6 @@ def test_load_backfill_config_rejects_credentials_directory(tmp_path: Path) -> N
         (
             "duplicate_detection:\n"
             "  backend: 'gcloud'\n"
-            "  tolerance_seconds: 60\n"
             "gcloud_credentials_path: 'service-account.json'"
         ),
         encoding=AppConstants.DEFAULT_TEXT_ENCODING,
@@ -381,7 +378,6 @@ def test_load_backfill_config_rejects_invalid_database_id_type(
         (
             "duplicate_detection:\n"
             "  backend: 'gcloud'\n"
-            "  tolerance_seconds: 60\n"
             f"  database_id: {value!r}\n"
             "gcloud_credentials_path: 'service-account.json'"
         ),
@@ -411,7 +407,6 @@ def test_load_backfill_config_rejects_blank_database_id(
         (
             "duplicate_detection:\n"
             "  backend: 'gcloud'\n"
-            "  tolerance_seconds: 60\n"
             f"  database_id: {value!r}\n"
             "gcloud_credentials_path: 'service-account.json'"
         ),
@@ -423,36 +418,6 @@ def test_load_backfill_config_rejects_blank_database_id(
         ValueError,
         match=re.escape("duplicate_detection.database_id は空文字を許可しません。"),
     ):
-        load_backfill_config(config_path)
-
-
-@pytest.mark.parametrize(
-    ("raw_value", "message"),
-    [
-        pytest.param("sixty", "整数を指定してください", id="string"),
-        pytest.param(True, "整数を指定してください", id="bool"),
-        pytest.param(-1, "0 以上の整数", id="negative"),
-    ],
-)
-def test_load_backfill_config_validates_tolerance_seconds(
-    tmp_path: Path,
-    raw_value: object,
-    message: str,
-) -> None:
-    """backfill 設定でも tolerance_seconds の型と範囲を検証する。"""
-    config_path = tmp_path / "config.yml"
-    config_path.write_text(
-        (
-            "duplicate_detection:\n"
-            "  backend: 'gcloud'\n"
-            f"  tolerance_seconds: {raw_value!r}\n"
-            "gcloud_credentials_path: 'service-account.json'"
-        ),
-        encoding=AppConstants.DEFAULT_TEXT_ENCODING,
-    )
-    load_backfill_config = firestore_backfill._load_backfill_config  # noqa: SLF001
-
-    with pytest.raises(ValueError, match=message):
         load_backfill_config(config_path)
 
 

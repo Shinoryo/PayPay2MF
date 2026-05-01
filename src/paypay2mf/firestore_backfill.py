@@ -30,7 +30,6 @@ _KEY_DATETIME = "datetime"
 _KEY_DATE_BUCKET = "date_bucket"
 _KEY_DUPLICATE_DETECTION = "duplicate_detection"
 _KEY_DD_BACKEND = "backend"
-_KEY_DD_TOLERANCE_SECONDS = "tolerance_seconds"
 _KEY_DD_DATABASE_ID = "database_id"
 _KEY_GCLOUD_CREDENTIALS_PATH = "gcloud_credentials_path"
 _WRITE_BATCH_SIZE = 500
@@ -51,12 +50,6 @@ _MSG_GCLOUD_CREDS_REQUIRED = (
 _MSG_GCLOUD_CREDS_NOT_EXIST = "gcloud_credentials_path のファイルが存在しません: {path}"
 _MSG_GCLOUD_CREDS_NOT_FILE = (
     "gcloud_credentials_path にはファイルを指定してください: {path}"
-)
-_MSG_DUPLICATE_TOLERANCE_TYPE = (
-    "duplicate_detection.tolerance_seconds には整数を指定してください。"
-)
-_MSG_DUPLICATE_TOLERANCE_RANGE = (
-    "duplicate_detection.tolerance_seconds には 0 以上の整数を指定してください: {value}"
 )
 _MSG_DUPLICATE_DATABASE_ID_TYPE = (
     "duplicate_detection.database_id には文字列または null を指定してください。"
@@ -130,7 +123,6 @@ def _load_gcloud_detector(config_path: Path) -> GCloudDuplicateDetector:
         raise ValueError(_MSG_BACKEND_REQUIRED)
     return GCloudDuplicateDetector(
         credentials_path=config.gcloud_credentials_path,
-        tolerance_seconds=config.duplicate_detection.tolerance_seconds,
         database_id=config.duplicate_detection.database_id,
         dry_run=config.dry_run,
     )
@@ -153,11 +145,6 @@ def _load_backfill_config(config_path: Path) -> _BackfillDetectorConfig:
             _KEY_DUPLICATE_DETECTION,
             _MSG_DUPLICATE_DETECTION_TYPE,
         )
-        tolerance = ensure_non_negative_int(
-            duplicate_detection_section.get(_KEY_DD_TOLERANCE_SECONDS, 60),
-            type_message=_MSG_DUPLICATE_TOLERANCE_TYPE,
-            range_message=_MSG_DUPLICATE_TOLERANCE_RANGE,
-        )
         database_id = _parse_database_id(
             duplicate_detection_section.get(
                 _KEY_DD_DATABASE_ID,
@@ -173,7 +160,6 @@ def _load_backfill_config(config_path: Path) -> _BackfillDetectorConfig:
         gcloud_credentials_path=credentials_path,
         duplicate_detection=DuplicateDetectionConfig(
             backend=AppConstants.BACKEND_GCLOUD,
-            tolerance_seconds=tolerance,
             database_id=database_id,
         ),
     )
