@@ -141,15 +141,19 @@ def transaction_factory() -> TransactionFactory:
         resolved_date_text = date_text or resolved_date.strftime("%Y/%m/%d %H:%M:%S")
         out_amount = amount if direction == AppConstants.DIRECTION_OUT else 0
         in_amount = amount if direction == AppConstants.DIRECTION_IN else 0
-        resolved_fingerprint = row_fingerprint if row_fingerprint is not None else build_row_fingerprint(
-            date_text=resolved_date_text,
-            content=content,
-            merchant=merchant,
-            out_amount=out_amount,
-            in_amount=in_amount,
-            method=method,
-            payment_type=payment_type,
-            user=user,
+        resolved_fingerprint = (
+            row_fingerprint
+            if row_fingerprint is not None
+            else build_row_fingerprint(
+                date_text=resolved_date_text,
+                content=content,
+                merchant=merchant,
+                out_amount=out_amount,
+                in_amount=in_amount,
+                method=method,
+                payment_type=payment_type,
+                user=user,
+            )
         )
         return Transaction(
             date=resolved_date,

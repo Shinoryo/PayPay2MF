@@ -165,7 +165,16 @@ def build_row_fingerprint(  # noqa: PLR0913
     csv_parser および重複検知の両方から呼び出す唯一の指紋生成実装。
     """
     raw = json.dumps(
-        [date_text, content, merchant, str(out_amount), str(in_amount), method, payment_type, user],
+        [
+            date_text,
+            content,
+            merchant,
+            str(out_amount),
+            str(in_amount),
+            method,
+            payment_type,
+            user,
+        ],
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
