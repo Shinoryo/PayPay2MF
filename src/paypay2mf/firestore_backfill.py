@@ -12,7 +12,6 @@ from pathlib import Path
 from paypay2mf.config_loader import (
     CONFIG_ENV_VAR,
     YamlLoadMessages,
-    ensure_non_negative_int,
     get_optional_dict_section,
     load_yaml_dict,
     resolve_config_path,

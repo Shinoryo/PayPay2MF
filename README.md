@@ -154,7 +154,6 @@ pip install "paypay2mf[gcloud]"
 ```yaml
 duplicate_detection:
   backend: "gcloud"
-  tolerance_seconds: 60
   database_id: "paypay2mf"  # 未指定時は "(default)"
 
 gcloud_credentials_path: "./secrets/paypay2mf-credentials.json"

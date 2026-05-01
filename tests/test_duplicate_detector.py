@@ -393,15 +393,16 @@ def test_create_detector_gcloud_shows_dependency_install_message(
 
     def _raise_for_google(
         name: str,
-        globals: dict | None = None,
-        locals: dict | None = None,
+        global_vars: dict | None = None,
+        local_vars: dict | None = None,
         fromlist: tuple[str, ...] = (),
         level: int = 0,
     ) -> object:
-        _ = (globals, locals, fromlist, level)
-        if name.startswith("google.cloud") or name.startswith("google.oauth2"):
-            raise ImportError("missing google modules")
-        return original_import(name, globals, locals, fromlist, level)
+        _ = (global_vars, local_vars, fromlist, level)
+        if name.startswith(("google.cloud", "google.oauth2")):
+            msg = "missing google modules"
+            raise ImportError(msg)
+        return original_import(name, global_vars, local_vars, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", _raise_for_google)
 
@@ -424,7 +425,8 @@ def test_create_detector_gcloud_normalizes_credentials_load_failure(
     credentials_class = service_account_module.Credentials
 
     def _raise_credentials_error(_path: str) -> tuple[str, str]:
-        raise ValueError("invalid credentials")
+        msg = "invalid credentials"
+        raise ValueError(msg)
 
     monkeypatch.setattr(
         credentials_class,

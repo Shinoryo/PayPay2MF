@@ -332,10 +332,11 @@ def main(argv: list[str] | None = None) -> int:
             registration_result,
         )
 
-        logger.info(_LOG_MSG_APP_EXIT)
-        return 0
     except CliFatalError:
         return 1
+
+    logger.info(_LOG_MSG_APP_EXIT)
+    return 0
 
 
 if __name__ == "__main__":
