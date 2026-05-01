@@ -33,7 +33,6 @@ _MSG_PROCESSED_ROW_FINGERPRINT_ITEM_TYPE = (
     "row_fingerprints の要素は文字列である必要があります"
 )
 _KEY_DATE_BUCKET = "date_bucket"
-_FINGERPRINT_DELIMITER = "|"
 
 # Firestore のクエリ構築に使う定数。
 _FIRESTORE_EQUALS_OPERATOR = "=="
@@ -165,17 +164,9 @@ def build_row_fingerprint(  # noqa: PLR0913
 
     csv_parser および重複検知の両方から呼び出す唯一の指紋生成実装。
     """
-    raw = _FINGERPRINT_DELIMITER.join(
-        [
-            date_text,
-            content,
-            merchant,
-            str(out_amount),
-            str(in_amount),
-            method,
-            payment_type,
-            user,
-        ]
+    raw = json.dumps(
+        [date_text, content, merchant, str(out_amount), str(in_amount), method, payment_type, user],
+        ensure_ascii=False,
     )
     return hashlib.sha256(raw.encode(AppConstants.DEFAULT_TEXT_ENCODING)).hexdigest()
 
