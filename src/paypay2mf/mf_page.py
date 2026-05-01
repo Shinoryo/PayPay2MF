@@ -149,7 +149,13 @@ class MFManualFormPage:
         try:
             self._wait_for_submit_outcome()
         finally:
-            self._reset_to_manual_form_page()
+            try:
+                self._reset_to_manual_form_page()
+            except Exception:
+                self._logger.exception(
+                    "手入力フォームページへのリセットに失敗しました。"
+                    "submit 判定結果は保持し、リセット失敗は無視します。"
+                )
 
     def _wait_for_submit_outcome(self) -> None:
         """保存後の結果を成功文言・エラー表示・timeout で判定する。"""
