@@ -114,8 +114,10 @@ paypay2mf
 
 - `duplicate_detection.backend: "local"` は単一インスタンス運用を前提とします
 - `dry_run: true` では local / gcloud いずれの履歴も更新しません
-- Firestore backend の fallback 検索には `amount`、`merchant`、`date_bucket`
-  の複合インデックスが必要です
+- 重複判定は行単位指紋（sha256）で行います
+- 指紋入力項目は `取引日（CSV文字列）`、`取引内容`、`取引先`、
+  `出金金額（正規化）`、`入金金額（正規化）`、`取引方法`、`支払い区分`、`利用者`
+- 同一 `transaction_id` でも、指紋が異なる行は別取引として処理します
 
 ## Smoke Test
 
@@ -156,8 +158,6 @@ gcloud_credentials_path: "./secrets/paypay2mf-credentials.json"
 
 - 本体アプリの `dry_run` は通常実行だけに適用されます
 - backfill CLI の dry-run は `--dry-run` 引数で個別に制御します
-- 既存 Firestore データを使う場合は、本体実行前に
-  `paypay2mf-firestore-backfill` で `date_bucket` を補完してください
 
 backfill の最小設定は次の 2 点です。
 

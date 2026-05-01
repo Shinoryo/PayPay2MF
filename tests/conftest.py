@@ -126,17 +126,40 @@ def transaction_factory() -> TransactionFactory:
         merchant: str = _DEFAULT_MERCHANT,
         amount: int = 100,
         date: datetime | None = None,
+        date_text: str | None = None,
         memo: str = _DEFAULT_MEMO,
+        content: str = "支払い",
+        method: str = "PayPay残高",
+        payment_type: str = AppConstants.HYPHEN,
+        user: str = AppConstants.HYPHEN,
+        row_fingerprint: str | None = None,
         category: str = AppConstants.DEFAULT_CATEGORY,
         direction: str = AppConstants.DIRECTION_OUT,
     ) -> Transaction:
+        resolved_date = date or datetime(2025, 1, 1, 12, 0, 0)  # noqa: DTZ001
+        resolved_date_text = date_text or resolved_date.strftime("%Y/%m/%d %H:%M:%S")
+        resolved_fingerprint = (
+            row_fingerprint
+            if row_fingerprint is not None
+            else (
+                f"test|{resolved_date_text}|{content}|{merchant}|{amount}|"
+                f"{direction}|{method}|{payment_type}|{user}|"
+                f"{transaction_id or AppConstants.EMPTY_STRING}"
+            )
+        )
         return Transaction(
-            date=date or datetime(2025, 1, 1, 12, 0, 0),  # noqa: DTZ001
+            date=resolved_date,
             amount=amount,
             direction=direction,
             memo=memo,
             merchant=merchant,
             transaction_id=transaction_id,
+            date_text=resolved_date_text,
+            content=content,
+            method=method,
+            payment_type=payment_type,
+            user=user,
+            row_fingerprint=resolved_fingerprint,
             category=category,
         )
 
