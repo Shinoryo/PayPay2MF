@@ -203,13 +203,8 @@ class MFManualFormPage:
         return False
 
     def _reset_to_manual_form_page(self) -> None:
-        """submit 判定後の状態を初期化するため /cf へ再遷移する。"""
-        self._driver.get(mf_selectors.MANUAL_FORM_URL)
-        self._wait(mf_selectors.NAVIGATION_TIMEOUT_MS).until(
-            expected_conditions.presence_of_element_located(
-                (By.CSS_SELECTOR, mf_selectors.OPEN_MANUAL_FORM_BUTTON),
-            )
-        )
+        """submit 判定後の状態を初期化するため手入力フォームを開き直す。"""
+        self.open()
 
     def _select_account(self, modal: WebElement) -> None:
         account_select = Select(
