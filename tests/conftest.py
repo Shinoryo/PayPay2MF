@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from collections.abc import Callable
 from datetime import datetime
@@ -38,6 +39,37 @@ _SMOKE_PLACEHOLDER_CSV = "smoke-placeholder.csv"
 AppConfigFactory = Callable[..., AppConfig]
 TransactionFactory = Callable[..., Transaction]
 ParseFailureFactory = Callable[..., ParseFailure]
+
+_FINGERPRINT_DELIMITER = "|"
+
+
+def _make_row_fingerprint(  # noqa: PLR0913
+    *,
+    date_text: str,
+    content: str,
+    merchant: str,
+    amount: int,
+    direction: str,
+    method: str,
+    payment_type: str,
+    user: str,
+) -> str:
+    """本番コードと同一ロジックで行指紋（sha256）を生成する。"""
+    out_amount = amount if direction == AppConstants.DIRECTION_OUT else 0
+    in_amount = amount if direction == AppConstants.DIRECTION_IN else 0
+    raw = _FINGERPRINT_DELIMITER.join(
+        [
+            date_text,
+            content,
+            merchant,
+            str(out_amount),
+            str(in_amount),
+            method,
+            payment_type,
+            user,
+        ]
+    )
+    return hashlib.sha256(raw.encode(AppConstants.DEFAULT_TEXT_ENCODING)).hexdigest()
 
 
 def pytest_collection_modifyitems(
@@ -138,14 +170,15 @@ def transaction_factory() -> TransactionFactory:
     ) -> Transaction:
         resolved_date = date or datetime(2025, 1, 1, 12, 0, 0)  # noqa: DTZ001
         resolved_date_text = date_text or resolved_date.strftime("%Y/%m/%d %H:%M:%S")
-        resolved_fingerprint = (
-            row_fingerprint
-            if row_fingerprint is not None
-            else (
-                f"test|{resolved_date_text}|{content}|{merchant}|{amount}|"
-                f"{direction}|{method}|{payment_type}|{user}|"
-                f"{transaction_id or AppConstants.EMPTY_STRING}"
-            )
+        resolved_fingerprint = row_fingerprint if row_fingerprint is not None else _make_row_fingerprint(
+            date_text=resolved_date_text,
+            content=content,
+            merchant=merchant,
+            amount=amount,
+            direction=direction,
+            method=method,
+            payment_type=payment_type,
+            user=user,
         )
         return Transaction(
             date=resolved_date,
