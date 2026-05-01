@@ -36,6 +36,7 @@ _MSG_PROCESSED_ROW_FINGERPRINT_ITEM_TYPE = (
     "row_fingerprints の要素は文字列である必要があります"
 )
 _KEY_DATE_BUCKET = "date_bucket"
+_FINGERPRINT_DELIMITER = "|"
 
 # Firestore のクエリ構築に使う定数。
 _FIRESTORE_EQUALS_OPERATOR = "=="
@@ -152,25 +153,54 @@ def build_firestore_fallback_doc_id(tx: Transaction) -> str:
     return f"fallback_{digest}"
 
 
+def build_row_fingerprint(  # noqa: PLR0913
+    *,
+    date_text: str,
+    content: str,
+    merchant: str,
+    out_amount: int,
+    in_amount: int,
+    method: str,
+    payment_type: str,
+    user: str,
+) -> str:
+    """行の正規化フィールドから重複検知用の行指紋（sha256）を生成する。
+
+    csv_parser および重複検知の両方から呼び出す唯一の指紋生成実装。
+    """
+    raw = _FINGERPRINT_DELIMITER.join(
+        [
+            date_text,
+            content,
+            merchant,
+            str(out_amount),
+            str(in_amount),
+            method,
+            payment_type,
+            user,
+        ]
+    )
+    return hashlib.sha256(raw.encode(AppConstants.DEFAULT_TEXT_ENCODING)).hexdigest()
+
+
 def resolve_row_fingerprint(tx: Transaction) -> str:
     """取引の重複検知に使う行指紋を返す。"""
     if tx.row_fingerprint:
         return tx.row_fingerprint
 
     date_text = tx.date_text or tx.date.strftime("%Y/%m/%d %H:%M:%S")
-    raw = "|".join(
-        [
-            date_text,
-            tx.content,
-            tx.merchant,
-            str(tx.amount if tx.direction == AppConstants.DIRECTION_OUT else 0),
-            str(tx.amount if tx.direction == AppConstants.DIRECTION_IN else 0),
-            tx.method,
-            tx.payment_type,
-            tx.user,
-        ]
+    out_amount = tx.amount if tx.direction == AppConstants.DIRECTION_OUT else 0
+    in_amount = tx.amount if tx.direction == AppConstants.DIRECTION_IN else 0
+    return build_row_fingerprint(
+        date_text=date_text,
+        content=tx.content,
+        merchant=tx.merchant,
+        out_amount=out_amount,
+        in_amount=in_amount,
+        method=tx.method,
+        payment_type=tx.payment_type,
+        user=tx.user,
     )
-    return hashlib.sha256(raw.encode(AppConstants.DEFAULT_TEXT_ENCODING)).hexdigest()
 
 
 def _parse_firestore_datetime(data: object, doc_id: str) -> datetime:
