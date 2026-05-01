@@ -587,10 +587,7 @@ def test_main_exits_when_config_load_fails(
     )
     monkeypatch.setattr(app_main, "setup_logger", Mock())
 
-    with pytest.raises(SystemExit) as exc_info:
-        app_main.main([])
-
-    assert exc_info.value.code == 1
+    assert app_main.main([]) == 1
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "設定ファイルの読み込みに失敗しました" in captured.err
@@ -625,7 +622,7 @@ def test_main_dry_run_skips_browser_startup(
     run_registration_mock = Mock()
     monkeypatch.setattr(app_main, "run_registration", run_registration_mock)
 
-    app_main.main([])
+    assert app_main.main([]) == 0
 
     build_mock.assert_called_once_with(config, logger)
     run_dry_run_mock.assert_called_once_with(logger, 1)
@@ -647,7 +644,7 @@ def test_main_dry_run_does_not_persist_processed_history(
     monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
     monkeypatch.setattr(app_main, "parse_csv", Mock(return_value=([transaction], [])))
 
-    app_main.main([])
+    assert app_main.main([]) == 0
 
     processed_file = tmp_path / AppConstants.PROCESSED_FILENAME
     assert processed_file.exists() is False
@@ -686,7 +683,7 @@ def test_main_uses_cli_config_path_before_env_and_cwd(
     )
     monkeypatch.setattr(app_main, "run_dry_run", Mock())
 
-    app_main.main(["--config", str(cli_config)])
+    assert app_main.main(["--config", str(cli_config)]) == 0
 
     app_main.load_config.assert_called_once_with(cli_config)
 
@@ -722,7 +719,7 @@ def test_main_uses_env_config_path_when_cli_is_missing(
     )
     monkeypatch.setattr(app_main, "run_dry_run", Mock())
 
-    app_main.main([])
+    assert app_main.main([]) == 0
 
     app_main.load_config.assert_called_once_with(env_config)
 
@@ -758,7 +755,7 @@ def test_main_uses_cwd_config_path_when_cli_and_env_are_missing(
     )
     monkeypatch.setattr(app_main, "run_dry_run", Mock())
 
-    app_main.main([])
+    assert app_main.main([]) == 0
 
     app_main.load_config.assert_called_once_with(cwd_config)
 
@@ -797,6 +794,38 @@ def test_main_falls_back_to_module_config_path_when_cwd_config_is_missing(
     )
     monkeypatch.setattr(app_main, "run_dry_run", Mock())
 
-    app_main.main([])
+    assert app_main.main([]) == 0
 
     app_main.load_config.assert_called_once_with(module_config)
+
+
+def test_main_returns_zero_when_no_transactions_remain(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    """登録対象が 0 件でも正常終了コードを返すことを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=False, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+
+    monkeypatch.setattr(app_main, "load_config", Mock(return_value=config))
+    monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
+    monkeypatch.setattr(
+        app_main,
+        "build_transactions",
+        Mock(
+            return_value=app_main.PreparedTransactions(
+                detector=_FakeDetector(),
+                to_process=[],
+                excluded_count=0,
+                skip_count=0,
+            )
+        ),
+    )
+    run_registration_mock = Mock()
+    monkeypatch.setattr(app_main, "run_registration", run_registration_mock)
+
+    assert app_main.main([]) == 0
+
+    run_registration_mock.assert_not_called()
+    logger.info.assert_any_call(_MSG_APP_EXIT)

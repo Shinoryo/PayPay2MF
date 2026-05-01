@@ -269,7 +269,7 @@ def log_summary(
         logger.warning(_LOG_MSG_ERROR_CSV_SENSITIVE)
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None) -> int:
     """アプリケーションのメイン処理を実行する。
 
     処理フロー:
@@ -292,7 +292,7 @@ def main(argv: list[str] | None = None) -> None:
         config = load_config(config_path)
     except (FileNotFoundError, ValueError) as e:
         print(_STDERR_CONFIG_LOAD_FAILED.format(e), file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     logger = setup_logger(config)
     logger.warning(_LOG_MSG_LOG_DIR_SENSITIVE)
@@ -306,12 +306,12 @@ def main(argv: list[str] | None = None) -> None:
 
     if config.dry_run:
         run_dry_run(logger, len(prepared.to_process))
-        return
+        return 0
 
     if not prepared.to_process:
         logger.info(_LOG_MSG_NO_TRANSACTIONS)
         logger.info(_LOG_MSG_APP_EXIT)
-        return
+        return 0
 
     registration_result = run_registration(
         config,
@@ -328,7 +328,8 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     logger.info(_LOG_MSG_APP_EXIT)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
