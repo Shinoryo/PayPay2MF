@@ -260,7 +260,6 @@ def test_local_persistence_uses_row_fingerprints(
             encoding=AppConstants.DEFAULT_TEXT_ENCODING
         )
     )
-    assert stored["schema_version"] == 2
     assert stored["row_fingerprints"] == ["fp-persist"]
 
 
@@ -287,9 +286,8 @@ def test_local_corrupted_history_is_backed_up_and_raises_explicit_error(
     "payload",
     [
         [],
-        {"schema_version": "2", "row_fingerprints": []},
-        {"schema_version": 2, "row_fingerprints": {}},
-        {"schema_version": 2, "row_fingerprints": [123]},
+        {"row_fingerprints": {}},
+        {"row_fingerprints": [123]},
     ],
 )
 def test_local_invalid_schema_is_backed_up_and_raises(

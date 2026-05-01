@@ -20,9 +20,7 @@ if TYPE_CHECKING:
 from paypay2mf.constants import AppConstants
 
 # ローカルストア JSON のキー名。
-_KEY_SCHEMA_VERSION = "schema_version"
 _KEY_ROW_FINGERPRINTS = "row_fingerprints"
-_SCHEMA_VERSION = 2
 _KEY_DATETIME = "datetime"
 _KEY_AMOUNT = "amount"
 _KEY_MERCHANT = "merchant"
@@ -30,7 +28,6 @@ _KEY_ROW_FINGERPRINT = "row_fingerprint"
 _KEY_TRANSACTION_ID = "transaction_id"
 
 _MSG_PROCESSED_ROOT_TYPE = "processed.json のルートは object である必要があります"
-_MSG_PROCESSED_SCHEMA_VERSION_TYPE = "schema_version は整数である必要があります"
 _MSG_PROCESSED_ROW_FINGERPRINTS_TYPE = "row_fingerprints は list である必要があります"
 _MSG_PROCESSED_ROW_FINGERPRINT_ITEM_TYPE = (
     "row_fingerprints の要素は文字列である必要があります"
@@ -239,7 +236,6 @@ class LocalDuplicateDetector:
         self._store_path = _get_store_path(config)
         self._dry_run = config.dry_run
         self._data: dict = {
-            _KEY_SCHEMA_VERSION: _SCHEMA_VERSION,
             _KEY_ROW_FINGERPRINTS: [],
         }
         self._row_fingerprints: set[str] = set()
@@ -312,14 +308,10 @@ class LocalDuplicateDetector:
         if not isinstance(loaded_data, dict):
             raise TypeError(_MSG_PROCESSED_ROOT_TYPE)
 
-        loaded_data.setdefault(_KEY_SCHEMA_VERSION, _SCHEMA_VERSION)
         loaded_data.setdefault(_KEY_ROW_FINGERPRINTS, [])
 
-        schema_version = loaded_data[_KEY_SCHEMA_VERSION]
         row_fingerprints = loaded_data[_KEY_ROW_FINGERPRINTS]
 
-        if not isinstance(schema_version, int) or isinstance(schema_version, bool):
-            raise TypeError(_MSG_PROCESSED_SCHEMA_VERSION_TYPE)
         if not isinstance(row_fingerprints, list):
             raise TypeError(_MSG_PROCESSED_ROW_FINGERPRINTS_TYPE)
 
