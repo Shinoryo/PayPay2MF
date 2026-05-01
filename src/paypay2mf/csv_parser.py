@@ -34,8 +34,7 @@ _ZERO_AMOUNT_MARKERS = (
     AppConstants.WAVE_DASH,
 )
 
-# 行の集約やエラー分類に使う定数。
-_MISSING_ID_PREFIX = "__no_id_"
+# エラー分類に使う定数。
 _FOREIGN_MEMO_TEMPLATE = "{}（海外: {} {}）"
 _PARSE_ERROR_MISSING_COLUMN = "missing_column"
 _PARSE_ERROR_INVALID_DATE = "invalid_date"
@@ -78,7 +77,7 @@ def parse_csv(
 ) -> tuple[list[Transaction], list[ParseFailure]]:
     """PayPay CSV ファイルをパースして結果と解析失敗を返す。
 
-    エンコーディングを自動検出し、複合支払いを集約する。
+    エンコーディングを自動検出し、CSV 各行をそのまま変換する。
     行単位の変換失敗は ParseFailure として収集し、正常行の処理を継続する。
 
     Args:
@@ -94,8 +93,7 @@ def parse_csv(
     """
     encoding = _detect_encoding(path, config.parser.encoding_priority)
     rows = _read_rows(path, encoding)
-    merged = _merge_compound(rows)
-    return _to_transactions(merged, config.parser.date_formats)
+    return _to_transactions(rows, config.parser.date_formats)
 
 
 def _can_read_with_encoding(path: Path, enc: str) -> bool:
@@ -187,59 +185,6 @@ def _parse_amount(s: str | None) -> int:
     if stripped in _ZERO_AMOUNT_MARKERS:
         return 0
     return int(re.sub(_AMOUNT_SEPARATOR_PATTERN, AppConstants.EMPTY_STRING, stripped))
-
-
-def _merge_compound(rows: list[CsvRow]) -> list[CsvRow]:
-    """同一取引番号を持つ複数行を1行に集約する。
-
-        PayPay CSV の複合支払は、同じ取引番号を持つ複数行として現れる。
-        本関数はそれらを1行へ正規化し、後段の Transaction 変換と
-        重複検知が1件単位で扱えるようにする。
-
-        集約時のルールは以下の通り。
-
-        - 出金金額と入金金額は、それぞれ独立に合算する。
-        - 行番号と金額以外のメタデータは最初の行を保持する。
-            後続行の取引日時、取引方法、利用者などは上書きしない。
-        - 取引番号が空の行は独立行としてそのまま保持する。
-        - 取引番号欠損行の内部キーには tuple を使い、実在する文字列の
-            transaction_id と衝突しないようにする。
-
-    Args:
-        rows: CSV の行辞書のリスト。
-
-    Returns:
-                集約後の行番号付き行辞書のリスト。複合支払が存在する場合、
-                対応する要素の row_index は最初の行の値を維持する。
-    """
-    seen: dict[object, CsvRow] = {}
-    order: list[object] = []
-
-    for row_index, row in rows:
-        tid = (row.get(_COL_TID) or AppConstants.EMPTY_STRING).strip()
-        if not tid:
-            # 取引番号なし → 独立行として追加
-            key = (_MISSING_ID_PREFIX, len(order))
-            seen[key] = (row_index, row)
-            order.append(key)
-            continue
-
-        if tid in seen:
-            # 複合支払: 金額だけを合算し、最初の行のメタデータを残す。
-            _, existing = seen[tid]
-            existing[_COL_OUT_AMOUNT] = str(
-                _parse_amount(existing[_COL_OUT_AMOUNT])
-                + _parse_amount(row[_COL_OUT_AMOUNT]),
-            )
-            existing[_COL_IN_AMOUNT] = str(
-                _parse_amount(existing[_COL_IN_AMOUNT])
-                + _parse_amount(row[_COL_IN_AMOUNT]),
-            )
-        else:
-            seen[tid] = (row_index, row)
-            order.append(tid)
-
-    return [seen[k] for k in order]
 
 
 def _to_transactions(
