@@ -167,6 +167,8 @@ def build_row_fingerprint(  # noqa: PLR0913
     raw = json.dumps(
         [date_text, content, merchant, str(out_amount), str(in_amount), method, payment_type, user],
         ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
     )
     return hashlib.sha256(raw.encode(AppConstants.DEFAULT_TEXT_ENCODING)).hexdigest()
 
