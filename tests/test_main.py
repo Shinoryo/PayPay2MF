@@ -182,10 +182,8 @@ def test_build_transactions_exits_when_parse_csv_raises(
         Mock(side_effect=ValueError("bad csv")),
     )
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(app_main.CliFatalError):
         app_main.build_transactions(config, logger)
-
-    assert exc_info.value.code == 1
     logger.exception.assert_called_once_with(_MSG_CSV_READ_FAILED)
 
 
@@ -204,10 +202,8 @@ def test_build_transactions_exits_when_parse_csv_raises_os_error(
         Mock(side_effect=PermissionError("denied")),
     )
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(app_main.CliFatalError):
         app_main.build_transactions(config, logger)
-
-    assert exc_info.value.code == 1
     logger.exception.assert_called_once_with(_MSG_CSV_READ_FAILED)
 
 
@@ -216,7 +212,7 @@ def test_build_transactions_propagates_unexpected_parse_csv_error(
     monkeypatch: pytest.MonkeyPatch,
     app_config_factory,
 ) -> None:
-    """想定外の実装バグは SystemExit へ変換せず伝播させる。"""
+    """想定外の実装バグは CliFatalError へ変換せず伝播させる。"""
     config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
     logger = Mock(spec=logging.Logger)
 
@@ -254,10 +250,8 @@ def test_build_transactions_exits_when_duplicate_history_is_corrupted(
         Mock(side_effect=DuplicateHistoryError("processed.json が破損しています")),
     )
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(app_main.CliFatalError):
         app_main.build_transactions(config, logger)
-
-    assert exc_info.value.code == 1
     logger.exception.assert_called_once_with(
         "重複履歴ファイルの読み込みに失敗しました: %s",
         "processed.json が破損しています",
@@ -286,10 +280,8 @@ def test_build_transactions_exits_when_duplicate_history_schema_is_invalid(
         Mock(return_value=([transaction], [])),
     )
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(app_main.CliFatalError):
         app_main.build_transactions(config, logger)
-
-    assert exc_info.value.code == 1
     logger.exception.assert_called_once()
     log_args = logger.exception.call_args.args
     assert log_args[0] == "重複履歴ファイルの読み込みに失敗しました: %s"
@@ -325,10 +317,8 @@ def test_build_transactions_exits_when_gcloud_dependency_is_missing(
         Mock(side_effect=ImportError(missing_dependency_message)),
     )
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(app_main.CliFatalError):
         app_main.build_transactions(config, logger)
-
-    assert exc_info.value.code == 1
     logger.exception.assert_called_once_with(
         _MSG_DUPLICATE_BACKEND_INIT_FAILED,
         missing_dependency_message,
@@ -375,10 +365,8 @@ def test_build_transactions_exits_when_gcloud_duplicate_history_doc_is_invalid(
         Mock(return_value=_BrokenDetector()),
     )
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(app_main.CliFatalError):
         app_main.build_transactions(config, logger)
-
-    assert exc_info.value.code == 1
     logger.exception.assert_called_once_with(
         "重複履歴ファイルの読み込みに失敗しました: %s",
         history_error_message,
@@ -445,15 +433,13 @@ def test_run_registration_exits_when_registrar_boot_fails(
         Mock(side_effect=RuntimeError("boot failed")),
     )
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(app_main.CliFatalError):
         app_main.run_registration(
             config,
             logger,
             detector,
             [transaction_factory(transaction_id="TX001", merchant="merchant-TX001")],
         )
-
-    assert exc_info.value.code == 1
     detector.flush.assert_called_once_with()
     logger.exception.assert_called_once_with(_MSG_REGISTRATION_BOOT_FAILED)
 
@@ -484,15 +470,13 @@ def test_run_registration_flushes_after_success_even_when_context_exit_fails(
         Mock(return_value=_BrokenRegistrarContext()),
     )
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(app_main.CliFatalError):
         app_main.run_registration(
             config,
             logger,
             detector,
             [transaction_factory(transaction_id="TX001", merchant="merchant-TX001")],
         )
-
-    assert exc_info.value.code == 1
     detector.mark_processed.assert_called_once()
     detector.flush.assert_called_once_with()
     logger.exception.assert_called_once_with(_MSG_REGISTRATION_BOOT_FAILED)
@@ -516,15 +500,13 @@ def test_run_registration_exits_when_duplicate_history_flush_fails(
     registrar_factory = Mock(return_value=nullcontext(registrar))
     monkeypatch.setattr(app_main, "MFRegistrar", registrar_factory)
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(app_main.CliFatalError):
         app_main.run_registration(
             config,
             logger,
             detector,
             [transaction_factory(transaction_id="TX001", merchant="merchant-TX001")],
         )
-
-    assert exc_info.value.code == 1
     detector.mark_processed.assert_called_once()
     detector.flush.assert_called_once_with()
     logger.exception.assert_called_once_with(
@@ -557,15 +539,13 @@ def test_run_registration_exits_when_duplicate_history_update_fails_after_regist
     detector = _BrokenDetector()
     monkeypatch.setattr(app_main, "MFRegistrar", registrar_factory)
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(app_main.CliFatalError):
         app_main.run_registration(
             config,
             logger,
             detector,
             [tx1, tx2],
         )
-
-    assert exc_info.value.code == 1
     assert registrar.registered == ["TX001"]
     detector.mark_processed.assert_called_once_with(tx1)
     detector.flush.assert_called_once_with()
@@ -592,6 +572,64 @@ def test_main_exits_when_config_load_fails(
     assert captured.out == ""
     assert "設定ファイルの読み込みに失敗しました" in captured.err
     assert "bad config" in captured.err
+
+
+def test_main_returns_failure_when_build_transactions_raises_cli_fatal_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    """build_transactions の致命エラーは main が終了コード 1 へ正規化する。"""
+    config = app_config_factory(tmp_path, dry_run=True, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+
+    monkeypatch.setattr(app_main, "load_config", Mock(return_value=config))
+    monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
+    monkeypatch.setattr(
+        app_main,
+        "build_transactions",
+        Mock(side_effect=app_main.CliFatalError),
+    )
+
+    assert app_main.main([]) == 1
+
+
+def test_main_returns_failure_when_run_registration_raises_cli_fatal_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """run_registration の致命エラーは main が終了コード 1 を返す。"""
+    config = app_config_factory(tmp_path, dry_run=False, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+
+    monkeypatch.setattr(app_main, "load_config", Mock(return_value=config))
+    monkeypatch.setattr(app_main, "setup_logger", Mock(return_value=logger))
+    monkeypatch.setattr(
+        app_main,
+        "build_transactions",
+        Mock(
+            return_value=app_main.PreparedTransactions(
+                detector=_FakeDetector(),
+                to_process=[
+                    transaction_factory(
+                        transaction_id="TX001",
+                        merchant="merchant-TX001",
+                    ),
+                ],
+                excluded_count=0,
+                skip_count=0,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        app_main,
+        "run_registration",
+        Mock(side_effect=app_main.CliFatalError),
+    )
+
+    assert app_main.main([]) == 1
 
 
 def test_main_dry_run_skips_browser_startup(
