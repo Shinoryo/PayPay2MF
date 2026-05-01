@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 import sys
 import types
@@ -373,6 +374,67 @@ def test_create_detector_gcloud_raises_when_credentials_path_is_none(
     with pytest.raises(
         DuplicateHistoryError,
         match=r'duplicate_detection.backend: "gcloud" の場合は gcloud_credentials_path の指定が必要です。',
+    ):
+        create_detector(config)
+
+
+def test_create_detector_gcloud_shows_dependency_install_message(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    config = _build_gcloud_config(tmp_path, app_config_factory)
+
+    monkeypatch.delitem(sys.modules, "google.cloud", raising=False)
+    monkeypatch.delitem(sys.modules, "google.cloud.firestore", raising=False)
+    monkeypatch.delitem(sys.modules, "google.oauth2", raising=False)
+    monkeypatch.delitem(sys.modules, "google.oauth2.service_account", raising=False)
+    original_import = builtins.__import__
+
+    def _raise_for_google(
+        name: str,
+        globals: dict | None = None,
+        locals: dict | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ) -> object:
+        _ = (globals, locals, fromlist, level)
+        if name.startswith("google.cloud") or name.startswith("google.oauth2"):
+            raise ImportError("missing google modules")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _raise_for_google)
+
+    with pytest.raises(
+        ImportError,
+        match=r"google-cloud-firestore がインストールされていません。",
+    ):
+        create_detector(config)
+
+
+def test_create_detector_gcloud_normalizes_credentials_load_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    _install_fake_gcloud_modules(monkeypatch)
+    config = _build_gcloud_config(tmp_path, app_config_factory)
+
+    service_account_module = sys.modules["google.oauth2.service_account"]
+    credentials_class = service_account_module.Credentials
+
+    def _raise_credentials_error(_path: str) -> tuple[str, str]:
+        raise ValueError("invalid credentials")
+
+    monkeypatch.setattr(
+        credentials_class,
+        "from_service_account_file",
+        staticmethod(_raise_credentials_error),
+    )
+
+    with pytest.raises(
+        DuplicateHistoryError,
+        match=r"GCloud 認証情報の初期化に失敗しました",
     ):
         create_detector(config)
 
