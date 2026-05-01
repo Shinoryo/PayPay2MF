@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from paypay2mf.constants import AppConstants
+from paypay2mf.duplicate_detector import build_row_fingerprint
 from paypay2mf.models import (
     AdvancedConfig,
     AppConfig,
@@ -126,17 +127,47 @@ def transaction_factory() -> TransactionFactory:
         merchant: str = _DEFAULT_MERCHANT,
         amount: int = 100,
         date: datetime | None = None,
+        date_text: str | None = None,
         memo: str = _DEFAULT_MEMO,
+        content: str = "支払い",
+        method: str = "PayPay残高",
+        payment_type: str = AppConstants.HYPHEN,
+        user: str = AppConstants.HYPHEN,
+        row_fingerprint: str | None = None,
         category: str = AppConstants.DEFAULT_CATEGORY,
         direction: str = AppConstants.DIRECTION_OUT,
     ) -> Transaction:
+        resolved_date = date or datetime(2025, 1, 1, 12, 0, 0)  # noqa: DTZ001
+        resolved_date_text = date_text or resolved_date.strftime("%Y/%m/%d %H:%M:%S")
+        out_amount = amount if direction == AppConstants.DIRECTION_OUT else 0
+        in_amount = amount if direction == AppConstants.DIRECTION_IN else 0
+        resolved_fingerprint = (
+            row_fingerprint
+            if row_fingerprint is not None
+            else build_row_fingerprint(
+                date_text=resolved_date_text,
+                content=content,
+                merchant=merchant,
+                out_amount=out_amount,
+                in_amount=in_amount,
+                method=method,
+                payment_type=payment_type,
+                user=user,
+            )
+        )
         return Transaction(
-            date=date or datetime(2025, 1, 1, 12, 0, 0),  # noqa: DTZ001
+            date=resolved_date,
             amount=amount,
             direction=direction,
             memo=memo,
             merchant=merchant,
             transaction_id=transaction_id,
+            date_text=resolved_date_text,
+            content=content,
+            method=method,
+            payment_type=payment_type,
+            user=user,
+            row_fingerprint=resolved_fingerprint,
             category=category,
         )
 

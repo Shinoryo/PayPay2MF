@@ -60,6 +60,10 @@ input_csv: "C:\\Users\\yourname\\Downloads\\paypay_history.csv"
 mf_account: "PayPay"
 ```
 
+`mf_account` は通常、Money Forward 上の口座名本体を指定します。
+口座一覧に `PayPay (439,670円)` のような残高サフィックスが表示されても、
+照合時には末尾の `(<金額>円)` を除去して扱います。
+
 設定詳細は [docs/設定ファイル仕様書.md](docs/設定ファイル仕様書.md) を参照してください。
 
 ### 2. dry_run で確認
@@ -114,8 +118,10 @@ paypay2mf
 
 - `duplicate_detection.backend: "local"` は単一インスタンス運用を前提とします
 - `dry_run: true` では local / gcloud いずれの履歴も更新しません
-- Firestore backend の fallback 検索には `amount`、`merchant`、`date_bucket`
-  の複合インデックスが必要です
+- 重複判定は行単位指紋（sha256）で行います
+- 指紋入力項目は `取引日（CSV文字列）`、`取引内容`、`取引先`、
+  `出金金額（正規化）`、`入金金額（正規化）`、`取引方法`、`支払い区分`、`利用者`
+- 同一 `transaction_id` でも、指紋が異なる行は別取引として処理します
 
 ## Smoke Test
 
@@ -148,7 +154,6 @@ pip install "paypay2mf[gcloud]"
 ```yaml
 duplicate_detection:
   backend: "gcloud"
-  tolerance_seconds: 60
   database_id: "paypay2mf"  # 未指定時は "(default)"
 
 gcloud_credentials_path: "./secrets/paypay2mf-credentials.json"
@@ -156,8 +161,6 @@ gcloud_credentials_path: "./secrets/paypay2mf-credentials.json"
 
 - 本体アプリの `dry_run` は通常実行だけに適用されます
 - backfill CLI の dry-run は `--dry-run` 引数で個別に制御します
-- 既存 Firestore データを使う場合は、本体実行前に
-  `paypay2mf-firestore-backfill` で `date_bucket` を補完してください
 
 backfill の最小設定は次の 2 点です。
 
@@ -204,6 +207,7 @@ python -m pip_audit --skip-editable --ignore-vuln CVE-2026-4539
 
 | 版 | 日付 | 変更概要 |
 | ---- | ------ | --------- |
+| 1.2.0 | 2026-05-01 | トランザクションモデルと重複検出を強化し、行フィンガープリントでCSV重複を正確に判定するように修正 |
 | 1.1.5 | 2026-04-30 | Firestore gcloud backend の DB 指定処理を修正し、Client 初期化時の引数名不一致による起動失敗を解消 |
 | 1.1.4 | 2026-04-30 | gcloud backend 利用時に Firestore の database_id を明示指定できるように修正 |
 | 1.1.3 | 2026-04-30 | import を明示的なモジュールパスに変更し、起動時に Selenium のモジュール解決に失敗する問題を修正 |

@@ -922,7 +922,7 @@ def test_register_transaction_raises_when_multiple_accounts_match_after_normaliz
         form_page.register_transaction(_make_tx())
 
 
-def test_register_transaction_raises_when_exact_account_match_is_missing() -> None:
+def test_register_transaction_raises_when_account_match_is_missing() -> None:
     driver = _make_driver(
         account_options=[(_PREFIX_ACCOUNT_NAME, _LEGACY_OPTION_VALUE)]
     )
@@ -933,11 +933,14 @@ def test_register_transaction_raises_when_exact_account_match_is_missing() -> No
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
     )
 
-    with pytest.raises(ValueError, match=_DEFAULT_ACCOUNT_NAME):
+    with pytest.raises(
+        ValueError,
+        match="残高サフィックスを除いた口座名",
+    ) as exc_info:
         form_page.register_transaction(_make_tx())
 
-    with pytest.raises(ValueError, match=_PREFIX_ACCOUNT_NAME):
-        form_page.register_transaction(_make_tx())
+    assert _DEFAULT_ACCOUNT_NAME in str(exc_info.value)
+    assert _PREFIX_ACCOUNT_NAME in str(exc_info.value)
 
     select_calls = [
         action for action in driver.actions if action[0] == "select_by_value"

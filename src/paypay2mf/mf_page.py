@@ -42,7 +42,7 @@ _SKIP_CATEGORY_VALUES = {
 }
 _ACCOUNT_NOT_FOUND_MESSAGE = (
     "口座 '{account_name}' が MF で見つかりません。"
-    "config.yml の mf_account に完全一致する口座名を確認してください。"
+    "config.yml の mf_account は残高サフィックスを除いた口座名で確認してください。"
 )
 _CATEGORY_NOT_FOUND_WARNING = (
     "カテゴリ '%s' がマップに存在しません。未分類で登録します。"

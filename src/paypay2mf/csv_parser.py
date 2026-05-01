@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from paypay2mf.constants import AppConstants
+from paypay2mf.duplicate_detector import build_row_fingerprint
 from paypay2mf.models import AppConfig, ParseFailure, Transaction
 
 # エンコーディング判定に使う定数。
@@ -286,20 +287,36 @@ def _to_transaction(
     Returns:
         変換された Transaction オブジェクト。
     """
-    date = _parse_date(_get_required_value(row, _COL_TRADE_DATE), date_formats)
-    out_amount = _parse_amount(_get_required_value(row, _COL_OUT_AMOUNT))
-    in_amount = _parse_amount(_get_required_value(row, _COL_IN_AMOUNT))
+    trade_date_text = _get_required_value(row, _COL_TRADE_DATE)
+    out_amount_text = _get_required_value(row, _COL_OUT_AMOUNT)
+    in_amount_text = _get_required_value(row, _COL_IN_AMOUNT)
+    content = _get_required_value(row, _COL_CONTENT)
+
+    date = _parse_date(trade_date_text, date_formats)
+    out_amount = _parse_amount(out_amount_text)
+    in_amount = _parse_amount(in_amount_text)
     amount, direction = _resolve_transaction_amount(out_amount, in_amount)
 
-    # 取引内容は必須フィールドとして検証する（メモには使用しない）
-    _get_required_value(row, _COL_CONTENT)
     merchant = _get_required_value(row, _COL_MERCHANT)
+    method = _normalize_optional_text(row.get(_COL_METHOD))
+    payment_type = _normalize_optional_text(row.get(_COL_PAYMENT_TYPE))
+    user = _normalize_optional_text(row.get(_COL_USER))
     foreign = (row.get(_COL_FOREIGN) or AppConstants.HYPHEN).strip()
     currency = (row.get(_COL_CURRENCY) or AppConstants.HYPHEN).strip()
     memo = merchant
     if foreign not in (AppConstants.HYPHEN, AppConstants.EMPTY_STRING):
         memo = _FOREIGN_MEMO_TEMPLATE.format(memo, foreign, currency)
     tid = (row.get(_COL_TID) or AppConstants.EMPTY_STRING).strip() or None
+    row_fingerprint = build_row_fingerprint(
+        date_text=trade_date_text,
+        content=content,
+        merchant=merchant,
+        out_amount=out_amount,
+        in_amount=in_amount,
+        method=method,
+        payment_type=payment_type,
+        user=user,
+    )
 
     return Transaction(
         date=date,
@@ -308,7 +325,20 @@ def _to_transaction(
         memo=memo,
         merchant=merchant,
         transaction_id=tid,
+        date_text=trade_date_text,
+        content=content,
+        method=method,
+        payment_type=payment_type,
+        user=user,
+        row_fingerprint=row_fingerprint,
     )
+
+
+def _normalize_optional_text(value: str | None) -> str:
+    """指紋生成で使う任意列値を正規化する。"""
+    if value is None:
+        return AppConstants.EMPTY_STRING
+    return value.strip()
 
 
 def _resolve_transaction_amount(out_amount: int, in_amount: int) -> tuple[int, str]:

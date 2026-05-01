@@ -73,6 +73,10 @@ _LOG_MSG_NO_TRANSACTIONS = "登録対象がないためブラウザを起動し�
 _ERR_MARK_PROCESSED_FAILED = "処理済み履歴の更新に失敗しました ({}/{})"
 
 
+class CliFatalError(Exception):
+    """main() が終了コードへ変換する致命エラー。"""
+
+
 @dataclass(slots=True)
 class PreparedTransactions:
     detector: DuplicateDetector
@@ -121,9 +125,9 @@ def build_transactions(
 ) -> PreparedTransactions:
     try:
         transactions, parse_failures = parse_csv(config.input_csv, config)
-    except (OSError, UnicodeError, ValueError, csv.Error):
+    except (OSError, UnicodeError, ValueError, csv.Error) as exc:
         logger.exception(_LOG_MSG_CSV_READ_FAILED)
-        sys.exit(1)
+        raise CliFatalError from exc
 
     _log_parse_failures(parse_failures, config, logger)
 
@@ -138,10 +142,10 @@ def build_transactions(
         detector = create_detector(config)
     except DuplicateHistoryError as exc:
         logger.exception(_LOG_MSG_DUPLICATE_HISTORY_FAILED, str(exc))
-        sys.exit(1)
+        raise CliFatalError from exc
     except ImportError as exc:
         logger.exception(_LOG_MSG_DUPLICATE_BACKEND_INIT_FAILED, str(exc))
-        sys.exit(1)
+        raise CliFatalError from exc
 
     to_process: list[Transaction] = []
     skip_count = 0
@@ -151,7 +155,7 @@ def build_transactions(
             is_duplicate = detector.is_duplicate(tx)
         except DuplicateHistoryError as exc:
             logger.exception(_LOG_MSG_DUPLICATE_HISTORY_FAILED, str(exc))
-            sys.exit(1)
+            raise CliFatalError from exc
 
         if is_duplicate:
             skip_count += 1
@@ -241,7 +245,7 @@ def run_registration(
             should_exit = True
 
     if should_exit:
-        sys.exit(1)
+        raise CliFatalError
 
     return RegistrationResult(
         success_count=success_count,
@@ -269,7 +273,7 @@ def log_summary(
         logger.warning(_LOG_MSG_ERROR_CSV_SENSITIVE)
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None) -> int:
     """アプリケーションのメイン処理を実行する。
 
     処理フロー:
@@ -292,7 +296,7 @@ def main(argv: list[str] | None = None) -> None:
         config = load_config(config_path)
     except (FileNotFoundError, ValueError) as e:
         print(_STDERR_CONFIG_LOAD_FAILED.format(e), file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     logger = setup_logger(config)
     logger.warning(_LOG_MSG_LOG_DIR_SENSITIVE)
@@ -302,33 +306,38 @@ def main(argv: list[str] | None = None) -> None:
 
     logger.info(_LOG_MSG_CONFIG_LOADED)
 
-    prepared = build_transactions(config, logger)
+    try:
+        prepared = build_transactions(config, logger)
 
-    if config.dry_run:
-        run_dry_run(logger, len(prepared.to_process))
-        return
+        if config.dry_run:
+            run_dry_run(logger, len(prepared.to_process))
+            return 0
 
-    if not prepared.to_process:
-        logger.info(_LOG_MSG_NO_TRANSACTIONS)
-        logger.info(_LOG_MSG_APP_EXIT)
-        return
+        if not prepared.to_process:
+            logger.info(_LOG_MSG_NO_TRANSACTIONS)
+            logger.info(_LOG_MSG_APP_EXIT)
+            return 0
 
-    registration_result = run_registration(
-        config,
-        logger,
-        prepared.detector,
-        prepared.to_process,
-    )
+        registration_result = run_registration(
+            config,
+            logger,
+            prepared.detector,
+            prepared.to_process,
+        )
 
-    log_summary(
-        logger,
-        config,
-        prepared,
-        registration_result,
-    )
+        log_summary(
+            logger,
+            config,
+            prepared,
+            registration_result,
+        )
+
+    except CliFatalError:
+        return 1
 
     logger.info(_LOG_MSG_APP_EXIT)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

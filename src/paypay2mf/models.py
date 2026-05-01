@@ -38,12 +38,18 @@ class Transaction:
 
     Attributes:
         date: 取引日時。
+        date_text: CSV の取引日文字列（秒まで）。重複指紋生成に使用する。
         amount: 取引金額（円・整数）。
         direction: 入出金方向。"out"（出金）または "in"（入金）。
         memo: MF メモ欄に転記する文字列 (取引先 + 海外情報)。
         merchant: 取引先名 (マッピングルールのマッチング対象)。
+        content: 取引内容列の値。
+        method: 取引方法列の値。
+        payment_type: 支払い区分列の値。
+        user: 利用者列の値。
         transaction_id: 取引番号。複数行に分割された場合でも同一 ID を共有する。
             取引番号が存在しない行は None。
+        row_fingerprint: 行単位重複検知に使う指紋文字列。
         category: マッピング後のカテゴリ名。デフォルト値は "未分類"。
     """
 
@@ -53,6 +59,12 @@ class Transaction:
     memo: str
     merchant: str
     transaction_id: str | None
+    date_text: str = AppConstants.EMPTY_STRING
+    content: str = AppConstants.EMPTY_STRING
+    method: str = AppConstants.EMPTY_STRING
+    payment_type: str = AppConstants.EMPTY_STRING
+    user: str = AppConstants.EMPTY_STRING
+    row_fingerprint: str = AppConstants.EMPTY_STRING
     category: str = AppConstants.DEFAULT_CATEGORY
 
 
@@ -75,13 +87,11 @@ class DuplicateDetectionConfig:
     Attributes:
         backend: 重複履歴の保存先。
             "local"（JSON ファイル）または "gcloud"（Firestore）。
-        tolerance_seconds: 取引番号欠損時の日時比較許容幅（秒）。
         database_id: Firestore のデータベース ID。
             未指定時は "(default)" を使用する。
     """
 
     backend: str = AppConstants.DEFAULT_BACKEND
-    tolerance_seconds: int = 60
     database_id: str = AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
 
 

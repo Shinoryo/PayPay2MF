@@ -809,27 +809,6 @@ def test_duplicate_detection_unknown_key_raises_value_error(tmp_path: Path) -> N
 
 
 @pytest.mark.parametrize(
-    ("value", "message"),
-    [
-        pytest.param(-1, "0 以上の整数", id="negative"),
-        pytest.param("60", "整数を指定してください", id="string"),
-        pytest.param(True, "整数を指定してください", id="bool"),
-    ],
-)
-def test_duplicate_detection_tolerance_seconds_validation(
-    tmp_path: Path,
-    value: object,
-    message: str,
-) -> None:
-    """duplicate_detection.tolerance_seconds の型と範囲が検証されることを確認する。"""
-    data = _base_data(tmp_path)
-    data["duplicate_detection"] = {"tolerance_seconds": value}
-
-    with pytest.raises(ValueError, match=message):
-        load_config(_write_config(tmp_path, data))
-
-
-@pytest.mark.parametrize(
     ("field", "value", "message"),
     [
         pytest.param(

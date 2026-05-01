@@ -84,6 +84,20 @@ def test_parse_normal_payment() -> None:
     assert mos.merchant == _MOS_MERCHANT
 
 
+def test_parse_sets_row_fingerprint_from_csv_raw_fields() -> None:
+    """重複検知用の行指紋と date_text が CSV 行から設定されることを確認する。"""
+    txs, failures = parse_csv(
+        FIXTURE_DIR / _INPUT_CSV_FILENAME,
+        _make_config(FIXTURE_DIR / _INPUT_CSV_FILENAME),
+    )
+    assert failures == []
+
+    mos = next(t for t in txs if t.transaction_id == _MOS_TRANSACTION_ID)
+    assert mos.date_text == "2025/02/11 19:24:02"
+    assert len(mos.row_fingerprint) == 64
+    assert mos.row_fingerprint != AppConstants.EMPTY_STRING
+
+
 # TC-02-02: カンマ含む金額文字列の数値化
 def test_parse_amount_with_comma() -> None:
     """TC-02-02: カンマを含む金額文字列が整数に正しく変換されることを確認する。"""

@@ -10,8 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from bisect import bisect_left, insort
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -21,25 +20,17 @@ if TYPE_CHECKING:
 from paypay2mf.constants import AppConstants
 
 # ローカルストア JSON のキー名。
-_KEY_TX_IDS = "transaction_ids"
-_KEY_FALLBACK = "fallback_keys"
+_KEY_ROW_FINGERPRINTS = "row_fingerprints"
 _KEY_DATETIME = "datetime"
 _KEY_AMOUNT = "amount"
 _KEY_MERCHANT = "merchant"
+_KEY_ROW_FINGERPRINT = "row_fingerprint"
+_KEY_TRANSACTION_ID = "transaction_id"
 
 _MSG_PROCESSED_ROOT_TYPE = "processed.json のルートは object である必要があります"
-_MSG_PROCESSED_TX_IDS_TYPE = "transaction_ids は list である必要があります"
-_MSG_PROCESSED_FALLBACK_LIST_TYPE = "fallback_keys は list である必要があります"
-_MSG_PROCESSED_TX_ID_ITEM_TYPE = "transaction_ids の要素は文字列である必要があります"
-_MSG_PROCESSED_FALLBACK_ENTRY_TYPE = (
-    "fallback_keys の要素は object である必要があります"
-)
-_MSG_PROCESSED_FALLBACK_DATETIME_TYPE = (
-    "fallback_keys.datetime は文字列である必要があります"
-)
-_MSG_PROCESSED_FALLBACK_AMOUNT_TYPE = "fallback_keys.amount は整数である必要があります"
-_MSG_PROCESSED_FALLBACK_MERCHANT_TYPE = (
-    "fallback_keys.merchant は文字列である必要があります"
+_MSG_PROCESSED_ROW_FINGERPRINTS_TYPE = "row_fingerprints は list である必要があります"
+_MSG_PROCESSED_ROW_FINGERPRINT_ITEM_TYPE = (
+    "row_fingerprints の要素は文字列である必要があります"
 )
 _KEY_DATE_BUCKET = "date_bucket"
 
@@ -106,7 +97,6 @@ def create_detector(config: AppConfig) -> DuplicateDetector:
             raise DuplicateHistoryError(_MSG_GCLOUD_CREDS_REQUIRED)
         return GCloudDuplicateDetector(
             credentials_path=config.gcloud_credentials_path,
-            tolerance_seconds=config.duplicate_detection.tolerance_seconds,
             database_id=config.duplicate_detection.database_id,
             dry_run=config.dry_run,
         )
@@ -118,42 +108,79 @@ def build_date_bucket(value: datetime) -> str:
     return value.replace(second=0, microsecond=0).strftime(_DATE_BUCKET_FORMAT)
 
 
-def list_date_bucket_candidates(
-    value: datetime,
-    tolerance_seconds: int,
-) -> list[str]:
-    """許容幅に含まれる date_bucket 候補を列挙する。"""
-    bounded_tolerance = max(tolerance_seconds, 0)
-    lower_bound = value - timedelta(seconds=bounded_tolerance)
-    upper_bound = value + timedelta(seconds=bounded_tolerance)
-    current_bucket = lower_bound.replace(second=0, microsecond=0)
-    last_bucket = upper_bound.replace(second=0, microsecond=0)
-
-    buckets: list[str] = []
-    while current_bucket <= last_bucket:
-        buckets.append(build_date_bucket(current_bucket))
-        current_bucket += timedelta(minutes=1)
-    return buckets
-
-
 def build_firestore_duplicate_payload(tx: Transaction) -> dict[str, str | int]:
     """Firestore に保存する重複検知用 payload を組み立てる。"""
     return {
+        _KEY_ROW_FINGERPRINT: resolve_row_fingerprint(tx),
         _KEY_DATETIME: tx.date.isoformat(),
         _KEY_AMOUNT: tx.amount,
         _KEY_MERCHANT: tx.merchant,
         _KEY_DATE_BUCKET: build_date_bucket(tx.date),
+        _KEY_TRANSACTION_ID: tx.transaction_id or AppConstants.EMPTY_STRING,
     }
 
 
 def build_firestore_fallback_doc_id(tx: Transaction) -> str:
-    """transaction_id 欠損時に使う安全な Firestore document id を返す。"""
+    """後方互換のために残す fallback doc_id ビルダー。"""
     digest = hashlib.sha256(
         f"{tx.date.isoformat()}|{tx.amount}|{tx.merchant}".encode(
             AppConstants.DEFAULT_TEXT_ENCODING,
         ),
     ).hexdigest()
     return f"fallback_{digest}"
+
+
+def build_row_fingerprint(  # noqa: PLR0913
+    *,
+    date_text: str,
+    content: str,
+    merchant: str,
+    out_amount: int,
+    in_amount: int,
+    method: str,
+    payment_type: str,
+    user: str,
+) -> str:
+    """行の正規化フィールドから重複検知用の行指紋（sha256）を生成する。
+
+    csv_parser および重複検知の両方から呼び出す唯一の指紋生成実装。
+    """
+    raw = json.dumps(
+        [
+            date_text,
+            content,
+            merchant,
+            str(out_amount),
+            str(in_amount),
+            method,
+            payment_type,
+            user,
+        ],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(raw.encode(AppConstants.DEFAULT_TEXT_ENCODING)).hexdigest()
+
+
+def resolve_row_fingerprint(tx: Transaction) -> str:
+    """取引の重複検知に使う行指紋を返す。"""
+    if tx.row_fingerprint:
+        return tx.row_fingerprint
+
+    date_text = tx.date_text or tx.date.strftime("%Y/%m/%d %H:%M:%S")
+    out_amount = tx.amount if tx.direction == AppConstants.DIRECTION_OUT else 0
+    in_amount = tx.amount if tx.direction == AppConstants.DIRECTION_IN else 0
+    return build_row_fingerprint(
+        date_text=date_text,
+        content=tx.content,
+        merchant=tx.merchant,
+        out_amount=out_amount,
+        in_amount=in_amount,
+        method=tx.method,
+        payment_type=tx.payment_type,
+        user=tx.user,
+    )
 
 
 def _parse_firestore_datetime(data: object, doc_id: str) -> datetime:
@@ -191,21 +218,17 @@ class LocalDuplicateDetector:
         """
         self._store_path = _get_store_path(config)
         self._dry_run = config.dry_run
-        self._tolerance = config.duplicate_detection.tolerance_seconds
         self._data: dict = {
-            _KEY_TX_IDS: [],
-            _KEY_FALLBACK: [],
+            _KEY_ROW_FINGERPRINTS: [],
         }
-        self._tx_ids: set[str] = set()
-        self._fallback_index: dict[tuple[str, int], list[datetime]] = {}
+        self._row_fingerprints: set[str] = set()
         self._dirty = False
         self._load()
 
     def is_duplicate(self, tx: Transaction) -> bool:
         """指定した取引が処理済みかどうかを確認する。
 
-        transaction_id がある場合はそのまま一致判定を行う。
-        ない場合は _is_duplicate_fallback でフォールバック判定を行う。
+        行指紋が処理済み集合に含まれているかで判定する。
 
         Args:
             tx: 確認対象の Transaction。
@@ -213,9 +236,7 @@ class LocalDuplicateDetector:
         Returns:
             処理済みと判定すれば True。
         """
-        if tx.transaction_id:
-            return tx.transaction_id in self._tx_ids
-        return self._is_duplicate_fallback(tx)
+        return resolve_row_fingerprint(tx) in self._row_fingerprints
 
     def mark_processed(self, tx: Transaction) -> None:
         """指定した取引を処理済みとしてマークする。
@@ -226,23 +247,10 @@ class LocalDuplicateDetector:
         if self._dry_run:
             return
 
-        if tx.transaction_id:
-            if tx.transaction_id not in self._tx_ids:
-                self._tx_ids.add(tx.transaction_id)
-                self._data[_KEY_TX_IDS].append(tx.transaction_id)
-                self._dirty = True
-        else:
-            entry = {
-                _KEY_DATETIME: tx.date.isoformat(),
-                _KEY_AMOUNT: tx.amount,
-                _KEY_MERCHANT: tx.merchant,
-            }
-            self._data[_KEY_FALLBACK].append(entry)
-            fallback_dates = self._fallback_index.setdefault(
-                (tx.merchant, tx.amount),
-                [],
-            )
-            insort(fallback_dates, tx.date)
+        row_fingerprint = resolve_row_fingerprint(tx)
+        if row_fingerprint not in self._row_fingerprints:
+            self._row_fingerprints.add(row_fingerprint)
+            self._data[_KEY_ROW_FINGERPRINTS].append(row_fingerprint)
             self._dirty = True
 
     def flush(self) -> None:
@@ -256,32 +264,6 @@ class LocalDuplicateDetector:
             raise DuplicateHistorySaveError(_MSG_PROCESSED_SAVE_FAILED) from exc
         self._dirty = False
 
-    def _is_duplicate_fallback(self, tx: Transaction) -> bool:
-        """取引番号欠損時のフォールバック重複判定。
-
-        保存済みの欠損タプルの中で、日時差が
-        tolerance_seconds 以内で金額・取引先が一致する項目を重複と判定する。
-
-        Args:
-            tx: 確認対象の Transaction。
-
-        Returns:
-            重複と判定すれば True。
-        """
-        fallback_dates = self._fallback_index.get((tx.merchant, tx.amount), [])
-        if not fallback_dates:
-            return False
-
-        tolerance = timedelta(seconds=self._tolerance)
-        lower_bound = tx.date - tolerance
-        upper_bound = tx.date + tolerance
-        nearest_index = bisect_left(fallback_dates, lower_bound)
-
-        return (
-            nearest_index < len(fallback_dates)
-            and fallback_dates[nearest_index] <= upper_bound
-        )
-
     def _load(self) -> None:
         """JSON ファイルから処理済みデータを読み込む。
 
@@ -293,10 +275,7 @@ class LocalDuplicateDetector:
                     encoding=AppConstants.DEFAULT_TEXT_ENCODING,
                 ) as f:
                     self._data = self._validate_loaded_data(json.load(f))
-                self._tx_ids = set(self._data[_KEY_TX_IDS])
-                self._fallback_index = self._build_fallback_index(
-                    self._data[_KEY_FALLBACK],
-                )
+                self._row_fingerprints = set(self._data[_KEY_ROW_FINGERPRINTS])
                 self._dirty = False
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
                 backup_path = self._backup_corrupted_store()
@@ -306,61 +285,24 @@ class LocalDuplicateDetector:
                 )
                 raise DuplicateHistoryError(msg) from exc
         else:
-            self._tx_ids = set(self._data[_KEY_TX_IDS])
-            self._fallback_index = self._build_fallback_index(self._data[_KEY_FALLBACK])
-
-    def _build_fallback_index(
-        self,
-        fallback_entries: list[dict[str, str | int]],
-    ) -> dict[tuple[str, int], list[datetime]]:
-        index: dict[tuple[str, int], list[datetime]] = {}
-        for entry in fallback_entries:
-            key = (str(entry[_KEY_MERCHANT]), int(entry[_KEY_AMOUNT]))
-            index.setdefault(key, []).append(
-                datetime.fromisoformat(str(entry[_KEY_DATETIME]))
-            )
-        for stored_dates in index.values():
-            stored_dates.sort()
-        return index
+            self._row_fingerprints = set(self._data[_KEY_ROW_FINGERPRINTS])
 
     def _validate_loaded_data(self, loaded_data: object) -> dict:
         if not isinstance(loaded_data, dict):
             raise TypeError(_MSG_PROCESSED_ROOT_TYPE)
 
-        loaded_data.setdefault(_KEY_TX_IDS, [])
-        loaded_data.setdefault(_KEY_FALLBACK, [])
+        loaded_data.setdefault(_KEY_ROW_FINGERPRINTS, [])
 
-        transaction_ids = loaded_data[_KEY_TX_IDS]
-        fallback_entries = loaded_data[_KEY_FALLBACK]
+        row_fingerprints = loaded_data[_KEY_ROW_FINGERPRINTS]
 
-        if not isinstance(transaction_ids, list):
-            raise TypeError(_MSG_PROCESSED_TX_IDS_TYPE)
-        if not isinstance(fallback_entries, list):
-            raise TypeError(_MSG_PROCESSED_FALLBACK_LIST_TYPE)
+        if not isinstance(row_fingerprints, list):
+            raise TypeError(_MSG_PROCESSED_ROW_FINGERPRINTS_TYPE)
 
-        for transaction_id in transaction_ids:
-            if not isinstance(transaction_id, str):
-                raise TypeError(_MSG_PROCESSED_TX_ID_ITEM_TYPE)
-
-        for entry in fallback_entries:
-            self._validate_fallback_entry(entry)
+        for row_fingerprint in row_fingerprints:
+            if not isinstance(row_fingerprint, str):
+                raise TypeError(_MSG_PROCESSED_ROW_FINGERPRINT_ITEM_TYPE)
 
         return loaded_data
-
-    def _validate_fallback_entry(self, entry: object) -> None:
-        if not isinstance(entry, dict):
-            raise TypeError(_MSG_PROCESSED_FALLBACK_ENTRY_TYPE)
-
-        datetime_value = entry.get(_KEY_DATETIME)
-        amount_value = entry.get(_KEY_AMOUNT)
-        merchant_value = entry.get(_KEY_MERCHANT)
-
-        if not isinstance(datetime_value, str):
-            raise TypeError(_MSG_PROCESSED_FALLBACK_DATETIME_TYPE)
-        if not isinstance(amount_value, int) or isinstance(amount_value, bool):
-            raise TypeError(_MSG_PROCESSED_FALLBACK_AMOUNT_TYPE)
-        if not isinstance(merchant_value, str):
-            raise TypeError(_MSG_PROCESSED_FALLBACK_MERCHANT_TYPE)
 
     def _save(self) -> None:
         """処理済みデータを JSON ファイルに書き出す。"""
@@ -402,7 +344,6 @@ class GCloudDuplicateDetector:
         self,
         *,
         credentials_path: Path,
-        tolerance_seconds: int,
         database_id: str,
         dry_run: bool,
     ) -> None:
@@ -412,7 +353,6 @@ class GCloudDuplicateDetector:
 
         Args:
             credentials_path: サービスアカウント JSON のパス。
-            tolerance_seconds: fallback 重複判定の許容秒数。
             database_id: Firestore のデータベース ID。
             dry_run: True の場合は Firestore 書き込みを抑止する。
 
@@ -443,7 +383,6 @@ class GCloudDuplicateDetector:
             msg = f"GCloud 認証情報の初期化に失敗しました: {credentials_path}"
             raise DuplicateHistoryError(msg) from exc
         self._dry_run = dry_run
-        self._tolerance = tolerance_seconds
 
     def is_duplicate(self, tx: Transaction) -> bool:
         """指定した取引が Firestore に処理済みとして登録済みかどうかを確認する。
@@ -454,40 +393,12 @@ class GCloudDuplicateDetector:
         Returns:
             処理済みと判定すれば True。
         """
-        if tx.transaction_id:
-            doc = (
-                self._client.collection(self._COLLECTION)
-                .document(tx.transaction_id)
-                .get()
-            )
-            return doc.exists
-
-        # fallback: amount + merchant + date_bucket で候補を絞り込んだうえで
-        # datetime と tolerance_seconds で最終判定する。
-        # NOTE T03: Firestore の複合インデックス（amount, merchant, date_bucket）が必要
-        collection = self._client.collection(self._COLLECTION)
-        delta = timedelta(seconds=self._tolerance)
-
-        for date_bucket in list_date_bucket_candidates(tx.date, self._tolerance):
-            query = (
-                collection.where(_KEY_AMOUNT, _FIRESTORE_EQUALS_OPERATOR, tx.amount)
-                .where(_KEY_MERCHANT, _FIRESTORE_EQUALS_OPERATOR, tx.merchant)
-                .where(_KEY_DATE_BUCKET, _FIRESTORE_EQUALS_OPERATOR, date_bucket)
-            )
-            for doc in query.stream():
-                stored_dt = _parse_firestore_datetime(doc.to_dict(), doc.id)
-                try:
-                    within_tolerance = abs(tx.date - stored_dt) <= delta
-                except TypeError as exc:
-                    msg = (
-                        "Firestore の重複履歴 datetime の"
-                        "タイムゾーン形式が一致しません: "
-                        f"paypay_transactions/{doc.id}"
-                    )
-                    raise DuplicateHistoryError(msg) from exc
-                if within_tolerance:
-                    return True
-        return False
+        doc = (
+            self._client.collection(self._COLLECTION)
+            .document(resolve_row_fingerprint(tx))
+            .get()
+        )
+        return doc.exists
 
     def mark_processed(self, tx: Transaction) -> None:
         """指定した取引を Firestore に処理済みとして登録する。
@@ -498,7 +409,7 @@ class GCloudDuplicateDetector:
         if self._dry_run:
             return
 
-        doc_id = tx.transaction_id or build_firestore_fallback_doc_id(tx)
+        doc_id = resolve_row_fingerprint(tx)
         self._client.collection(self._COLLECTION).document(doc_id).set(
             build_firestore_duplicate_payload(tx)
         )
