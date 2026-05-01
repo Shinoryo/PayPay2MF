@@ -347,6 +347,22 @@ def test_create_detector_gcloud_returns_gcloud_detector(
     assert detector.client.database == AppConstants.DEFAULT_FIRESTORE_DATABASE_ID
 
 
+def test_gcloud_detector_propagates_custom_database_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+) -> None:
+    _install_fake_gcloud_modules(monkeypatch)
+    config = _build_gcloud_config(
+        tmp_path, app_config_factory, database_id="custom-db-instance"
+    )
+
+    detector = create_detector(config)
+
+    assert isinstance(detector, GCloudDuplicateDetector)
+    assert detector.client.database == "custom-db-instance"
+
+
 def test_create_detector_gcloud_raises_when_credentials_path_is_none(
     tmp_path: Path,
     app_config_factory,
