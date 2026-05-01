@@ -362,12 +362,21 @@ def _make_driver(
         mf_selectors.ACCOUNT_SELECT,
         _FakeElement(mf_selectors.ACCOUNT_SELECT, options=options),
     )
+    success_message = modal.add_child(
+        By.CSS_SELECTOR,
+        mf_selectors.SUBMIT_SUCCESS_MESSAGE,
+        _FakeElement(
+            mf_selectors.SUBMIT_SUCCESS_MESSAGE,
+            text=_SUBMIT_SUCCESS_MESSAGE,
+            displayed=False,
+        ),
+    )
     submit = modal.add_child(
         By.CSS_SELECTOR,
         mf_selectors.SUBMIT_BUTTON,
         _FakeElement(mf_selectors.SUBMIT_BUTTON),
     )
-    submit.set_on_click(lambda: modal.set_displayed(displayed=False))
+    submit.set_on_click(lambda: success_message.set_displayed(displayed=True))
 
     driver.register(
         By.CSS_SELECTOR,
@@ -684,6 +693,8 @@ def test_register_transaction_raises_when_submit_does_not_close_modal() -> None:
     with pytest.raises(RuntimeError, match="MF 登録結果を確認できませんでした"):
         form_page.register_transaction(_make_tx())
 
+    assert ("get", mf_selectors.MANUAL_FORM_URL) in driver.actions
+
 
 def test_register_transaction_accepts_success_confirmation_modal() -> None:
     driver = _make_driver()
@@ -697,62 +708,9 @@ def test_register_transaction_accepts_success_confirmation_modal() -> None:
             displayed=False,
         ),
     )
-    continue_button = modal.add_child(
-        By.CSS_SELECTOR,
-        mf_selectors.SUBMIT_CONTINUE_BUTTON,
-        _FakeElement(mf_selectors.SUBMIT_CONTINUE_BUTTON, displayed=False),
-    )
-    close_button = modal.find_element(By.CSS_SELECTOR, mf_selectors.CLOSE_BUTTON)
-    close_button.set_displayed(displayed=False)
 
     def _show_success_confirmation() -> None:
         success_message.set_displayed(displayed=True)
-        continue_button.set_displayed(displayed=True)
-        close_button.set_displayed(displayed=True)
-
-    submit = modal.find_element(By.CSS_SELECTOR, mf_selectors.SUBMIT_BUTTON)
-    submit.set_on_click(_show_success_confirmation)
-    close_button.set_on_click(lambda: modal.set_displayed(displayed=False))
-
-    form_page = MFManualFormPage(
-        driver,
-        Mock(),
-        _DEFAULT_ACCOUNT_NAME,
-        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
-    )
-
-    form_page.register_transaction(_make_tx())
-
-    assert ("click", mf_selectors.CLOSE_BUTTON) in driver.actions
-
-
-def test_register_transaction_accepts_success_confirmation_with_continue_button_only() -> (
-    None
-):
-    driver = _make_driver()
-    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
-    success_message = modal.add_child(
-        By.CSS_SELECTOR,
-        mf_selectors.SUBMIT_SUCCESS_MESSAGE,
-        _FakeElement(
-            mf_selectors.SUBMIT_SUCCESS_MESSAGE,
-            text=_SUBMIT_SUCCESS_MESSAGE,
-            displayed=False,
-        ),
-    )
-    continue_button = modal.add_child(
-        By.CSS_SELECTOR,
-        mf_selectors.SUBMIT_CONTINUE_BUTTON,
-        _FakeElement(mf_selectors.SUBMIT_CONTINUE_BUTTON, displayed=False),
-    )
-    continue_button.set_on_click(lambda: modal.set_displayed(displayed=False))
-
-    close_button = modal.find_element(By.CSS_SELECTOR, mf_selectors.CLOSE_BUTTON)
-    close_button.set_displayed(displayed=False)
-
-    def _show_success_confirmation() -> None:
-        success_message.set_displayed(displayed=True)
-        continue_button.set_displayed(displayed=True)
 
     submit = modal.find_element(By.CSS_SELECTOR, mf_selectors.SUBMIT_BUTTON)
     submit.set_on_click(_show_success_confirmation)
@@ -766,37 +724,48 @@ def test_register_transaction_accepts_success_confirmation_with_continue_button_
 
     form_page.register_transaction(_make_tx())
 
-    assert ("click", mf_selectors.SUBMIT_CONTINUE_BUTTON) in driver.actions
-    assert ("click", mf_selectors.CLOSE_BUTTON) not in driver.actions
+    assert ("get", mf_selectors.MANUAL_FORM_URL) in driver.actions
 
 
-def test_register_transaction_accepts_success_confirmation_with_fallback_close_selector() -> (
-    None
-):
+def test_register_transaction_raises_when_continue_button_only_is_displayed() -> None:
     driver = _make_driver()
     modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
-    success_message = modal.add_child(
+    continue_button = modal.add_child(
         By.CSS_SELECTOR,
-        mf_selectors.SUBMIT_SUCCESS_MESSAGE,
-        _FakeElement(
-            mf_selectors.SUBMIT_SUCCESS_MESSAGE,
-            text=_SUBMIT_SUCCESS_MESSAGE,
-            displayed=False,
-        ),
+        mf_selectors.SUBMIT_CONTINUE_BUTTON,
+        _FakeElement(mf_selectors.SUBMIT_CONTINUE_BUTTON, displayed=False),
     )
+
+    def _show_success_confirmation() -> None:
+        continue_button.set_displayed(displayed=True)
+
+    submit = modal.find_element(By.CSS_SELECTOR, mf_selectors.SUBMIT_BUTTON)
+    submit.set_on_click(_show_success_confirmation)
+
+    form_page = MFManualFormPage(
+        driver,
+        Mock(),
+        _DEFAULT_ACCOUNT_NAME,
+        category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
+    )
+
+    with pytest.raises(RuntimeError, match="MF 登録結果を確認できませんでした"):
+        form_page.register_transaction(_make_tx())
+
+    assert ("get", mf_selectors.MANUAL_FORM_URL) in driver.actions
+
+
+def test_register_transaction_raises_when_fallback_close_only_is_displayed() -> None:
+    driver = _make_driver()
+    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
     fallback_close_selector = mf_selectors.MODAL_CLOSE_BUTTON_SELECTORS[1]
     fallback_close_button = modal.add_child(
         By.CSS_SELECTOR,
         fallback_close_selector,
         _FakeElement(fallback_close_selector, displayed=False),
     )
-    fallback_close_button.set_on_click(lambda: modal.set_displayed(displayed=False))
-
-    close_button = modal.find_element(By.CSS_SELECTOR, mf_selectors.CLOSE_BUTTON)
-    close_button.set_displayed(displayed=False)
 
     def _show_success_confirmation() -> None:
-        success_message.set_displayed(displayed=True)
         fallback_close_button.set_displayed(displayed=True)
 
     submit = modal.find_element(By.CSS_SELECTOR, mf_selectors.SUBMIT_BUTTON)
@@ -809,10 +778,10 @@ def test_register_transaction_accepts_success_confirmation_with_fallback_close_s
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
     )
 
-    form_page.register_transaction(_make_tx())
+    with pytest.raises(RuntimeError, match="MF 登録結果を確認できませんでした"):
+        form_page.register_transaction(_make_tx())
 
-    assert ("click", fallback_close_selector) in driver.actions
-    assert ("click", mf_selectors.CLOSE_BUTTON) not in driver.actions
+    assert ("get", mf_selectors.MANUAL_FORM_URL) in driver.actions
 
 
 def test_register_transaction_raises_when_submit_error_is_reported() -> None:
@@ -839,9 +808,16 @@ def test_register_transaction_raises_when_submit_error_is_reported() -> None:
     with pytest.raises(RuntimeError, match=_SUBMIT_ERROR_MESSAGE):
         form_page.register_transaction(_make_tx())
 
+    assert ("get", mf_selectors.MANUAL_FORM_URL) in driver.actions
 
-def test_register_transaction_accepts_closed_modal_without_success_feedback() -> None:
+
+def test_register_transaction_raises_when_modal_is_closed_without_success_feedback() -> (
+    None
+):
     driver = _make_driver()
+    modal = driver.find_element(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+    submit = modal.find_element(By.CSS_SELECTOR, mf_selectors.SUBMIT_BUTTON)
+    submit.set_on_click(lambda: modal.set_displayed(displayed=False))
     form_page = MFManualFormPage(
         driver,
         Mock(),
@@ -849,9 +825,10 @@ def test_register_transaction_accepts_closed_modal_without_success_feedback() ->
         category_map={_DEFAULT_CATEGORY: _DEFAULT_LARGE_CATEGORY},
     )
 
-    form_page.register_transaction(_make_tx())
+    with pytest.raises(RuntimeError, match="MF 登録結果を確認できませんでした"):
+        form_page.register_transaction(_make_tx())
 
-    assert ("click", mf_selectors.SUBMIT_BUTTON) in driver.actions
+    assert ("get", mf_selectors.MANUAL_FORM_URL) in driver.actions
 
 
 def test_register_transaction_selects_exact_account_match_when_prefix_exists() -> None:

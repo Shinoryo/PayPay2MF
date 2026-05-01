@@ -51,7 +51,7 @@ _SUBMIT_REPORTED_ERROR_MESSAGE = "MF 登録に失敗しました。{detail}"
 _SUBMIT_ERROR_FALLBACK_DETAIL = "送信後にフォームエラーが表示されました。"
 _SUBMIT_OUTCOME_TIMEOUT_MESSAGE = (
     "MF 登録結果を確認できませんでした。"
-    "成功モーダルが閉じないか、エラー表示を検知できませんでした。"
+    "成功メッセージまたはエラー表示を検知できませんでした。"
 )
 _AMOUNT_INPUT_NOT_READY_MESSAGE = (
     "手入力フォームの金額入力欄が操作可能になりませんでした。"
@@ -113,7 +113,7 @@ class MFManualFormPage:
         )
 
     def register_transaction(self, tx: Transaction) -> None:
-        """1件の取引を手入力フォームへ反映して保存する。"""
+        """1件の取引を手入力フォームへ反映して保存し、判定後に /cf へ戻す。"""
         modal = self.open_manual_form()
 
         payment_selector = (
@@ -146,9 +146,13 @@ class MFManualFormPage:
             modal.find_element(By.CSS_SELECTOR, mf_selectors.SUBMIT_BUTTON)
         )
 
-        self._wait_for_submit_outcome()
+        try:
+            self._wait_for_submit_outcome()
+        finally:
+            self._reset_to_manual_form_page()
 
     def _wait_for_submit_outcome(self) -> None:
+        """保存後の結果を成功文言・エラー表示・timeout で判定する。"""
         try:
             status, detail = self._wait(mf_selectors.SUBMIT_TIMEOUT_MS).until(
                 self._resolve_submit_outcome,
@@ -164,13 +168,13 @@ class MFManualFormPage:
         self,
         _driver: WebDriver,
     ) -> tuple[str, str] | bool:
-        modal = self._find_optional(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
-        if modal is None or not modal.is_displayed():
-            return ("closed", AppConstants.EMPTY_STRING)
+        """モーダル表示中に成功文言またはエラー要素を検知したら結果を返す。"""
+        modal = self._find_visible_modal()
+        if modal is None:
+            return False
 
         if self._is_submit_success_state(modal):
-            self._close_submit_success_modal(modal)
-            return False
+            return ("success", AppConstants.EMPTY_STRING)
 
         for selector in mf_selectors.SUBMIT_ERROR_FEEDBACK_SELECTORS:
             for element in modal.find_elements(By.CSS_SELECTOR, selector):
@@ -190,28 +194,16 @@ class MFManualFormPage:
                 continue
             if element.text.strip() == _SUBMIT_SUCCESS_MESSAGE_TEXT:
                 return True
-
-        for element in modal.find_elements(
-            By.CSS_SELECTOR,
-            mf_selectors.SUBMIT_CONTINUE_BUTTON,
-        ):
-            if not element.is_displayed():
-                continue
-            return True
-
         return False
 
-    def _close_submit_success_modal(self, modal: WebElement) -> None:
-        close_button = self._find_first_visible_in_modal(
-            modal,
-            (
-                *mf_selectors.MODAL_CLOSE_BUTTON_SELECTORS,
-                mf_selectors.SUBMIT_CONTINUE_BUTTON,
-            ),
+    def _reset_to_manual_form_page(self) -> None:
+        """submit 判定後の状態を初期化するため /cf へ再遷移する。"""
+        self._driver.get(mf_selectors.MANUAL_FORM_URL)
+        self._wait(mf_selectors.NAVIGATION_TIMEOUT_MS).until(
+            expected_conditions.presence_of_element_located(
+                (By.CSS_SELECTOR, mf_selectors.OPEN_MANUAL_FORM_BUTTON),
+            )
         )
-        if close_button is None:
-            return
-        self._click_element(close_button)
 
     def _select_account(self, modal: WebElement) -> None:
         account_select = Select(
@@ -365,6 +357,12 @@ class MFManualFormPage:
     def _is_modal_visible(self) -> bool:
         modal = self._find_optional(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
         return modal is not None and modal.is_displayed()
+
+    def _find_visible_modal(self) -> WebElement | None:
+        modal = self._find_optional(By.CSS_SELECTOR, mf_selectors.MANUAL_FORM_MODAL)
+        if modal is None or not modal.is_displayed():
+            return None
+        return modal
 
     def _wait_for_amount_input(self, modal: WebElement) -> WebElement:
         try:
