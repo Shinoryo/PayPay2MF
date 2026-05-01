@@ -7,7 +7,7 @@
 
 dry_run: true          # true: ドライラン（書き込みなし） / false: 本番実行
 input_csv: "C:\\Users\\yourname\\Downloads\\paypay_history.csv"
-mf_account: "PayPay残高"
+mf_account: "PayPay"   # 残高サフィックス "(123,456円)" は照合時に除去される
 
 # ------ 任意設定 ------
 

@@ -60,6 +60,10 @@ input_csv: "C:\\Users\\yourname\\Downloads\\paypay_history.csv"
 mf_account: "PayPay"
 ```
 
+`mf_account` は通常、Money Forward 上の口座名本体を指定します。
+口座一覧に `PayPay (439,670円)` のような残高サフィックスが表示されても、
+照合時には末尾の `(<金額>円)` を除去して扱います。
+
 設定詳細は [docs/設定ファイル仕様書.md](docs/設定ファイル仕様書.md) を参照してください。
 
 ### 2. dry_run で確認
