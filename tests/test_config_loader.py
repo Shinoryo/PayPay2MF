@@ -32,6 +32,7 @@ _GCLOUD_CREDENTIALS_FILENAME = "service-account.json"
 _MISSING_PATH_NAME = "nonexistent"
 _MATCH_MODE_INVALID = "fuzzy"
 _BACKEND_INVALID = "typo"
+_DIRECTION_INVALID = "sideways"
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -642,6 +643,104 @@ def test_mapping_rule_invalid_match_mode(tmp_path: Path) -> None:
     cfg_path = _write_config(tmp_path, data)
     with pytest.raises(ValueError, match="match_mode"):
         load_config(cfg_path)
+
+
+@pytest.mark.parametrize(
+    "direction",
+    [
+        pytest.param(AppConstants.RULE_DIRECTION_INCOME, id="income"),
+        pytest.param(AppConstants.RULE_DIRECTION_EXPENSE, id="expense"),
+        pytest.param(AppConstants.RULE_DIRECTION_ANY, id="any"),
+    ],
+)
+def test_mapping_rule_direction_is_loaded_when_valid(
+    tmp_path: Path,
+    direction: str,
+) -> None:
+    """mapping_rules[].direction が有効値なら設定に反映されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["mapping_rules"] = [
+        {
+            "keyword": "セブン",
+            "category": "食料品",
+            "direction": direction,
+        }
+    ]
+
+    config = load_config(_write_config(tmp_path, data))
+
+    assert config.mapping_rules[0].direction == direction
+
+
+def test_mapping_rule_direction_defaults_to_any_when_omitted(tmp_path: Path) -> None:
+    """mapping_rules[].direction 未指定時に any が補完されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["mapping_rules"] = [
+        {
+            "keyword": "セブン",
+            "category": "食料品",
+        }
+    ]
+
+    config = load_config(_write_config(tmp_path, data))
+
+    assert config.mapping_rules[0].direction == AppConstants.RULE_DIRECTION_ANY
+
+
+@pytest.mark.parametrize(
+    ("direction", "pattern"),
+    [
+        pytest.param(
+            _DIRECTION_INVALID,
+            re.escape(
+                "mapping_rules[0]: direction が無効です: 'sideways' （有効値: any, expense, income）"
+            ),
+            id="invalid-value",
+        ),
+        pytest.param(
+            "",
+            re.escape("mapping_rules[0]: direction は空文字を許可しません。"),
+            id="empty",
+        ),
+        pytest.param(
+            "   ",
+            re.escape("mapping_rules[0]: direction は空文字を許可しません。"),
+            id="whitespace",
+        ),
+        pytest.param(
+            123,
+            re.escape("mapping_rules[0]: direction には文字列を指定してください。"),
+            id="int",
+        ),
+        pytest.param(
+            True,
+            re.escape("mapping_rules[0]: direction には文字列を指定してください。"),
+            id="bool",
+        ),
+        pytest.param(
+            None,
+            re.escape("mapping_rules[0]: direction には文字列を指定してください。"),
+            id="null",
+        ),
+    ],
+)
+def test_invalid_mapping_rule_direction_raises_value_error(
+    tmp_path: Path,
+    direction: object,
+    pattern: str,
+) -> None:
+    """mapping_rules[].direction が不正な場合に ValueError が送出されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["mapping_rules"] = [
+        {
+            "keyword": "セブン",
+            "category": "食料品",
+            "direction": direction,
+        }
+    ]
+
+    with pytest.raises(ValueError, match=pattern):
+        load_config(_write_config(tmp_path, data))
 
 
 def test_mapping_rule_invalid_regex_is_rejected_at_load_time(tmp_path: Path) -> None:
