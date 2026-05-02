@@ -930,11 +930,12 @@ def _build_config(
         AppConfig インスタンス。
 
     Notes:
-        mapping_rules の keyword/category/direction は前後空白を除去して保持する。
+        mapping_rules の keyword は入力値を保持する。
+        category/direction/match_mode は前後空白を除去して保持する。
     """
     mapping_rules = [
         MappingRule(
-            keyword=r[_KEY_RULE_KEYWORD].strip(),
+            keyword=r[_KEY_RULE_KEYWORD],
             category=r[_KEY_RULE_CATEGORY].strip(),
             match_mode=r.get(
                 _KEY_RULE_MATCH_MODE,

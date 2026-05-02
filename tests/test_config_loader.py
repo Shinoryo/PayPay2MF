@@ -693,10 +693,10 @@ def test_mapping_rule_direction_is_loaded_when_valid(
     assert config.mapping_rules[0].direction == expected_direction
 
 
-def test_mapping_rule_keyword_and_category_are_trimmed_on_load(
+def test_mapping_rule_keyword_is_preserved_and_category_is_trimmed_on_load(
     tmp_path: Path,
 ) -> None:
-    """mapping_rules の keyword/category の前後空白が読み込み時に除去されることを確認する。"""
+    """mapping_rules の keyword は保持され、category は前後空白が除去されることを確認する。"""
     data = _base_data(tmp_path)
     data["mapping_rules"] = [
         {
@@ -708,18 +708,18 @@ def test_mapping_rule_keyword_and_category_are_trimmed_on_load(
 
     config = load_config(_write_config(tmp_path, data))
 
-    assert config.mapping_rules[0].keyword == "セブン"
+    assert config.mapping_rules[0].keyword == "  セブン  "
     assert config.mapping_rules[0].category == "食料品"
 
 
 def test_mapping_rule_whitespace_values_work_through_apply_mapping(
     tmp_path: Path,
 ) -> None:
-    """前後空白を含む mapping_rules 値でも load_config 後に apply_mapping が期待どおり動作する。"""
+    """category/direction の前後空白は load_config 後でも apply_mapping で期待どおり動作する。"""
     data = _base_data(tmp_path)
     data["mapping_rules"] = [
         {
-            "keyword": "  セブン  ",
+            "keyword": "セブン",
             "category": "  食料品  ",
             "direction": "  expense  ",
         }
@@ -834,6 +834,35 @@ def test_mapping_rule_invalid_regex_is_rejected_at_load_time(tmp_path: Path) -> 
 
     with pytest.raises(ValueError, match="regex が不正"):
         load_config(_write_config(tmp_path, data))
+
+
+def test_mapping_rule_regex_keyword_preserves_surrounding_whitespace(
+    tmp_path: Path,
+) -> None:
+    """regex モードでは keyword の前後空白が保持され、実行時評価にも同じ文字列が使われる。"""
+    data = _base_data(tmp_path)
+    data["mapping_rules"] = [
+        {
+            "keyword": r"  Google.*PLAY  ",
+            "category": "サブスクリプション",
+            "match_mode": AppConstants.MATCH_MODE_REGEX,
+        }
+    ]
+
+    config = load_config(_write_config(tmp_path, data))
+    tx = Transaction(
+        date=datetime(2025, 1, 1),  # noqa: DTZ001
+        amount=100,
+        direction=AppConstants.DIRECTION_OUT,
+        memo="支払い",
+        merchant="Google - GOOGLE PLAY JAPAN",
+        transaction_id="TX003",
+    )
+
+    result = apply_mapping([tx], config.mapping_rules)
+
+    assert config.mapping_rules[0].keyword == r"  Google.*PLAY  "
+    assert result[0].category == AppConstants.DEFAULT_CATEGORY
 
 
 def test_mapping_rules_must_be_list(tmp_path: Path) -> None:

@@ -147,6 +147,54 @@ def test_mapping_regex() -> None:
     assert result[0].category == _SUBSCRIPTION
 
 
+def test_mapping_contains_preserves_keyword_surrounding_whitespace() -> None:
+    """contains モードでは keyword の前後空白がマッチ条件として保持されることを確認する。"""
+    txs = [_make_tx(merchant="セブン-イレブン")]
+    rules = [
+        MappingRule(
+            keyword=" セブン ",
+            category=_CONVENIENCE_STORE,
+            match_mode=AppConstants.MATCH_MODE_CONTAINS,
+        ),
+    ]
+
+    result = apply_mapping(txs, rules)
+
+    assert result[0].category == AppConstants.DEFAULT_CATEGORY
+
+
+def test_mapping_starts_with_preserves_keyword_surrounding_whitespace() -> None:
+    """starts_with モードでは keyword の前後空白がマッチ条件として保持されることを確認する。"""
+    txs = [_make_tx(merchant="セブンイレブン横浜")]
+    rules = [
+        MappingRule(
+            keyword=" セブン",
+            category=_CONVENIENCE_STORE,
+            match_mode=AppConstants.MATCH_MODE_STARTS_WITH,
+        ),
+    ]
+
+    result = apply_mapping(txs, rules)
+
+    assert result[0].category == AppConstants.DEFAULT_CATEGORY
+
+
+def test_mapping_regex_preserves_keyword_surrounding_whitespace() -> None:
+    """regex モードでは keyword の前後空白を含むパターンがそのまま評価されることを確認する。"""
+    txs = [_make_tx(merchant="セブンイレブン横浜")]
+    rules = [
+        MappingRule(
+            keyword=r" ^セブン",
+            category=_CONVENIENCE_STORE,
+            match_mode=AppConstants.MATCH_MODE_REGEX,
+        ),
+    ]
+
+    result = apply_mapping(txs, rules)
+
+    assert result[0].category == AppConstants.DEFAULT_CATEGORY
+
+
 def test_mapping_regex_compiles_each_rule_once(monkeypatch) -> None:
     """regex ルールは apply_mapping ごとに 1 回だけ compile されることを確認する。"""
     compile_mock = Mock(wraps=__import__("re").compile)
