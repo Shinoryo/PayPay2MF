@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import pytest
@@ -18,6 +19,8 @@ import yaml
 
 from paypay2mf.config_loader import load_config
 from paypay2mf.constants import AppConstants
+from paypay2mf.filter import apply_mapping
+from paypay2mf.models import Transaction
 
 _CONFIG_FILENAME = "config.yml"
 _YAML_ENCODING = AppConstants.DEFAULT_TEXT_ENCODING
@@ -646,16 +649,34 @@ def test_mapping_rule_invalid_match_mode(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "direction",
+    ("direction", "expected_direction"),
     [
-        pytest.param(AppConstants.RULE_DIRECTION_INCOME, id="income"),
-        pytest.param(AppConstants.RULE_DIRECTION_EXPENSE, id="expense"),
-        pytest.param(AppConstants.RULE_DIRECTION_ANY, id="any"),
+        pytest.param(
+            AppConstants.RULE_DIRECTION_INCOME,
+            AppConstants.RULE_DIRECTION_INCOME,
+            id="income",
+        ),
+        pytest.param(
+            AppConstants.RULE_DIRECTION_EXPENSE,
+            AppConstants.RULE_DIRECTION_EXPENSE,
+            id="expense",
+        ),
+        pytest.param(
+            AppConstants.RULE_DIRECTION_ANY,
+            AppConstants.RULE_DIRECTION_ANY,
+            id="any",
+        ),
+        pytest.param(
+            f"  {AppConstants.RULE_DIRECTION_EXPENSE}  ",
+            AppConstants.RULE_DIRECTION_EXPENSE,
+            id="expense-with-surrounding-whitespace",
+        ),
     ],
 )
 def test_mapping_rule_direction_is_loaded_when_valid(
     tmp_path: Path,
     direction: str,
+    expected_direction: str,
 ) -> None:
     """mapping_rules[].direction が有効値なら設定に反映されることを確認する。"""
     data = _base_data(tmp_path)
@@ -669,7 +690,64 @@ def test_mapping_rule_direction_is_loaded_when_valid(
 
     config = load_config(_write_config(tmp_path, data))
 
-    assert config.mapping_rules[0].direction == direction
+    assert config.mapping_rules[0].direction == expected_direction
+
+
+def test_mapping_rule_keyword_and_category_are_trimmed_on_load(
+    tmp_path: Path,
+) -> None:
+    """mapping_rules の keyword/category の前後空白が読み込み時に除去されることを確認する。"""
+    data = _base_data(tmp_path)
+    data["mapping_rules"] = [
+        {
+            "keyword": "  セブン  ",
+            "category": "  食料品  ",
+            "match_mode": AppConstants.MATCH_MODE_CONTAINS,
+        }
+    ]
+
+    config = load_config(_write_config(tmp_path, data))
+
+    assert config.mapping_rules[0].keyword == "セブン"
+    assert config.mapping_rules[0].category == "食料品"
+
+
+def test_mapping_rule_whitespace_values_work_through_apply_mapping(
+    tmp_path: Path,
+) -> None:
+    """前後空白を含む mapping_rules 値でも load_config 後に apply_mapping が期待どおり動作する。"""
+    data = _base_data(tmp_path)
+    data["mapping_rules"] = [
+        {
+            "keyword": "  セブン  ",
+            "category": "  食料品  ",
+            "direction": "  expense  ",
+        }
+    ]
+
+    config = load_config(_write_config(tmp_path, data))
+    outgoing_tx = Transaction(
+        date=datetime(2025, 1, 1),  # noqa: DTZ001
+        amount=100,
+        direction=AppConstants.DIRECTION_OUT,
+        memo="支払い",
+        merchant="セブン - イレブン",
+        transaction_id="TX001",
+    )
+    incoming_tx = Transaction(
+        date=datetime(2025, 1, 1),  # noqa: DTZ001
+        amount=100,
+        direction=AppConstants.DIRECTION_IN,
+        memo="支払い",
+        merchant="セブン - イレブン",
+        transaction_id="TX002",
+    )
+
+    outgoing_result = apply_mapping([outgoing_tx], config.mapping_rules)
+    incoming_result = apply_mapping([incoming_tx], config.mapping_rules)
+
+    assert outgoing_result[0].category == "食料品"
+    assert incoming_result[0].category == AppConstants.DEFAULT_CATEGORY
 
 
 def test_mapping_rule_direction_defaults_to_any_when_omitted(tmp_path: Path) -> None:

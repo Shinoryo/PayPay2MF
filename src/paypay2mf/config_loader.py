@@ -928,12 +928,18 @@ def _build_config(
 
     Returns:
         AppConfig インスタンス。
+
+    Notes:
+        mapping_rules の keyword/category/direction は前後空白を除去して保持する。
     """
     mapping_rules = [
         MappingRule(
-            keyword=r[_KEY_RULE_KEYWORD],
-            category=r[_KEY_RULE_CATEGORY],
-            match_mode=r.get(_KEY_RULE_MATCH_MODE, AppConstants.DEFAULT_MATCH_MODE),
+            keyword=r[_KEY_RULE_KEYWORD].strip(),
+            category=r[_KEY_RULE_CATEGORY].strip(),
+            match_mode=r.get(
+                _KEY_RULE_MATCH_MODE,
+                AppConstants.DEFAULT_MATCH_MODE,
+            ).strip(),
             priority=r.get(_KEY_RULE_PRIORITY, _DEFAULT_PRIORITY),
             direction=(
                 r[_KEY_RULE_DIRECTION].strip()
