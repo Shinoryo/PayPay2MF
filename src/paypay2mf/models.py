@@ -24,12 +24,15 @@ class MappingRule:
         category: MF に登録するカテゴリ名。
         match_mode: マッチモード。"contains" / "starts_with" / "regex" のいずれか。
         priority: 評価優先度。数値が大きいほど先に評価される。
+        direction: ルールの取引方向。"income" / "expense" / "any" のいずれか。
+            未指定時は "any" として扱う。
     """
 
     keyword: str
     category: str
     match_mode: str = AppConstants.DEFAULT_MATCH_MODE
     priority: int = 0
+    direction: str = AppConstants.RULE_DIRECTION_ANY
 
 
 @dataclass
