@@ -935,7 +935,11 @@ def _build_config(
             category=r[_KEY_RULE_CATEGORY],
             match_mode=r.get(_KEY_RULE_MATCH_MODE, AppConstants.DEFAULT_MATCH_MODE),
             priority=r.get(_KEY_RULE_PRIORITY, _DEFAULT_PRIORITY),
-            direction=r.get(_KEY_RULE_DIRECTION, AppConstants.RULE_DIRECTION_ANY),
+            direction=(
+                r[_KEY_RULE_DIRECTION].strip()
+                if _KEY_RULE_DIRECTION in r
+                else AppConstants.RULE_DIRECTION_ANY
+            ),
         )
         for r in sections.mapping_rules
     ]
