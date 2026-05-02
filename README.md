@@ -73,6 +73,7 @@ mf_account: "PayPay"
 - `income`: 入金取引にのみ適用
 - `expense`: 出金取引にのみ適用
 - `any`: 入出金の両方に適用（未指定時の既定値）
+- `keyword` / `category` / `direction` は、設定値の前後空白を自動で除去して扱います
 
 同一 `keyword` かつ同一 `priority` のルールが競合した場合は、
 `direction` 指定ルール（`income` / `expense`）を `any` より優先します。
