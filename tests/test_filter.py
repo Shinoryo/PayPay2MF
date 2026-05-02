@@ -36,6 +36,7 @@ def _make_tx(
     transaction_id: str | None = _DEFAULT_TRANSACTION_ID,
     merchant: str = _DEFAULT_MERCHANT,
     amount: int = 100,
+    direction: str = AppConstants.DIRECTION_OUT,
 ) -> Transaction:
     """テスト用の Transaction を生成する。
 
@@ -50,7 +51,7 @@ def _make_tx(
     return Transaction(
         date=datetime(2025, 1, 1),  # noqa: DTZ001
         amount=amount,
-        direction=AppConstants.DIRECTION_OUT,
+        direction=direction,
         memo=_DEFAULT_MEMO,
         merchant=merchant,
         transaction_id=transaction_id,
@@ -146,6 +147,54 @@ def test_mapping_regex() -> None:
     assert result[0].category == _SUBSCRIPTION
 
 
+def test_mapping_contains_preserves_keyword_surrounding_whitespace() -> None:
+    """contains モードでは keyword の前後空白がマッチ条件として保持されることを確認する。"""
+    txs = [_make_tx(merchant="セブン-イレブン")]
+    rules = [
+        MappingRule(
+            keyword=" セブン ",
+            category=_CONVENIENCE_STORE,
+            match_mode=AppConstants.MATCH_MODE_CONTAINS,
+        ),
+    ]
+
+    result = apply_mapping(txs, rules)
+
+    assert result[0].category == AppConstants.DEFAULT_CATEGORY
+
+
+def test_mapping_starts_with_preserves_keyword_surrounding_whitespace() -> None:
+    """starts_with モードでは keyword の前後空白がマッチ条件として保持されることを確認する。"""
+    txs = [_make_tx(merchant="セブンイレブン横浜")]
+    rules = [
+        MappingRule(
+            keyword=" セブン",
+            category=_CONVENIENCE_STORE,
+            match_mode=AppConstants.MATCH_MODE_STARTS_WITH,
+        ),
+    ]
+
+    result = apply_mapping(txs, rules)
+
+    assert result[0].category == AppConstants.DEFAULT_CATEGORY
+
+
+def test_mapping_regex_preserves_keyword_surrounding_whitespace() -> None:
+    """regex モードでは keyword の前後空白を含むパターンがそのまま評価されることを確認する。"""
+    txs = [_make_tx(merchant="セブンイレブン横浜")]
+    rules = [
+        MappingRule(
+            keyword=r" ^セブン",
+            category=_CONVENIENCE_STORE,
+            match_mode=AppConstants.MATCH_MODE_REGEX,
+        ),
+    ]
+
+    result = apply_mapping(txs, rules)
+
+    assert result[0].category == AppConstants.DEFAULT_CATEGORY
+
+
 def test_mapping_regex_compiles_each_rule_once(monkeypatch) -> None:
     """regex ルールは apply_mapping ごとに 1 回だけ compile されることを確認する。"""
     compile_mock = Mock(wraps=__import__("re").compile)
@@ -176,6 +225,90 @@ def test_mapping_priority() -> None:
     ]
     result = apply_mapping(txs, rules)
     assert result[0].category == _GROCERY
+
+
+def test_mapping_direction_expense_matches_outgoing_only() -> None:
+    """direction=expense ルールは出金取引にのみ適用されることを確認する。"""
+    out_tx = _make_tx(
+        merchant="セブン - イレブン", direction=AppConstants.DIRECTION_OUT
+    )
+    in_tx = _make_tx(merchant="セブン - イレブン", direction=AppConstants.DIRECTION_IN)
+    rules = [
+        MappingRule(
+            keyword=_SEVEN_ELEVEN,
+            category=_GROCERY,
+            direction=AppConstants.RULE_DIRECTION_EXPENSE,
+        )
+    ]
+
+    out_result = apply_mapping([out_tx], rules)
+    in_result = apply_mapping([in_tx], rules)
+
+    assert out_result[0].category == _GROCERY
+    assert in_result[0].category == AppConstants.DEFAULT_CATEGORY
+
+
+def test_mapping_direction_income_matches_incoming_only() -> None:
+    """direction=income ルールは入金取引にのみ適用されることを確認する。"""
+    out_tx = _make_tx(merchant="giftee", direction=AppConstants.DIRECTION_OUT)
+    in_tx = _make_tx(merchant="giftee", direction=AppConstants.DIRECTION_IN)
+    rules = [
+        MappingRule(
+            keyword="giftee",
+            category="一時所得",
+            direction=AppConstants.RULE_DIRECTION_INCOME,
+        )
+    ]
+
+    out_result = apply_mapping([out_tx], rules)
+    in_result = apply_mapping([in_tx], rules)
+
+    assert out_result[0].category == AppConstants.DEFAULT_CATEGORY
+    assert in_result[0].category == "一時所得"
+
+
+def test_mapping_direction_any_matches_both_directions() -> None:
+    """direction=any ルールは入出金の両方に適用されることを確認する。"""
+    out_tx = _make_tx(
+        merchant="セブン - イレブン", direction=AppConstants.DIRECTION_OUT
+    )
+    in_tx = _make_tx(merchant="セブン - イレブン", direction=AppConstants.DIRECTION_IN)
+    rules = [
+        MappingRule(
+            keyword=_SEVEN_ELEVEN,
+            category=_GROCERY,
+            direction=AppConstants.RULE_DIRECTION_ANY,
+        )
+    ]
+
+    out_result = apply_mapping([out_tx], rules)
+    in_result = apply_mapping([in_tx], rules)
+
+    assert out_result[0].category == _GROCERY
+    assert in_result[0].category == _GROCERY
+
+
+def test_mapping_direction_specific_rule_prioritized_over_any() -> None:
+    """同一priorityなら direction 指定ルールが any より優先されることを確認する。"""
+    tx = _make_tx(merchant="セブン - イレブン", direction=AppConstants.DIRECTION_OUT)
+    rules = [
+        MappingRule(
+            keyword=_SEVEN_ELEVEN,
+            category="候補-any",
+            direction=AppConstants.RULE_DIRECTION_ANY,
+            priority=320,
+        ),
+        MappingRule(
+            keyword=_SEVEN_ELEVEN,
+            category="候補-expense",
+            direction=AppConstants.RULE_DIRECTION_EXPENSE,
+            priority=320,
+        ),
+    ]
+
+    result = apply_mapping([tx], rules)
+
+    assert result[0].category == "候補-expense"
 
 
 # マッピング: ルールなし → 未分類

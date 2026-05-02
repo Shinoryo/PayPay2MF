@@ -262,7 +262,9 @@ def test_write_error_csv_row_index_zero_outputs_empty(
     tx = transaction_factory(
         transaction_id="TX001", merchant="商店A", amount=500, row_index=0
     )
-    records = [RegistrationFailure(tx=tx, error_message=_ERROR_MESSAGE_SELECTOR_TIMEOUT)]
+    records = [
+        RegistrationFailure(tx=tx, error_message=_ERROR_MESSAGE_SELECTOR_TIMEOUT)
+    ]
     out_path = write_error_csv(
         records,
         app_config_factory(tmp_path, input_csv_name="dummy.csv"),

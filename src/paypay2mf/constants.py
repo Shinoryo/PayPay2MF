@@ -10,6 +10,18 @@ class AppConstants:
     DIRECTION_IN = "in"
     DIRECTION_OUT = "out"
 
+    # mapping_rules の方向指定に使う定数。
+    RULE_DIRECTION_INCOME = "income"
+    RULE_DIRECTION_EXPENSE = "expense"
+    RULE_DIRECTION_ANY = "any"
+    VALID_RULE_DIRECTIONS = frozenset(
+        {
+            RULE_DIRECTION_INCOME,
+            RULE_DIRECTION_EXPENSE,
+            RULE_DIRECTION_ANY,
+        },
+    )
+
     # カテゴリや空文字などの基本値。
     DEFAULT_CATEGORY = "未分類"
     EMPTY_STRING = ""

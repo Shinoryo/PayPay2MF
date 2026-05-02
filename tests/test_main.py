@@ -429,9 +429,13 @@ def test_register_transaction_log_omits_csv_row_when_row_index_zero(
     logger = Mock(spec=logging.Logger)
     detector = _FakeDetector()
     registrar = _FakeRegistrar({"TX001"})
-    monkeypatch.setattr(app_main, "MFRegistrar", Mock(return_value=nullcontext(registrar)))
+    monkeypatch.setattr(
+        app_main, "MFRegistrar", Mock(return_value=nullcontext(registrar))
+    )
 
-    tx = transaction_factory(transaction_id="TX001", merchant="merchant-TX001", row_index=0)
+    tx = transaction_factory(
+        transaction_id="TX001", merchant="merchant-TX001", row_index=0
+    )
     app_main.run_registration(config, logger, detector, [tx])
 
     call_args = logger.exception.call_args

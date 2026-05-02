@@ -66,6 +66,35 @@ mf_account: "PayPay"
 
 設定詳細は [docs/設定ファイル仕様書.md](docs/設定ファイル仕様書.md) を参照してください。
 
+### 1.1 任意: 入出金方向ごとのカテゴリ分岐
+
+`mapping_rules` の各ルールには `direction` を指定できます。
+
+- `income`: 入金取引にのみ適用
+- `expense`: 出金取引にのみ適用
+- `any`: 入出金の両方に適用（未指定時の既定値）
+- `keyword` は入力値をそのまま保持します（前後空白もマッチ条件として評価）
+- `category` / `direction` は、設定値の前後空白を自動で除去して扱います
+- `match_mode`: `contains` は部分一致、`starts_with` は前方一致、`regex` は正規表現マッチです
+
+同一 `keyword` かつ同一 `priority` のルールが競合した場合は、
+`direction` 指定ルール（`income` / `expense`）を `any` より優先します。
+
+```yaml
+mapping_rules:
+  - keyword: "セブン-イレブン"
+    category: "食料品"
+    match_mode: "contains"
+    direction: "expense"
+    priority: 320
+
+  - keyword: "セブン-イレブン"
+    category: "一時所得"
+    match_mode: "contains"
+    direction: "income"
+    priority: 320
+```
+
 ### 2. dry_run で確認
 
 ```bash
@@ -209,7 +238,7 @@ python -m pip_audit --skip-editable --ignore-vuln CVE-2026-4539
 
 | 版 | 日付 | 変更概要 |
 | ---- | ------ | --------- |
-| 1.3.2 | 2026-05-02 | ログファイルとエラー CSV の出力内容を修正・追加 |
+| 1.3.2 | 2026-05-02 | ログファイルとエラー CSV の出力内容を修正・追加<br>mapping_rules に取引方向を表す direction を追加 |
 | 1.3.1 | 2026-05-02 | 保存結果判定を明確化し、各件後に /cf へ再遷移して登録処理の安定性を改善 |
 | 1.3.0 | 2026-05-01 | 複合明細合算を廃止 |
 | 1.2.0 | 2026-05-01 | トランザクションモデルと重複検出を強化し、行フィンガープリントでCSV重複を正確に判定するように修正 |

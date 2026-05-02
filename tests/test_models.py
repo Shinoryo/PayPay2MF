@@ -51,6 +51,7 @@ def test_dataclass_defaults_match_app_constants(
     )
 
     assert mapping_rule.match_mode == AppConstants.DEFAULT_MATCH_MODE
+    assert mapping_rule.direction == AppConstants.RULE_DIRECTION_ANY
     assert transaction.category == AppConstants.DEFAULT_CATEGORY
     assert duplicate_detection.backend == AppConstants.DEFAULT_BACKEND
     assert parser.encoding_priority == list(AppConstants.DEFAULT_ENCODING_PRIORITY)

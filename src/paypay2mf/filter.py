@@ -21,7 +21,14 @@ class _PreparedRule:
     category: str
     keyword: str
     match_mode: str
+    direction: str
     compiled_pattern: re.Pattern[str] | None = None
+
+
+_RULE_TO_TX_DIRECTION = {
+    AppConstants.RULE_DIRECTION_INCOME: AppConstants.DIRECTION_IN,
+    AppConstants.RULE_DIRECTION_EXPENSE: AppConstants.DIRECTION_OUT,
+}
 
 
 def apply_exclude(
@@ -59,8 +66,18 @@ def apply_mapping(
 ) -> list[Transaction]:
     """カテゴリマッピングルールを適用してカテゴリを更新する。
 
-    各 Transaction の merchant に対して rules を priority 降順で評価し、
-    最初にマッチしたカテゴリを設定する。マッチしない場合は "未分類" のまま。
+    各 Transaction に対して rules を優先順で評価し、最初にマッチした
+    カテゴリを設定する。評価順は以下のとおり。
+
+    1. priority 降順（数値が大きいほど優先）
+    2. 同一 keyword・同一 match_mode・同一 priority の競合時は
+       direction 指定（income/expense）を any より優先
+
+    direction が income/expense のルールは、Transaction.direction が
+    対応する in/out の場合にのみマッチ候補となる。
+    `contains` は部分一致、`starts_with` は前方一致、`regex` は
+    正規表現で評価する。keyword は前後空白を含めてそのまま評価する。
+    マッチしない場合は category は "未分類" のまま。
 
     Args:
         records: マッピング対象の Transaction のリスト。
@@ -73,7 +90,7 @@ def apply_mapping(
 
     result: list[Transaction] = []
     for tx in records:
-        tx.category = _match_category(tx.merchant, prepared_rules)
+        tx.category = _match_category(tx, prepared_rules)
         result.append(tx)
 
     return result
@@ -81,7 +98,32 @@ def apply_mapping(
 
 def _prepare_rules(rules: list[MappingRule]) -> list[_PreparedRule]:
     prepared: list[_PreparedRule] = []
-    for rule in sorted(rules, key=lambda r: r.priority, reverse=True):
+    sorted_rules = sorted(rules, key=lambda r: -r.priority)
+
+    prioritized_rules: list[MappingRule] = []
+    index = 0
+    while index < len(sorted_rules):
+        rule = sorted_rules[index]
+        group_end = index + 1
+        while group_end < len(sorted_rules):
+            candidate = sorted_rules[group_end]
+            if candidate.priority != rule.priority:
+                break
+            if candidate.keyword != rule.keyword:
+                break
+            if candidate.match_mode != rule.match_mode:
+                break
+            group_end += 1
+
+        prioritized_rules.extend(
+            sorted(
+                sorted_rules[index:group_end],
+                key=lambda r: r.direction == AppConstants.RULE_DIRECTION_ANY,
+            )
+        )
+        index = group_end
+
+    for rule in prioritized_rules:
         compiled_pattern = None
         if rule.match_mode == AppConstants.MATCH_MODE_REGEX:
             compiled_pattern = re.compile(rule.keyword)
@@ -90,6 +132,7 @@ def _prepare_rules(rules: list[MappingRule]) -> list[_PreparedRule]:
                 category=rule.category,
                 keyword=rule.keyword,
                 match_mode=rule.match_mode,
+                direction=rule.direction,
                 compiled_pattern=compiled_pattern,
             )
         )
@@ -97,34 +140,40 @@ def _prepare_rules(rules: list[MappingRule]) -> list[_PreparedRule]:
 
 
 def _match_category(
-    merchant: str,
+    tx: Transaction,
     prepared_rules: list[_PreparedRule],
 ) -> str:
-    """merchant に対してルールを評価し、最初にマッチしたカテゴリ名を返す。
+    """Transaction に対してルールを評価し、最初にマッチしたカテゴリ名を返す。
 
     Args:
-        merchant: 取引先名。
+        tx: 評価対象の取引データ。
         prepared_rules: カテゴリマッピングルールのリスト。priority 降順を想定。
 
     Returns:
         マッチしたカテゴリ名。マッチしない場合は "未分類"。
     """
     for rule in prepared_rules:
-        if _matches(merchant, rule):
+        if _matches(tx, rule):
             return rule.category
     return AppConstants.DEFAULT_CATEGORY
 
 
-def _matches(merchant: str, rule: _PreparedRule) -> bool:
-    """単一のルールが merchant にマッチするか判定する。
+def _matches(tx: Transaction, rule: _PreparedRule) -> bool:
+    """単一のルールが Transaction にマッチするか判定する。
 
     Args:
-        merchant: 取引先名。
+        tx: 評価対象の取引データ。
         rule: 評価するマッピングルール。
 
     Returns:
         マッチすれば True、しなければ False。
     """
+    if rule.direction != AppConstants.RULE_DIRECTION_ANY:
+        expected_direction = _RULE_TO_TX_DIRECTION.get(rule.direction)
+        if tx.direction != expected_direction:
+            return False
+
+    merchant = tx.merchant
     if rule.match_mode == AppConstants.MATCH_MODE_CONTAINS:
         return rule.keyword in merchant
     if rule.match_mode == AppConstants.MATCH_MODE_STARTS_WITH:

@@ -61,6 +61,7 @@ _KEY_RULE_KEYWORD = "keyword"
 _KEY_RULE_CATEGORY = "category"
 _KEY_RULE_MATCH_MODE = "match_mode"
 _KEY_RULE_PRIORITY = "priority"
+_KEY_RULE_DIRECTION = "direction"
 
 # デフォルト値
 _DEFAULT_PRIORITY = 0
@@ -108,6 +109,13 @@ _MSG_MAPPING_REGEX_INVALID = (
 _MSG_MAPPING_PRIORITY_TYPE = "mapping_rules[{i}]: priority には整数を指定してください。"
 _MSG_MAPPING_PRIORITY_RANGE = (
     "mapping_rules[{i}]: priority には 0 以上の整数を指定してください: {value}"
+)
+_MSG_MAPPING_DIRECTION_TYPE = (
+    "mapping_rules[{i}]: direction には文字列を指定してください。"
+)
+_MSG_MAPPING_DIRECTION_EMPTY = "mapping_rules[{i}]: direction は空文字を許可しません。"
+_MSG_MAPPING_DIRECTION_INVALID = (
+    "mapping_rules[{i}]: direction が無効です: {value!r} （有効値: {valids}）"
 )
 
 _MSG_EXCLUDE_PREFIXES_TYPE = "exclude_prefixes は list で指定してください。"
@@ -268,6 +276,7 @@ _ALLOWED_MAPPING_RULE_KEYS = frozenset(
         _KEY_RULE_CATEGORY,
         _KEY_RULE_MATCH_MODE,
         _KEY_RULE_PRIORITY,
+        _KEY_RULE_DIRECTION,
     },
 )
 _ALLOWED_DUPLICATE_DETECTION_KEYS = frozenset(
@@ -536,7 +545,8 @@ def _validate_mapping_rules(rules: list) -> None:
         rules: YAML から読み込んだ mapping_rules のリスト。
 
     Raises:
-        ValueError: keyword が空文字の場合、または match_mode の値が不正な場合。
+        ValueError: keyword/category の空値、match_mode/direction の不正値、
+            または priority の型・範囲が不正な場合。
     """
     errors: list[str] = []
     for i, rule in enumerate(rules):
@@ -568,8 +578,39 @@ def _validate_mapping_rules(rules: list) -> None:
                 ),
                 errors=errors,
             )
+        _validate_mapping_rule_direction(rule, i, errors)
     if errors:
         raise ValueError("\n".join(errors))
+
+
+def _validate_mapping_rule_direction(
+    rule: dict,
+    index: int,
+    errors: list[str],
+) -> None:
+    """mapping_rules[].direction の型と値を検証する。"""
+    if _KEY_RULE_DIRECTION not in rule:
+        return
+
+    direction = rule.get(_KEY_RULE_DIRECTION)
+    if not isinstance(direction, str):
+        errors.append(_MSG_MAPPING_DIRECTION_TYPE.format(i=index))
+        return
+
+    normalized = direction.strip()
+    if not normalized:
+        errors.append(_MSG_MAPPING_DIRECTION_EMPTY.format(i=index))
+        return
+
+    if normalized not in AppConstants.VALID_RULE_DIRECTIONS:
+        valids = ", ".join(sorted(AppConstants.VALID_RULE_DIRECTIONS))
+        errors.append(
+            _MSG_MAPPING_DIRECTION_INVALID.format(
+                i=index,
+                value=direction,
+                valids=valids,
+            ),
+        )
 
 
 def _validate_mapping_rule_text_fields(
@@ -887,13 +928,25 @@ def _build_config(
 
     Returns:
         AppConfig インスタンス。
+
+    Notes:
+        mapping_rules の keyword は入力値を保持する。
+        category/direction/match_mode は前後空白を除去して保持する。
     """
     mapping_rules = [
         MappingRule(
             keyword=r[_KEY_RULE_KEYWORD],
-            category=r[_KEY_RULE_CATEGORY],
-            match_mode=r.get(_KEY_RULE_MATCH_MODE, AppConstants.DEFAULT_MATCH_MODE),
+            category=r[_KEY_RULE_CATEGORY].strip(),
+            match_mode=r.get(
+                _KEY_RULE_MATCH_MODE,
+                AppConstants.DEFAULT_MATCH_MODE,
+            ).strip(),
             priority=r.get(_KEY_RULE_PRIORITY, _DEFAULT_PRIORITY),
+            direction=(
+                r[_KEY_RULE_DIRECTION].strip()
+                if _KEY_RULE_DIRECTION in r
+                else AppConstants.RULE_DIRECTION_ANY
+            ),
         )
         for r in sections.mapping_rules
     ]
