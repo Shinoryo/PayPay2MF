@@ -74,6 +74,8 @@ def apply_mapping(
 
     direction が income/expense のルールは、Transaction.direction が
     対応する in/out の場合にのみマッチ候補となる。
+    `contains` は部分一致、`starts_with` は前方一致、`regex` は
+    正規表現で評価する。keyword は前後空白を含めてそのまま評価する。
     マッチしない場合は category は "未分類" のまま。
 
     Args:

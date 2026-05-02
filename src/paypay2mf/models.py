@@ -20,9 +20,10 @@ class MappingRule:
     """カテゴリマッピングルールの定義。
 
     Attributes:
-        keyword: マッチングに使うキーワード。
+        keyword: マッチングに使うキーワード。設定値をそのまま保持する。
         category: MF に登録するカテゴリ名。
-        match_mode: マッチモード。"contains" / "starts_with" / "regex" のいずれか。
+        match_mode: マッチモード。"contains"（部分一致）/
+            "starts_with"（前方一致）/"regex"（正規表現）のいずれか。
         priority: 評価優先度。数値が大きいほど先に評価される。
         direction: ルールの取引方向。"income" / "expense" / "any" のいずれか。
             未指定時は "any" として扱う。
