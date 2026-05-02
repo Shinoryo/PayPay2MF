@@ -95,13 +95,32 @@ def apply_mapping(
 
 def _prepare_rules(rules: list[MappingRule]) -> list[_PreparedRule]:
     prepared: list[_PreparedRule] = []
-    for rule in sorted(
-        rules,
-        key=lambda r: (
-            -r.priority,
-            r.direction == AppConstants.RULE_DIRECTION_ANY,
-        ),
-    ):
+    sorted_rules = sorted(rules, key=lambda r: -r.priority)
+
+    prioritized_rules: list[MappingRule] = []
+    index = 0
+    while index < len(sorted_rules):
+        rule = sorted_rules[index]
+        group_end = index + 1
+        while group_end < len(sorted_rules):
+            candidate = sorted_rules[group_end]
+            if candidate.priority != rule.priority:
+                break
+            if candidate.keyword != rule.keyword:
+                break
+            if candidate.match_mode != rule.match_mode:
+                break
+            group_end += 1
+
+        prioritized_rules.extend(
+            sorted(
+                sorted_rules[index:group_end],
+                key=lambda r: r.direction == AppConstants.RULE_DIRECTION_ANY,
+            )
+        )
+        index = group_end
+
+    for rule in prioritized_rules:
         compiled_pattern = None
         if rule.match_mode == AppConstants.MATCH_MODE_REGEX:
             compiled_pattern = re.compile(rule.keyword)
