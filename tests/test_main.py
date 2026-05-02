@@ -408,7 +408,9 @@ def test_run_registration_continues_after_item_failure(
     )
 
     assert result.success_count == 1
-    assert result.failed_records == ["failed: TX002"]
+    assert len(result.failed_records) == 1
+    assert result.failed_records[0].error_message == "failed: TX002"
+    assert result.failed_records[0].tx.transaction_id == "TX002"
     assert detector.mark_processed.call_count == 1
     detector.flush.assert_called_once_with()
     detector.mark_processed.assert_called_once()

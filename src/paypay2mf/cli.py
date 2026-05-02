@@ -22,6 +22,7 @@ from paypay2mf.duplicate_detector import (
 from paypay2mf.filter import apply_exclude, apply_mapping
 from paypay2mf.log_manager import setup_logger, write_error_csv, write_parse_error_csv
 from paypay2mf.mf_registrar import MFRegistrar
+from paypay2mf.models import RegistrationFailure
 
 if TYPE_CHECKING:
     import logging
@@ -56,7 +57,7 @@ _LOG_MSG_DUPLICATE_SKIP_COUNT = "重複スキップ: %d件"
 _LOG_MSG_TO_PROCESS_COUNT = "処理対象: %d件"
 _LOG_MSG_DRY_RUN_COMPLETE = "ドライラン完了: 登録対象 %d件"
 _LOG_MSG_APP_EXIT = "アプリケーションを終了します"
-_LOG_MSG_REGISTER_FAILED = "登録失敗 (%d/%d): %s"
+_LOG_MSG_REGISTER_FAILED = "登録失敗 (%d/%d) [CSV行 %d]: %s"
 _LOG_MSG_REGISTRATION_BOOT_FAILED = "Chrome の起動またはMFへの遷移に失敗しました"
 _LOG_MSG_SUMMARY = "実行完了: 成功 %d件 / 除外 %d件 / 重複スキップ %d件 / 失敗 %d件"
 _LOG_MSG_ERROR_CSV_WRITTEN = "登録失敗CSVを出力しました: %s"
@@ -69,6 +70,7 @@ _LOG_MSG_LOG_DIR_SENSITIVE = (
 )
 _LOG_MSG_DRY_RUN_MODE = "DRY RUN: ブラウザを起動しません。CSV診断のみ実行します。"
 _LOG_MSG_CONFIG_LOADED = "config.yml を読み込みました"
+_LOG_MSG_INPUT_CSV = "入力CSV: %s"
 _LOG_MSG_NO_TRANSACTIONS = "登録対象がないためブラウザを起動しません。"
 _ERR_MARK_PROCESSED_FAILED = "処理済み履歴の更新に失敗しました ({}/{})"
 
@@ -88,7 +90,7 @@ class PreparedTransactions:
 @dataclass(slots=True)
 class RegistrationResult:
     success_count: int
-    failed_records: list[str]
+    failed_records: list[RegistrationFailure]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -185,14 +187,16 @@ def _register_transaction(
     tx: Transaction,
     *,
     progress: tuple[int, int],
-) -> str | None:
+) -> RegistrationFailure | None:
     index, total_count = progress
 
     try:
         registrar.register(tx)
     except Exception as exc:
-        logger.exception(_LOG_MSG_REGISTER_FAILED, index, total_count, exc)
-        return str(exc)
+        logger.exception(
+            _LOG_MSG_REGISTER_FAILED, index, total_count, tx.row_index, exc
+        )
+        return RegistrationFailure(tx=tx, error_message=str(exc))
 
     try:
         detector.mark_processed(tx)
@@ -210,7 +214,7 @@ def run_registration(
     detector: DuplicateDetector,
     to_process: list[Transaction],
 ) -> RegistrationResult:
-    failed_records: list[str] = []
+    failed_records: list[RegistrationFailure] = []
     success_count = 0
     should_exit = False
 
@@ -305,6 +309,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.info(_LOG_MSG_DRY_RUN_MODE)
 
     logger.info(_LOG_MSG_CONFIG_LOADED)
+    logger.info(_LOG_MSG_INPUT_CSV, config.input_csv)
 
     try:
         prepared = build_transactions(config, logger)

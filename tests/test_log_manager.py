@@ -18,11 +18,19 @@ import pytest
 from paypay2mf import log_manager
 from paypay2mf.constants import AppConstants
 from paypay2mf.log_manager import setup_logger, write_error_csv, write_parse_error_csv
-from paypay2mf.models import AppConfig
+from paypay2mf.models import AppConfig, RegistrationFailure
 
 _ERROR_MESSAGE_SELECTOR_TIMEOUT = "selector timeout"
 _ERROR_MESSAGE_VALIDATION_FAILED = "validation failed"
-_ERROR_CSV_FIELDNAMES = ["failure_index", "error_message"]
+_ERROR_CSV_FIELDNAMES = [
+    "row_index",
+    "date",
+    "amount",
+    "direction",
+    "merchant",
+    "category",
+    "error_message",
+]
 _PARSE_ERROR_CSV_FIELDNAMES = ["row_index", "error_type", "error_message"]
 _PARSE_ERROR_TYPE_MISSING_COLUMN = "missing_column"
 _TRADE_DATE_MISSING_MESSAGE = "取引日 がありません"
@@ -198,10 +206,21 @@ def test_setup_logger_max_log_count_is_hard_cap_including_new_file(
 def test_write_error_csv_uses_minimum_columns(
     tmp_path: Path,
     app_config_factory,
+    transaction_factory,
 ) -> None:
-    """TC-09-03: 登録失敗 CSV が最小列のみを書き出すことを確認する。"""
+    """TC-09-03: 登録失敗 CSV が所定の列を書き出すことを確認する。"""
+    tx1 = transaction_factory(
+        transaction_id="TX001", merchant="商店A", amount=500, row_index=1
+    )
+    tx2 = transaction_factory(
+        transaction_id="TX002", merchant="商店B", amount=200, row_index=2
+    )
+    records = [
+        RegistrationFailure(tx=tx1, error_message=_ERROR_MESSAGE_SELECTOR_TIMEOUT),
+        RegistrationFailure(tx=tx2, error_message=_ERROR_MESSAGE_VALIDATION_FAILED),
+    ]
     out_path = write_error_csv(
-        [_ERROR_MESSAGE_SELECTOR_TIMEOUT, _ERROR_MESSAGE_VALIDATION_FAILED],
+        records,
         app_config_factory(tmp_path, input_csv_name="dummy.csv"),
     )
 
@@ -214,11 +233,21 @@ def test_write_error_csv_uses_minimum_columns(
     assert reader.fieldnames == _ERROR_CSV_FIELDNAMES
     assert rows == [
         {
-            "failure_index": "1",
+            "row_index": "1",
+            "date": tx1.date_text,
+            "amount": str(tx1.amount),
+            "direction": tx1.direction,
+            "merchant": tx1.merchant,
+            "category": tx1.category,
             "error_message": _ERROR_MESSAGE_SELECTOR_TIMEOUT,
         },
         {
-            "failure_index": "2",
+            "row_index": "2",
+            "date": tx2.date_text,
+            "amount": str(tx2.amount),
+            "direction": tx2.direction,
+            "merchant": tx2.merchant,
+            "category": tx2.category,
             "error_message": _ERROR_MESSAGE_VALIDATION_FAILED,
         },
     ]

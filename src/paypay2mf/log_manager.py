@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from paypay2mf.models import AppConfig, ParseFailure
+    from paypay2mf.models import AppConfig, ParseFailure, RegistrationFailure
 
 from paypay2mf.constants import AppConstants
 
@@ -36,7 +36,12 @@ _BYTES_PER_MB = 1024 * 1024
 
 # エラー CSV に出力する列名。
 _ERROR_CSV_FIELDNAMES = (
-    "failure_index",
+    "row_index",
+    "date",
+    "amount",
+    "direction",
+    "merchant",
+    "category",
     "error_message",
 )
 _PARSE_ERROR_CSV_PREFIX = "parse_error_"
@@ -99,13 +104,13 @@ def _reset_logger_handlers(logger: logging.Logger) -> None:
 
 
 def write_error_csv(
-    records: list[str],
+    records: list[RegistrationFailure],
     config: AppConfig,
 ) -> Path:
-    """登録失敗メッセージを最小限の CSV として書き出す。
+    """登録失敗レコードを CSV として書き出す。
 
     Args:
-        records: 登録失敗メッセージのリスト。
+        records: 登録失敗レコードのリスト。
         config: アプリケーション設定。
 
     Returns:
@@ -124,11 +129,17 @@ def write_error_csv(
     ) as f:
         writer = csv.DictWriter(f, fieldnames=_ERROR_CSV_FIELDNAMES)
         writer.writeheader()
-        for failure_index, error_message in enumerate(records, start=1):
+        for failure in records:
+            tx = failure.tx
             writer.writerow(
                 {
-                    "failure_index": failure_index,
-                    "error_message": error_message,
+                    "row_index": tx.row_index,
+                    "date": tx.date_text,
+                    "amount": tx.amount,
+                    "direction": tx.direction,
+                    "merchant": tx.merchant,
+                    "category": tx.category,
+                    "error_message": failure.error_message,
                 },
             )
 
