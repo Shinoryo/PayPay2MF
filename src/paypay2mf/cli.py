@@ -57,7 +57,7 @@ _LOG_MSG_DUPLICATE_SKIP_COUNT = "重複スキップ: %d件"
 _LOG_MSG_TO_PROCESS_COUNT = "処理対象: %d件"
 _LOG_MSG_DRY_RUN_COMPLETE = "ドライラン完了: 登録対象 %d件"
 _LOG_MSG_APP_EXIT = "アプリケーションを終了します"
-_LOG_MSG_REGISTER_FAILED = "登録失敗 (%d/%d) [CSV行 %d]: %s"
+_LOG_MSG_REGISTER_FAILED = "登録失敗 (%d/%d)%s: %s"
 _LOG_MSG_REGISTRATION_BOOT_FAILED = "Chrome の起動またはMFへの遷移に失敗しました"
 _LOG_MSG_SUMMARY = "実行完了: 成功 %d件 / 除外 %d件 / 重複スキップ %d件 / 失敗 %d件"
 _LOG_MSG_ERROR_CSV_WRITTEN = "登録失敗CSVを出力しました: %s"
@@ -193,8 +193,9 @@ def _register_transaction(
     try:
         registrar.register(tx)
     except Exception as exc:
+        row_index_str = f" [CSV行 {tx.row_index}]" if tx.row_index > 0 else ""
         logger.exception(
-            _LOG_MSG_REGISTER_FAILED, index, total_count, tx.row_index, exc
+            _LOG_MSG_REGISTER_FAILED, index, total_count, row_index_str, exc
         )
         return RegistrationFailure(tx=tx, error_message=str(exc))
 

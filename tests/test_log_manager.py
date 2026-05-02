@@ -253,6 +253,30 @@ def test_write_error_csv_uses_minimum_columns(
     ]
 
 
+def test_write_error_csv_row_index_zero_outputs_empty(
+    tmp_path: Path,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """TC-09-03a: row_index=0（未設定）の場合、登録失敗 CSV の row_index 列が空文字になることを確認する。"""
+    tx = transaction_factory(
+        transaction_id="TX001", merchant="商店A", amount=500, row_index=0
+    )
+    records = [RegistrationFailure(tx=tx, error_message=_ERROR_MESSAGE_SELECTOR_TIMEOUT)]
+    out_path = write_error_csv(
+        records,
+        app_config_factory(tmp_path, input_csv_name="dummy.csv"),
+    )
+
+    with out_path.open(
+        encoding=AppConstants.ENCODING_UTF8_SIG, newline=AppConstants.EMPTY_STRING
+    ) as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    assert rows[0]["row_index"] == ""
+
+
 def test_write_parse_error_csv_uses_minimum_columns(
     tmp_path: Path,
     app_config_factory,

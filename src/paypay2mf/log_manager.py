@@ -133,7 +133,7 @@ def write_error_csv(
             tx = failure.tx
             writer.writerow(
                 {
-                    "row_index": tx.row_index,
+                    "row_index": tx.row_index if tx.row_index > 0 else "",
                     "date": tx.date_text,
                     "amount": tx.amount,
                     "direction": tx.direction,

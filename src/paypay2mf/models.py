@@ -52,6 +52,7 @@ class Transaction:
         row_fingerprint: 行単位重複検知に使う指紋文字列。
         category: マッピング後のカテゴリ名。デフォルト値は "未分類"。
         row_index: 元 CSV のデータ行連番（ヘッダを除く 1 始まり）。
+            0 は未設定（CSV 以外のソースや `row_index` 付与前の状態）を示す。
             登録失敗 CSV の `row_index` 列と対応する。
     """
 

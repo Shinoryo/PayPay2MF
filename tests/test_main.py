@@ -418,6 +418,29 @@ def test_run_registration_continues_after_item_failure(
     registrar_factory.assert_called_once_with(config, logger)
 
 
+def test_register_transaction_log_omits_csv_row_when_row_index_zero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app_config_factory,
+    transaction_factory,
+) -> None:
+    """TC-09-03b: row_index=0（未設定）の場合、ログに [CSV行 N] が含まれないことを確認する。"""
+    config = app_config_factory(tmp_path, dry_run=False, input_csv_text="header\n")
+    logger = Mock(spec=logging.Logger)
+    detector = _FakeDetector()
+    registrar = _FakeRegistrar({"TX001"})
+    monkeypatch.setattr(app_main, "MFRegistrar", Mock(return_value=nullcontext(registrar)))
+
+    tx = transaction_factory(transaction_id="TX001", merchant="merchant-TX001", row_index=0)
+    app_main.run_registration(config, logger, detector, [tx])
+
+    call_args = logger.exception.call_args
+    # logger.exception(_LOG_MSG_REGISTER_FAILED, index, total_count, row_index_str, exc)
+    # args: [0]=format_str, [1]=index, [2]=total_count, [3]=row_index_str, [4]=exc
+    # row_index=0（未設定）のとき row_index_str が空文字列になることを確認
+    assert call_args.args[3] == ""
+
+
 def test_run_registration_exits_when_registrar_boot_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
