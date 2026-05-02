@@ -195,9 +195,10 @@ def _to_transactions(
     transactions: list[Transaction] = []
     failures: list[ParseFailure] = []
 
-    for row_index, row in rows:
+    for data_idx, (row_index, row) in enumerate(rows, start=1):
         transaction, failure = _parse_row(row_index, row, date_formats)
         if transaction is not None:
+            transaction.row_index = data_idx
             transactions.append(transaction)
         if failure is not None:
             failures.append(failure)

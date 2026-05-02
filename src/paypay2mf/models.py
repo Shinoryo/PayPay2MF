@@ -51,6 +51,9 @@ class Transaction:
             取引番号が存在しない行は None。
         row_fingerprint: 行単位重複検知に使う指紋文字列。
         category: マッピング後のカテゴリ名。デフォルト値は "未分類"。
+        row_index: 元 CSV のデータ行連番（ヘッダを除く 1 始まり）。
+            0 は未設定（CSV 以外のソースや `row_index` 付与前の状態）を示す。
+            登録失敗 CSV の `row_index` 列と対応する。
     """
 
     date: datetime
@@ -66,6 +69,7 @@ class Transaction:
     user: str = AppConstants.EMPTY_STRING
     row_fingerprint: str = AppConstants.EMPTY_STRING
     category: str = AppConstants.DEFAULT_CATEGORY
+    row_index: int = 0
 
 
 @dataclass
@@ -78,6 +82,19 @@ class ParseFailure:
     error_type: str
     error_message: str
     raw_row: dict[str, str]
+
+
+@dataclass
+class RegistrationFailure:
+    """登録失敗の記録。
+
+    Attributes:
+        tx: 失敗した取引データ。
+        error_message: 発生した例外のメッセージ文字列。
+    """
+
+    tx: Transaction
+    error_message: str
 
 
 @dataclass

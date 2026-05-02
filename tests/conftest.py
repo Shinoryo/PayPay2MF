@@ -136,6 +136,7 @@ def transaction_factory() -> TransactionFactory:
         row_fingerprint: str | None = None,
         category: str = AppConstants.DEFAULT_CATEGORY,
         direction: str = AppConstants.DIRECTION_OUT,
+        row_index: int = 0,
     ) -> Transaction:
         resolved_date = date or datetime(2025, 1, 1, 12, 0, 0)  # noqa: DTZ001
         resolved_date_text = date_text or resolved_date.strftime("%Y/%m/%d %H:%M:%S")
@@ -169,6 +170,7 @@ def transaction_factory() -> TransactionFactory:
             user=user,
             row_fingerprint=resolved_fingerprint,
             category=category,
+            row_index=row_index,
         )
 
     return _make_transaction

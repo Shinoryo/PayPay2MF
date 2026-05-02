@@ -33,8 +33,10 @@ if TYPE_CHECKING:
 
 _LOG_MSG_CHROME_STARTED = "Chrome を起動しました"
 _LOG_MSG_CHROME_QUIT_FAILED = "Chrome の終了中に例外が発生しました。"
-_LOG_MSG_WAITING_FOR_LOGIN = "Money Forward のトップページを開きました。"
-_LOG_MSG_MF_PAGE_OPENED = "MF ページへ遷移しました"
+_LOG_MSG_WAITING_FOR_LOGIN = (
+    "Money Forward のトップページを開きました: " + mf_selectors.SIGN_IN_PAGE_URL
+)
+_LOG_MSG_MF_PAGE_OPENED = "家計簿タブへ遷移しました: " + mf_selectors.MANUAL_FORM_URL
 _LOG_MSG_SCREENSHOT_SAVED = "スクリーンショットを保存しました: %s"
 _LOG_MSG_SCREENSHOT_SKIPPED = (
     "Selenium driver が未初期化のため、スクリーンショットを保存しませんでした。"
