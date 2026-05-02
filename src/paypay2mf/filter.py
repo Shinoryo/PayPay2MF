@@ -21,7 +21,14 @@ class _PreparedRule:
     category: str
     keyword: str
     match_mode: str
+    direction: str
     compiled_pattern: re.Pattern[str] | None = None
+
+
+_RULE_TO_TX_DIRECTION = {
+    AppConstants.RULE_DIRECTION_INCOME: AppConstants.DIRECTION_IN,
+    AppConstants.RULE_DIRECTION_EXPENSE: AppConstants.DIRECTION_OUT,
+}
 
 
 def apply_exclude(
@@ -73,7 +80,7 @@ def apply_mapping(
 
     result: list[Transaction] = []
     for tx in records:
-        tx.category = _match_category(tx.merchant, prepared_rules)
+        tx.category = _match_category(tx, prepared_rules)
         result.append(tx)
 
     return result
@@ -81,7 +88,13 @@ def apply_mapping(
 
 def _prepare_rules(rules: list[MappingRule]) -> list[_PreparedRule]:
     prepared: list[_PreparedRule] = []
-    for rule in sorted(rules, key=lambda r: r.priority, reverse=True):
+    for rule in sorted(
+        rules,
+        key=lambda r: (
+            -r.priority,
+            r.direction == AppConstants.RULE_DIRECTION_ANY,
+        ),
+    ):
         compiled_pattern = None
         if rule.match_mode == AppConstants.MATCH_MODE_REGEX:
             compiled_pattern = re.compile(rule.keyword)
@@ -90,6 +103,7 @@ def _prepare_rules(rules: list[MappingRule]) -> list[_PreparedRule]:
                 category=rule.category,
                 keyword=rule.keyword,
                 match_mode=rule.match_mode,
+                direction=rule.direction,
                 compiled_pattern=compiled_pattern,
             )
         )
@@ -97,7 +111,7 @@ def _prepare_rules(rules: list[MappingRule]) -> list[_PreparedRule]:
 
 
 def _match_category(
-    merchant: str,
+    tx: Transaction,
     prepared_rules: list[_PreparedRule],
 ) -> str:
     """merchant に対してルールを評価し、最初にマッチしたカテゴリ名を返す。
@@ -110,12 +124,12 @@ def _match_category(
         マッチしたカテゴリ名。マッチしない場合は "未分類"。
     """
     for rule in prepared_rules:
-        if _matches(merchant, rule):
+        if _matches(tx, rule):
             return rule.category
     return AppConstants.DEFAULT_CATEGORY
 
 
-def _matches(merchant: str, rule: _PreparedRule) -> bool:
+def _matches(tx: Transaction, rule: _PreparedRule) -> bool:
     """単一のルールが merchant にマッチするか判定する。
 
     Args:
@@ -125,6 +139,12 @@ def _matches(merchant: str, rule: _PreparedRule) -> bool:
     Returns:
         マッチすれば True、しなければ False。
     """
+    if rule.direction != AppConstants.RULE_DIRECTION_ANY:
+        expected_direction = _RULE_TO_TX_DIRECTION.get(rule.direction)
+        if tx.direction != expected_direction:
+            return False
+
+    merchant = tx.merchant
     if rule.match_mode == AppConstants.MATCH_MODE_CONTAINS:
         return rule.keyword in merchant
     if rule.match_mode == AppConstants.MATCH_MODE_STARTS_WITH:
