@@ -70,7 +70,8 @@ def apply_mapping(
     カテゴリを設定する。評価順は以下のとおり。
 
     1. priority 降順（数値が大きいほど優先）
-    2. 同一 priority では direction 指定（income/expense）を any より優先
+    2. 同一 keyword・同一 match_mode・同一 priority の競合時は
+       direction 指定（income/expense）を any より優先
 
     direction が income/expense のルールは、Transaction.direction が
     対応する in/out の場合にのみマッチ候補となる。
