@@ -545,7 +545,8 @@ def _validate_mapping_rules(rules: list) -> None:
         rules: YAML から読み込んだ mapping_rules のリスト。
 
     Raises:
-        ValueError: keyword が空文字の場合、または match_mode の値が不正な場合。
+        ValueError: keyword/category の空値、match_mode/direction の不正値、
+            または priority の型・範囲が不正な場合。
     """
     errors: list[str] = []
     for i, rule in enumerate(rules):

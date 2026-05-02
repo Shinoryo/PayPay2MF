@@ -66,8 +66,15 @@ def apply_mapping(
 ) -> list[Transaction]:
     """カテゴリマッピングルールを適用してカテゴリを更新する。
 
-    各 Transaction の merchant に対して rules を priority 降順で評価し、
-    最初にマッチしたカテゴリを設定する。マッチしない場合は "未分類" のまま。
+    各 Transaction に対して rules を優先順で評価し、最初にマッチした
+    カテゴリを設定する。評価順は以下のとおり。
+
+    1. priority 降順（数値が大きいほど優先）
+    2. 同一 priority では direction 指定（income/expense）を any より優先
+
+    direction が income/expense のルールは、Transaction.direction が
+    対応する in/out の場合にのみマッチ候補となる。
+    マッチしない場合は category は "未分類" のまま。
 
     Args:
         records: マッピング対象の Transaction のリスト。
@@ -114,10 +121,10 @@ def _match_category(
     tx: Transaction,
     prepared_rules: list[_PreparedRule],
 ) -> str:
-    """merchant に対してルールを評価し、最初にマッチしたカテゴリ名を返す。
+    """Transaction に対してルールを評価し、最初にマッチしたカテゴリ名を返す。
 
     Args:
-        merchant: 取引先名。
+        tx: 評価対象の取引データ。
         prepared_rules: カテゴリマッピングルールのリスト。priority 降順を想定。
 
     Returns:
@@ -130,10 +137,10 @@ def _match_category(
 
 
 def _matches(tx: Transaction, rule: _PreparedRule) -> bool:
-    """単一のルールが merchant にマッチするか判定する。
+    """単一のルールが Transaction にマッチするか判定する。
 
     Args:
-        merchant: 取引先名。
+        tx: 評価対象の取引データ。
         rule: 評価するマッピングルール。
 
     Returns:
