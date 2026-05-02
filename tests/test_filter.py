@@ -229,7 +229,9 @@ def test_mapping_priority() -> None:
 
 def test_mapping_direction_expense_matches_outgoing_only() -> None:
     """direction=expense ルールは出金取引にのみ適用されることを確認する。"""
-    out_tx = _make_tx(merchant="セブン - イレブン", direction=AppConstants.DIRECTION_OUT)
+    out_tx = _make_tx(
+        merchant="セブン - イレブン", direction=AppConstants.DIRECTION_OUT
+    )
     in_tx = _make_tx(merchant="セブン - イレブン", direction=AppConstants.DIRECTION_IN)
     rules = [
         MappingRule(
@@ -267,7 +269,9 @@ def test_mapping_direction_income_matches_incoming_only() -> None:
 
 def test_mapping_direction_any_matches_both_directions() -> None:
     """direction=any ルールは入出金の両方に適用されることを確認する。"""
-    out_tx = _make_tx(merchant="セブン - イレブン", direction=AppConstants.DIRECTION_OUT)
+    out_tx = _make_tx(
+        merchant="セブン - イレブン", direction=AppConstants.DIRECTION_OUT
+    )
     in_tx = _make_tx(merchant="セブン - イレブン", direction=AppConstants.DIRECTION_IN)
     rules = [
         MappingRule(
